@@ -27,7 +27,7 @@ public class ProviderProperties {
     public static class Seedance {
         private String baseUrl = "https://ark.cn-beijing.volces.com/api/v3";
         private String apiKey = "";
-        private String model = "doubao-seedance-1-0-pro-250528";
+        private String model = "doubao-seedance-2-0-260128";
         private String ratio = "16:9";
         private Integer duration = 5;
         private Boolean watermark = false;

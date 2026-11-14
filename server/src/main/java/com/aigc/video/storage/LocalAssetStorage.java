@@ -11,6 +11,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Base64;
 
 /** 本地磁盘存储，配合 WebConfig 的 /files/** 静态映射对外提供访问 */
 @Slf4j
@@ -39,10 +40,43 @@ public class LocalAssetStorage implements AssetStorage {
         } catch (IOException e) {
             throw new UncheckedIOException("写入本地文件失败：" + target, e);
         }
-        String prefix = properties.getPublicPrefix();
-        if (!prefix.startsWith("/")) {
-            prefix = "/" + prefix;
+        return new StoredAsset(publicPrefix() + "/" + fileName, fileName);
+    }
+
+    @Override
+    public String providerImageUrl(String url) {
+        String prefix = publicPrefix() + "/";
+        if (url == null || !url.startsWith(prefix)) {
+            return url;
         }
-        return new StoredAsset(prefix + "/" + fileName, fileName);
+        Path root = Paths.get(properties.getLocalDir()).toAbsolutePath().normalize();
+        Path target = root.resolve(url.substring(prefix.length())).normalize();
+        if (!target.startsWith(root)) {
+            throw new IllegalArgumentException("非法的参考图地址");
+        }
+        try {
+            String mediaType = imageMediaType(target.getFileName().toString());
+            String encoded = Base64.getEncoder().encodeToString(Files.readAllBytes(target));
+            return "data:" + mediaType + ";base64," + encoded;
+        } catch (IOException e) {
+            throw new UncheckedIOException("读取本地参考图失败：" + target, e);
+        }
+    }
+
+    private String publicPrefix() {
+        String prefix = properties.getPublicPrefix();
+        return prefix.startsWith("/") ? prefix : "/" + prefix;
+    }
+
+    private String imageMediaType(String fileName) {
+        String name = fileName.toLowerCase();
+        int dot = name.lastIndexOf('.');
+        String ext = dot < 0 ? "" : name.substring(dot + 1);
+        return switch (ext) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png", "webp", "bmp", "gif", "heic", "heif" -> "image/" + ext;
+            case "tif", "tiff" -> "image/tiff";
+            default -> throw new IllegalArgumentException("不支持的参考图格式：" + fileName);
+        };
     }
 }

@@ -7,7 +7,7 @@ import java.util.List;
  *
  * @param prompt    提示词
  * @param title     镜头标题（仅日志用）
- * @param imageUrls 参考图公网地址，按 @图片1、@图片2 顺序排列
+ * @param imageUrls 参考图公网地址或 data URI，按 @图片1、@图片2 顺序排列
  */
 public record SubmitCommand(
         String prompt,

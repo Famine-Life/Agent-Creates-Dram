@@ -16,4 +16,9 @@ public interface AssetStorage {
     default String accessUrl(String url) {
         return url;
     }
+
+    /** 返回视频供应商可读取的参考图地址；本地存储可转换为 data URI。 */
+    default String providerImageUrl(String url) {
+        return url;
+    }
 }

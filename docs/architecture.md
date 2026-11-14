@@ -17,7 +17,7 @@
 - 一条提示词 = 一个视频节点，异步生成，进度实时回填；
 - 图片节点作为参考图，通过连线与镜头节点形成**多对多**引用，提示词里用 `@图片1` 引用；
 - 内置 AI 能力：脚本节点生成分镜、图片节点文生图、提示词一键优化（Ark，未配置密钥时 mock）；
-- 默认 `mock` 供应商 8 秒出片，无需任何密钥即可跑通全链路；生产切换 `seedance`（火山方舟）。
+- 默认使用 `seedance`（火山方舟 Seedance 2.0）；设置 `AIGC_PROVIDER=mock` 可切换为 8 秒演示出片，无需密钥即可跑通全链路。
 
 设计目标：**默认单机单实例、无 Redis / 无 MQ / 无 Docker 也能完整运行**；需要水平扩容时，通过配置开启 Redis Pub/Sub 广播，并保留 MySQL、MinIO、COS、OSS 的切换能力。
 
@@ -63,7 +63,7 @@
 | MCP | Spring AI MCP Server（WebMVC，SSE） | 1.0.0 |
 | 数据库 | H2（文件模式，MySQL 兼容）/ MySQL 8 | — |
 | 缓存 / 广播 | Redis（可选，Pub/Sub） | Spring Data Redis |
-| AI | 火山方舟 Ark（chat / images），未配置密钥走 mock | HTTP |
+| AI | 火山方舟 Ark（Seedance 2.0 video / chat / images），脚本与图片未配置密钥走 mock | HTTP |
 | 对象存储 | 本地磁盘 / MinIO / 腾讯云 COS / 阿里云 OSS | minio 8.5.12 / cos_api 5.6.227 / aliyun-sdk-oss 3.17.4 |
 | 前端 | Vue 3 + Vite | 3.4 / 4.5（Node 16 兼容） |
 | 画布 | @vue-flow/core + background / controls / minimap | 1.41 / 1.3 / 1.1 / 1.5 |
@@ -246,6 +246,7 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 - `oss`（阿里云 OSS）：`endpoint`（地域节点）+ `bucket` + `access-key-id/access-key-secret`，上传对象显式设为 private；
 - COS / OSS 都支持可选的 `public-url`（CDN 或自定义域名）作为数据库稳定 URL 的域名；响应实际使用服务商签发的 GET 预签名 URL，桶和 CDN 不应再向匿名用户公开对象；
 - `MinIO / COS / OSS` 在组装画布响应、图片节点和供应商参考图时调用 `AssetService.accessUrl()` 动态签名，默认有效期 3600 秒；数据库只保存稳定 URL，不保存签名参数，过期后刷新画布获取新地址；
+- 本地参考图的 `/files/...` 仅供网页访问，提交视频供应商前由 `AssetService.providerImageUrl()` 读取文件并转换为 Base64 data URI；公网及签名 URL 原样传递；
 - 所有配置支持环境变量覆盖（`AIGC_STORAGE_TYPE`、`AIGC_SIGNED_URL_TTL_SECONDS`、`COS_*`、`OSS_*`），无需改代码即可切换；
 - 第三方地址转存前会先用 `AssetStorage.owns()` 判断是否已属于当前存储，避免重复下载。
 - 图片上传：`POST /api/uploads`（multipart），限制 10MB、校验图片 MIME，返回 `{id,name,url}` 并创建画布图片节点。
@@ -263,9 +264,13 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `aigc.security.mcp-token` | `${MCP_API_TOKEN:}` | MCP 独立 Token，必填且至少 32 字符 |
 | `aigc.security.cookie-secure` | `${AIGC_COOKIE_SECURE:false}` | HTTPS 公网必须设为 true |
 | `aigc.security.allowed-origins` | `${AIGC_ALLOWED_ORIGINS:}` | 额外 REST / WS 来源，逗号分隔；同源留空 |
-| `aigc.provider.default-name` | `mock` | `mock` / `seedance` |
+| `aigc.provider.default-name` | `${AIGC_PROVIDER:seedance}` | `mock` / `seedance`，默认 Seedance 2.0 |
 | `aigc.provider.mock.seconds` | `8` | mock 出片耗时 |
-| `aigc.provider.seedance.api-key` | `${ARK_API_KEY:}` | 火山方舟密钥 |
+| `aigc.provider.seedance.api-key` | `${ARK_API_KEY:}` | 火山方舟密钥，通过环境变量或 Git 忽略的 `application-local.yml` 提供 |
+| `aigc.provider.seedance.model` | `${ARK_MODEL:doubao-seedance-2-0-260128}` | Seedance 2.0 模型 ID |
+| `aigc.provider.seedance.ratio` | `16:9` | 默认视频比例 |
+| `aigc.provider.seedance.duration` | `5` | 默认时长（秒） |
+| `aigc.provider.seedance.watermark` | `false` | 是否添加水印 |
 | `aigc.storage.type` | `local` | `local` / `minio` / `cos` / `oss` |
 | `aigc.storage.signed-url-ttl-seconds` | `${AIGC_SIGNED_URL_TTL_SECONDS:3600}` | 私有对象 GET 预签名 URL 有效期 |
 | `aigc.storage.cos.*` | — | 腾讯云 COS：endpoint、secret-id、secret-key、bucket、region、public-url |
@@ -448,7 +453,7 @@ web/src
 
 ## 6. 部署与运行
 
-### 6.1 本地（默认，零依赖）
+### 6.1 本地
 
 ```powershell
 # 后端（Maven 与 java 都必须使用 JDK 17）
@@ -456,6 +461,10 @@ cd server
 $env:AIGC_ADMIN_USERNAME='admin'
 $env:AIGC_ADMIN_PASSWORD='<替换为你的强密码>'
 $env:MCP_API_TOKEN='<替换为至少32字符的随机Token>'
+$env:ARK_API_KEY='<替换为你的火山方舟密钥>'
+# 也可改为在 application-local.yml 手动配置密钥，并在启动参数中使用 --spring.profiles.active=local
+# 可选：不调用真实视频接口时改用 mock
+# $env:AIGC_PROVIDER='mock'
 mvn -DskipTests package
 java -jar target/aigc-video-server-0.1.0.jar
 
@@ -507,7 +516,7 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 
 1. 调度已支持 Redis 分布式锁、网页 Session 可选择存 Redis；MCP 的 SSE 会话仍绑定单实例，多实例需网关会话粘滞。
 2. H2 仅适合本地/演示。
-3. `seedance`、AI 脚本 / 图片 / 优化都需要 `ARK_API_KEY`，未配置时回退 mock。
+3. `seedance`、AI 脚本 / 图片 / 优化都需要 Ark API Key（环境变量或 local 配置）；脚本 / 图片 / 优化未配置时回退 mock，视频任务会明确失败，演示时可设置 `AIGC_PROVIDER=mock`。
 4. MCP 仅 SSE（受 Spring AI 1.0.0 限制）。
 5. 画布快照已做乐观锁；但同一标签页内并发保存仍按最后响应为准，极端情况下会触发一次 409 重载。
 6. 导演台 / 智能剪辑 / 音频节点仅为菜单占位，无实际能力。

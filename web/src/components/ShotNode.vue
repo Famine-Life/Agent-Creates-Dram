@@ -22,7 +22,7 @@ const props = defineProps({
 
 const MODEL_OPTIONS = [
   { value: 'mock', label: 'Mock 视频', resolutions: ['480P', '720P'] },
-  { value: 'seedance', label: 'Seedance 1.0 Pro', resolutions: ['480P', '720P', '1080P', '4K'] }
+  { value: 'seedance', label: 'Seedance 2.0', resolutions: ['480P', '720P', '1080P', '4K'] }
 ]
 const RATIO_OPTIONS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']
 const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]

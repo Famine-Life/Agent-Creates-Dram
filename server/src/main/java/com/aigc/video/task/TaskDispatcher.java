@@ -91,8 +91,11 @@ public class TaskDispatcher {
         try {
             TaskNode node = taskService.node(task.getId());
             VideoProvider provider = providerRegistry.get(task.getProvider());
+            List<String> referenceImages = node.imageUrls().stream()
+                    .map(assetService::providerImageUrl)
+                    .toList();
             SubmitResult result = provider.submit(
-                    new SubmitCommand(node.prompt(), node.title(), node.imageUrls(), node.ratio(), node.duration(), node.resolution()));
+                    new SubmitCommand(node.prompt(), node.title(), referenceImages, node.ratio(), node.duration(), node.resolution()));
             taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                     .eq(GenerationTask::getId, task.getId())
                     .set(GenerationTask::getProvider, provider.name())

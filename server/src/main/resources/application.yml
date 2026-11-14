@@ -83,7 +83,7 @@ aigc:
     redis-enabled: ${AIGC_REDIS_ENABLED:false}
   provider:
     # mock = 无需任何密钥即可跑通全链路；seedance = 火山方舟即梦
-    default-name: mock
+    default-name: ${AIGC_PROVIDER:seedance}
     mock:
       # 演示成片（Mock 不产生真实视频，成功后直接给这个地址）
       video-url: https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
@@ -91,7 +91,7 @@ aigc:
     seedance:
       base-url: https://ark.cn-beijing.volces.com/api/v3
       api-key: ${ARK_API_KEY:}
-      model: ${ARK_MODEL:doubao-seedance-1-0-pro-250528}
+      model: ${ARK_MODEL:doubao-seedance-2-0-260128}
       ratio: "16:9"
       duration: 5
       watermark: false

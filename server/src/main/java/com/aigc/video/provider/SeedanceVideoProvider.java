@@ -38,15 +38,30 @@ public class SeedanceVideoProvider implements VideoProvider {
             throw new IllegalStateException("未配置 ARK_API_KEY，无法使用 seedance 供应商");
         }
 
+        boolean seedance2 = isSeedance2(cfg.getModel());
         List<Map<String, Object>> content = new ArrayList<>();
-        content.add(Map.of("type", "text", "text", buildText(command, cfg)));
+        content.add(Map.of("type", "text", "text",
+                seedance2 ? command.prompt() : buildText(command, cfg)));
         for (String imageUrl : command.imageUrls()) {
-            content.add(Map.of("type", "image_url", "image_url", Map.of("url", imageUrl)));
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("type", "image_url");
+            item.put("image_url", Map.of("url", imageUrl));
+            if (seedance2) {
+                item.put("role", "reference_image");
+            }
+            content.add(item);
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", cfg.getModel());
         body.put("content", content);
+        if (seedance2) {
+            body.put("resolution", apiResolution(command.resolution()));
+            body.put("ratio", command.ratio() == null || command.ratio().isBlank()
+                    ? cfg.getRatio() : command.ratio());
+            body.put("duration", command.duration() == null ? cfg.getDuration() : command.duration());
+            body.put("watermark", cfg.getWatermark() != null && cfg.getWatermark());
+        }
 
         JsonNode response = client().post()
                 .uri("/contents/generations/tasks")
@@ -93,6 +108,18 @@ public class SeedanceVideoProvider implements VideoProvider {
             case "queued" -> PollResult.running(5);
             default -> PollResult.running(60);
         };
+    }
+
+    /** Seedance 2.0 使用结构化生成参数，多图按全模态参考图传入 */
+    private boolean isSeedance2(String model) {
+        return model != null && model.contains("seedance-2-0");
+    }
+
+    private String apiResolution(String resolution) {
+        if (resolution == null || resolution.isBlank()) {
+            return "720p";
+        }
+        return "4K".equalsIgnoreCase(resolution) ? "4K" : resolution.toLowerCase();
     }
 
     private String buildText(SubmitCommand command, ProviderProperties.Seedance cfg) {

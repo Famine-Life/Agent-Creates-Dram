@@ -33,6 +33,11 @@ public class AssetService {
         return storage.accessUrl(url);
     }
 
+    /** 公网 / 签名 URL 保持不变，本地文件转为供应商支持的 data URI。 */
+    public String providerImageUrl(String url) {
+        return storage.providerImageUrl(url);
+    }
+
     /** 保存前端上传的图片 */
     public StoredAsset storeImage(String originalName, String contentType, byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
