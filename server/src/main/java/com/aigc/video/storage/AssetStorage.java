@@ -11,4 +11,9 @@ public interface AssetStorage {
     default boolean owns(String url) {
         return false;
     }
+
+    /** 返回本次响应使用的访问地址；私有对象存储实现可生成短期签名 URL。 */
+    default String accessUrl(String url) {
+        return url;
+    }
 }

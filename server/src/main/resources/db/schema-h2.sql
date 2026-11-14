@@ -62,6 +62,9 @@ ALTER TABLE canvas_image ADD COLUMN IF NOT EXISTS prompt CLOB;
 ALTER TABLE canvas_image ADD COLUMN IF NOT EXISTS status VARCHAR(24);
 ALTER TABLE canvas_image ADD COLUMN IF NOT EXISTS error_msg VARCHAR(1024);
 ALTER TABLE canvas_image ADD COLUMN IF NOT EXISTS provider VARCHAR(32);
+-- 图片来源：UPLOAD（用户上传）/ AI（接口生成）
+ALTER TABLE canvas_image ADD COLUMN IF NOT EXISTS source VARCHAR(16);
+UPDATE canvas_image SET source = CASE WHEN prompt IS NULL THEN 'UPLOAD' ELSE 'AI' END WHERE source IS NULL;
 
 -- 画布上的文本 / 脚本节点
 CREATE TABLE IF NOT EXISTS canvas_node (

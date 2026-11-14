@@ -28,6 +28,11 @@ public class AssetService {
         log.info("资源存储实现：{}", storage.type());
     }
 
+    /** 只在组装响应时签名，数据库始终保存稳定 URL。 */
+    public String accessUrl(String url) {
+        return storage.accessUrl(url);
+    }
+
     /** 保存前端上传的图片 */
     public StoredAsset storeImage(String originalName, String contentType, byte[] bytes) {
         if (bytes == null || bytes.length == 0) {

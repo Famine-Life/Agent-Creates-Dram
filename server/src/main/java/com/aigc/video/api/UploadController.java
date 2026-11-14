@@ -39,7 +39,7 @@ public class UploadController {
                 file.getOriginalFilename(), file.getContentType(), file.getBytes());
         ImageNode node = taskService.createImage(workspaceId,
                 new ImageRequest(file.getOriginalFilename(), stored.url(), stored.objectKey(),
-                        x, y, null, null));
+                        x, y, null, null, null, null, ImageNode.SOURCE_UPLOAD));
         return new UploadResult(node.id(), node.name(), node.url());
     }
 }

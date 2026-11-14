@@ -241,6 +241,49 @@ export async function removeTask(taskId) {
   toast('镜头已删除')
 }
 
+async function runBatch(taskIds, action, label) {
+  const results = await Promise.allSettled(taskIds.map((taskId) => action(taskId)))
+  const ok = results.filter((item) => item.status === 'fulfilled').length
+  const failed = results.length - ok
+  toast(failed ? `${label}：成功 ${ok} 个，失败 ${failed} 个` : `${label}：${ok} 个镜头`)
+  return { ok, failed }
+}
+
+export async function retryTasks(taskIds) {
+  return runBatch(
+    taskIds,
+    async (taskId) => {
+      const node = await api.retry(taskId)
+      upsert(state.tasks, node)
+    },
+    '已重新提交'
+  )
+}
+
+export async function cancelTasks(taskIds) {
+  return runBatch(
+    taskIds,
+    async (taskId) => {
+      const node = await api.cancel(taskId)
+      upsert(state.tasks, node)
+    },
+    '已取消'
+  )
+}
+
+export async function removeTasks(taskIds) {
+  return runBatch(
+    taskIds,
+    async (taskId) => {
+      await api.removeTask(taskId)
+      state.tasks = state.tasks.filter((t) => t.id !== taskId)
+      state.edges = state.edges.filter((e) => e.taskId !== taskId)
+      if (state.selectedTaskId === taskId) state.selectedTaskId = null
+    },
+    '已删除'
+  )
+}
+
 export async function uploadImageFile(file, x, y) {
   const result = await api.upload(state.workspaceId, file, x, y)
   upsert(state.images, {
@@ -250,7 +293,8 @@ export async function uploadImageFile(file, x, y) {
     x: x ?? null,
     y: y ?? null,
     width: 148,
-    height: 166
+    height: 166,
+    source: 'UPLOAD'
   })
   return result
 }
@@ -310,6 +354,13 @@ export async function generateScript(nodeId, prompt) {
 
 export async function createAiImageNode(payload) {
   const image = await api.createAiImage(state.workspaceId, payload)
+  upsert(state.images, image)
+  return image
+}
+
+/** 直接创建图片节点（复制已有图片时使用） */
+export async function createImageNode(payload) {
+  const image = await api.createImage(state.workspaceId, payload)
   upsert(state.images, image)
   return image
 }

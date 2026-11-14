@@ -38,21 +38,30 @@ public class TaskDispatcher {
     private final ProviderRegistry providerRegistry;
     private final AssetService assetService;
     private final TaskService taskService;
+    private final DispatchLock dispatchLock;
 
     @Value("${aigc.poll-timeout-seconds:900}")
     private long pollTimeoutSeconds;
 
     @Scheduled(initialDelay = 2000, fixedDelayString = "${aigc.dispatch-interval-ms:800}")
     public void tick() {
-        try {
-            submitQueued();
-        } catch (Exception e) {
-            log.error("提交队列处理异常", e);
+        String lockToken = dispatchLock.tryAcquire();
+        if (lockToken == null) {
+            return;
         }
         try {
-            pollRunning();
-        } catch (Exception e) {
-            log.error("运行中任务轮询异常", e);
+            try {
+                submitQueued();
+            } catch (Exception e) {
+                log.error("提交队列处理异常", e);
+            }
+            try {
+                pollRunning();
+            } catch (Exception e) {
+                log.error("运行中任务轮询异常", e);
+            }
+        } finally {
+            dispatchLock.release(lockToken);
         }
     }
 

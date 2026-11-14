@@ -26,6 +26,7 @@ import com.aigc.video.mapper.TaskImageRefMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
+import com.aigc.video.storage.AssetService;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -70,6 +71,7 @@ public class TaskService {
     private final ProviderProperties providerProperties;
     private final ObjectMapper objectMapper;
     private final CanvasNodeService canvasNodeService;
+    private final AssetService assetService;
 
     // ---------------------------------------------------------------- 画布读取
 
@@ -311,6 +313,11 @@ public class TaskService {
         image.setY(request.y());
         image.setWidth(request.width() == null ? IMAGE_W : request.width());
         image.setHeight(request.height() == null ? IMAGE_H : request.height());
+        // 复制节点时保留生成结果与提示词，普通上传则只有地址
+        image.setPrompt(request.prompt());
+        image.setStatus(request.status());
+        image.setSource(ImageNode.SOURCE_AI.equals(request.source())
+                ? ImageNode.SOURCE_AI : ImageNode.SOURCE_UPLOAD);
         image.setCreatedAt(LocalDateTime.now());
         imageMapper.insert(image);
 
@@ -505,7 +512,7 @@ public class TaskService {
                         .last("LIMIT 1"));
                 if (found == null) {
                     ImageNode created = createImage(workspaceId,
-                            new ImageRequest(null, url, null, null, null, null, null));
+                            new ImageRequest(null, url, null, null, null, null, null, null, null, null));
                     found = imageMapper.selectById(created.id());
                 }
                 result.add(found.getId());
@@ -566,7 +573,7 @@ public class TaskService {
                     continue;
                 }
                 ids.add(image.getId());
-                urls.add(image.getUrl());
+                urls.add(assetService.accessUrl(image.getUrl()));
             }
             return new TaskNode(
                     task.getId(),
@@ -583,8 +590,8 @@ public class TaskService {
                     task.getProviderTaskId(),
                     task.getStatus(),
                     task.getProgress(),
-                    task.getVideoUrl(),
-                    task.getCoverUrl(),
+                    assetService.accessUrl(task.getVideoUrl()),
+                    assetService.accessUrl(task.getCoverUrl()),
                     task.getErrorMsg(),
                     task.getSubmittedAt(),
                     task.getCreatedAt(),
@@ -596,9 +603,9 @@ public class TaskService {
     }
 
     private ImageNode toImageNode(CanvasImage image) {
-        return new ImageNode(image.getId(), image.getName(), image.getUrl(),
+        return new ImageNode(image.getId(), image.getName(), assetService.accessUrl(image.getUrl()),
                 image.getX(), image.getY(), image.getWidth(), image.getHeight(),
-                image.getPrompt(), image.getStatus(), image.getErrorMsg());
+                image.getPrompt(), image.getStatus(), image.getErrorMsg(), image.getSource());
     }
 
     private EdgeView toEdgeView(TaskImageRef ref) {

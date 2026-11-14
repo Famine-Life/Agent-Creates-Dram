@@ -16,6 +16,9 @@ public class StorageProperties {
 
     private String publicPrefix = "/files";
 
+    /** MinIO / COS / OSS 私有对象的 GET 预签名地址有效期 */
+    private int signedUrlTtlSeconds = 3600;
+
     private Minio minio = new Minio();
 
     private Cos cos = new Cos();

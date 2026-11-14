@@ -4,6 +4,8 @@
 > 关联文档：[产品设计](./product-design.md) ｜ [UI 稿](./ui-mockup.html) ｜ [变更记录](./task-records/)
 >
 > v0.2 更新：画布节点（文本 / 脚本 / 图片 / 视频）、AI 脚本 / 图片 / 提示词优化、生成参数（模型 / 比例 / 清晰度 / 时长）、Redis Pub/Sub 可选广播、画布快照乐观锁。
+>
+> 2026-11-14 安全更新：网页账号密码 + Session、REST/WebSocket/本地文件鉴权、MCP 独立 Bearer Token、CSRF、私有对象存储短期签名 URL。
 
 ---
 
@@ -56,6 +58,7 @@
 | 层 | 技术 | 版本 |
 | --- | --- | --- |
 | 后端 | JDK / Spring Boot | 17 / 3.4.5 |
+| 安全 | Spring Security | Session + CSRF + Bearer Token |
 | ORM | MyBatis-Plus | 3.5.9 |
 | MCP | Spring AI MCP Server（WebMVC，SSE） | 1.0.0 |
 | 数据库 | H2（文件模式，MySQL 兼容）/ MySQL 8 | — |
@@ -76,17 +79,17 @@
 
 | 包 | 关键类 | 职责 |
 | --- | --- | --- |
-| `api` | `CanvasController`、`TaskController`、`UploadController`、`MetaController`、`ApiExceptionHandler` | REST 入口、参数校验、异常映射（含 409） |
+| `api` | `AuthController`、`CanvasController`、`TaskController`、`UploadController`、`MetaController`、`ApiExceptionHandler` | 登录会话、REST 入口、参数校验、异常映射（含 409） |
 | `api.dto` | `ShotRequest`、`StoryboardRequest`、`TaskNode`、`ImageNode`、`EdgeView`、`CanvasState`、`CanvasNodeView`、`SnapshotRequest` | 前后端 / MCP 契约 |
 | `api.mcp` | `McpCanvasTools` | `@Tool` 方法：`push_shot`、`push_storyboard`、`get_canvas_state` |
-| `task` | `TaskService`、`TaskDispatcher`、`TaskStatus` | 业务编排、调度轮询、状态机、快照乐观锁 |
+| `task` | `TaskService`、`TaskDispatcher`、`TaskStatus`、`DispatchLock` | 业务编排、调度轮询、状态机、快照乐观锁、多实例调度锁 |
 | `ai` | `AiService`、`AiProperties` | 脚本生成、文生图、提示词优化（Ark / mock） |
 | `provider` | `VideoProvider`、`MockVideoProvider`、`SeedanceVideoProvider`、`ProviderRegistry`、`SubmitCommand/SubmitResult/PollResult` | 供应商 SPI 与注册表；提交带 ratio / resolution / duration |
 | `storage` | `AssetStorage`、`LocalAssetStorage`、`MinioAssetStorage`、`AssetService` | 上传落盘、远端产物转存 |
 | `realtime` | `CanvasWebSocketHandler`、`CanvasSocketRegistry`、`CanvasEvent`、`CanvasEventRelay`、`RedisCanvasEventRelay`、`RedisCanvasSubscriber` | WebSocket 会话管理；可选 Redis Pub/Sub 跨实例广播 |
 | `mapper` | 各 `*Mapper`（MyBatis-Plus） | 数据访问 |
 | `domain` | `Workspace`、`Canvas`、`GenerationTask`、`CanvasImage`、`CanvasNode`、`TaskImageRef` | 表实体 |
-| `config` | `WebSocketConfig`、`WebConfig`、`McpToolConfig`、`RedisCanvasSubscriptionConfig` | WS 注册、`/files` 静态映射、MCP 工具注册、Redis 订阅 |
+| `config` | `SecurityConfig`、`SecurityProperties`、`McpAuthenticationFilter`、`SessionConfig`、`WebSocketConfig`、`WebConfig`、`McpToolConfig` | Session/CSRF、MCP Token、多实例 Session、同源与跨域限制、WS 注册、`/files` 静态映射、MCP 工具注册 |
 | `common` | `BadRequestException`、`NotFoundException`、`ConflictException` | 业务异常 |
 
 ### 4.2 核心链路
@@ -141,7 +144,7 @@ TaskDispatcher.tick（默认 800ms）
 - 幂等键：`sha256(workspaceId|groupId|shotIndex|prompt)`，写入 `idem_key`（唯一索引 `uk_task_idem`）；重复推送直接复用节点。
 - 供应商任务号唯一：`UNIQUE(provider, provider_task_id)`。
 - 调度线程池 `spring.task.scheduling.pool.size=2`；`AssetService.transfer` 对同源 URL 做了内存缓存，避免多个 mock 任务重复下载同一个演示视频阻塞轮询。
-- **多实例注意**：提交阶段已有状态 CAS，不会重复提交；但每个实例仍会扫表，且 `pollRunning` 可能重复轮询。生产多实例建议加 ShedLock / Redisson 锁，或改为独立 worker + MQ。
+- **多实例调度**：`AIGC_REDIS_ENABLED=true` 时 `TaskDispatcher.tick` 先抢 Redis 锁 `aigc:dispatch:lock`（SET NX + 120s TTL，Lua 校验后释放），同一时刻只有一个实例扫表；未开启 Redis 时直通单实例逻辑。Redis 异常时本轮放行并打 WARN，提交阶段的状态 CAS 仍能兜底，不会重复提交。
 - **画布快照乐观锁**：`saveSnapshot(workspaceId, snapshot, baseVersion)` 使用 `UPDATE ... WHERE id=? AND version=?`，影响行数为 0 抛 `ConflictException` → HTTP 409；前端提示并重新拉取最新布局。未传 `baseVersion` 的旧客户端仍按最后写入生效。
 
 ### 4.5 数据模型
@@ -152,7 +155,7 @@ TaskDispatcher.tick（默认 800ms）
 | `canvas` | `workspace_id`、`version`、`snapshot`、`updated_at` | 画布快照；`version` 用于多标签页 / 多实例乐观锁 |
 | `canvas_node` | `workspace_id`、`type`、`title`、`prompt`、`content`、`status`、`error_msg`、`x`、`y`、`width`、`height` | 文本 / 脚本节点 |
 | `generation_task` | `group_id`、`shot_index`、`prompt`、`provider`、`model`、`ratio`、`resolution`、`duration`、`provider_task_id`、`status`、`progress`、`video_url`、`poll_count`、`idem_key`、`next_poll_at` | 视频节点（一条提示词一行） |
-| `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height`、`prompt`、`status`、`error_msg`、`provider` | 画布图片节点（支持 AI 生成态） |
+| `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height`、`prompt`、`status`、`error_msg`、`provider`、`source` | 画布图片节点（`source` 区分 `UPLOAD` 上传 / `AI` 生成） |
 | `task_image_ref` | `task_id`、`image_id`、`sort_index`、`UNIQUE(task_id,image_id)` | 图片→镜头引用，一行 = 画布一条连线 |
 
 生成参数默认值：`model` 取供应商默认，`ratio=16:9`，`resolution=720P`，`duration=5`。
@@ -169,7 +172,8 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 
 ### 4.6 实时推送（WebSocket）
 
-- 地址：`ws://host:8080/ws/canvas/{workspaceId}`，连接按 workspace 分组。
+- 地址：`ws://host:8080/ws/canvas/{workspaceId}`，连接按 workspace 分组；公网 HTTPS 对应 `wss://`。
+- 握手必须经过网页 Session 鉴权；默认仅允许同源，`AIGC_ALLOWED_ORIGINS` 可添加受信任来源。
 - 消息格式：`{ "type": "...", "data": {...} }`。
 
 | 事件 | data | 前端行为 |
@@ -189,7 +193,19 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 > `broadcast` 先 publish 到 Redis 频道 `aigc:canvas:events`，各实例的 `RedisCanvasSubscriber` 收到后只推自己持有的连接；
 > Redis 不可用或发布失败时自动回退本地推送。频道全局，不受 `REDIS_DATABASE` 影响。
 
-### 4.7 MCP 接入
+### 4.7 安全与访问控制
+
+当前是**单管理员、单租户**模型，所有登录者共享同一画布，不是多用户权限系统：
+
+- 网页使用账号密码登录，密码仅在服务端通过 BCrypt 校验；管理员密码与 MCP Token 都必须通过环境变量显式配置，无默认密钥。
+- 登录成功后使用 `AIGCSESSION` Cookie（HttpOnly、SameSite=Strict）；HTTPS 部署设置 `AIGC_COOKIE_SECURE=true`。
+- 默认会话保存在实例内存；多实例部署设 `AIGC_SESSION_REDIS_ENABLED=true`，Session 改存 Redis（命名空间 `aigc:session`），任一实例登录后其它实例可直接识别。
+- `/`、`/index.html`、`/assets/**`、登录/CSRF/会话查询接口公开；其余 REST、`/files/**`、WebSocket 握手均要求已认证 Session。
+- 写 REST 与登出要求 `X-XSRF-TOKEN` 请求头，Axios 自动读取 `XSRF-TOKEN` Cookie；未通过 CSRF 校验返回 403，未登录返回 401。
+- MCP 的 `/sse` 与 `/mcp/message` 只接受独立 `Authorization: Bearer <MCP_API_TOKEN>`，网页 Session 不能替代；这两个端点豁免 CSRF，因为调用方不是浏览器表单。
+- 默认仅同源访问。只有前后端分离部署时才配置 `AIGC_ALLOWED_ORIGINS`（逗号分隔），REST CORS 与 WebSocket Origin 共用白名单。
+
+### 4.8 MCP 接入
 
 - 传输：**SSE**（Spring AI 1.0.0 的 WebMVC starter 不支持 Streamable HTTP）。
 - 端点：`GET /sse` 建流（返回 `sessionId`），`POST /mcp/message?sessionId=xxx` 发 JSON-RPC。
@@ -206,43 +222,55 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 ```json
 {
   "mcpServers": {
-    "aigc-canvas": { "type": "sse", "url": "http://localhost:8080/sse" }
+    "aigc-canvas": {
+      "type": "sse",
+      "url": "https://canvas.example.com/sse",
+      "headers": { "Authorization": "Bearer <MCP_API_TOKEN>" }
+    }
   }
 }
 ```
 
-工具返回值使用 `JsonNode`，避免 MCP 层对字符串二次转义。
+工具返回值使用 `JsonNode`，避免 MCP 层对字符串二次转义。真实 Token 只保存在 MCP 客户端与服务端环境变量中，页面仅展示占位符，不下发真实值；`/api/meta` 根据当前请求和反向代理 Forwarded 头生成 MCP 端点。
 
-### 4.8 存储
+### 4.9 存储
 
 `aigc.storage.type` 四选一：`local`（默认）/ `minio` / `cos` / `oss`，每个实现通过 `@ConditionalOnProperty` 互斥装配。
 
-- `local`：落盘到 `./data/files`，通过 `/files/**` 静态映射访问；
-- `minio`：`endpoint` + `access-key/secret-key` + `bucket`，首次写入自动建桶并设为公开读；
-- `cos`（腾讯云 COS）：`endpoint`（访问域名）+ `bucket` + `region` + `secret-id/secret-key`；
-- `oss`（阿里云 OSS）：`endpoint`（地域节点）+ `bucket` + `access-key-id/access-key-secret`；
-- COS / OSS 都支持可选的 `public-url`（CDN 或自定义域名），配置后优先用于拼接访问地址；未配置时按 `bucket + endpoint` 生成默认域名；
-- 所有配置支持环境变量覆盖（`AIGC_STORAGE_TYPE`、`COS_*`、`OSS_*`），无需改代码即可切换；
+- `local`：落盘到 `./data/files`，`/files/**` 与 REST 一样要求网页 Session；
+- `minio`：`endpoint` + `access-key/secret-key` + `bucket`，新建桶保持私有，不再设置匿名公共读；已有桶若曾设为公共读，需在 MinIO 控制台移除匿名 GetObject 策略；
+- `cos`（腾讯云 COS）：`endpoint`（访问域名）+ `bucket` + `region` + `secret-id/secret-key`，上传对象显式设为 private；
+- `oss`（阿里云 OSS）：`endpoint`（地域节点）+ `bucket` + `access-key-id/access-key-secret`，上传对象显式设为 private；
+- COS / OSS 都支持可选的 `public-url`（CDN 或自定义域名）作为数据库稳定 URL 的域名；响应实际使用服务商签发的 GET 预签名 URL，桶和 CDN 不应再向匿名用户公开对象；
+- `MinIO / COS / OSS` 在组装画布响应、图片节点和供应商参考图时调用 `AssetService.accessUrl()` 动态签名，默认有效期 3600 秒；数据库只保存稳定 URL，不保存签名参数，过期后刷新画布获取新地址；
+- 所有配置支持环境变量覆盖（`AIGC_STORAGE_TYPE`、`AIGC_SIGNED_URL_TTL_SECONDS`、`COS_*`、`OSS_*`），无需改代码即可切换；
 - 第三方地址转存前会先用 `AssetStorage.owns()` 判断是否已属于当前存储，避免重复下载。
 - 图片上传：`POST /api/uploads`（multipart），限制 10MB、校验图片 MIME，返回 `{id,name,url}` 并创建画布图片节点。
 - 视频成片：调度器成功后 `AssetService.transfer(sourceUrl, "videos", ".mp4")` 下载并转存，前端只访问自有 `/files/videos/*.mp4`。
 - 同一源 URL 的转存结果做内存缓存（mock 演示视频所有任务共用同一地址）。
 
-### 4.9 关键配置（`application.yml`）
+### 4.10 关键配置（`application.yml`）
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
 | `server.port` | `8080` | 后端端口 |
 | `spring.datasource.url` | `jdbc:h2:file:./data/aigc` | 默认 H2 文件库 |
+| `aigc.security.admin-username` | `${AIGC_ADMIN_USERNAME:}` | 管理员用户名，必填，无默认值 |
+| `aigc.security.admin-password` | `${AIGC_ADMIN_PASSWORD:}` | 管理员密码，必填，无默认值 |
+| `aigc.security.mcp-token` | `${MCP_API_TOKEN:}` | MCP 独立 Token，必填且至少 32 字符 |
+| `aigc.security.cookie-secure` | `${AIGC_COOKIE_SECURE:false}` | HTTPS 公网必须设为 true |
+| `aigc.security.allowed-origins` | `${AIGC_ALLOWED_ORIGINS:}` | 额外 REST / WS 来源，逗号分隔；同源留空 |
 | `aigc.provider.default-name` | `mock` | `mock` / `seedance` |
 | `aigc.provider.mock.seconds` | `8` | mock 出片耗时 |
 | `aigc.provider.seedance.api-key` | `${ARK_API_KEY:}` | 火山方舟密钥 |
 | `aigc.storage.type` | `local` | `local` / `minio` / `cos` / `oss` |
+| `aigc.storage.signed-url-ttl-seconds` | `${AIGC_SIGNED_URL_TTL_SECONDS:3600}` | 私有对象 GET 预签名 URL 有效期 |
 | `aigc.storage.cos.*` | — | 腾讯云 COS：endpoint、secret-id、secret-key、bucket、region、public-url |
 | `aigc.storage.oss.*` | — | 阿里云 OSS：endpoint、access-key-id、access-key-secret、bucket、public-url |
 | `aigc.poll-timeout-seconds` | `900` | 单任务轮询超时 |
 | `spring.task.scheduling.pool.size` | `2` | 调度线程数 |
-| `aigc.realtime.redis-enabled` | `${AIGC_REDIS_ENABLED:false}` | 多实例时开启 Redis Pub/Sub 广播 |
+| `aigc.realtime.redis-enabled` | `${AIGC_REDIS_ENABLED:false}` | 多实例时开启 Redis Pub/Sub 广播与调度分布式锁 |
+| `aigc.session.redis-enabled` | `${AIGC_SESSION_REDIS_ENABLED:false}` | 多实例时把登录 Session 存入 Redis（命名空间 `aigc:session`） |
 | `spring.data.redis.host/port` | `${REDIS_HOST:localhost}` / `${REDIS_PORT:6379}` | Redis 地址 |
 | `spring.data.redis.password` | `${REDIS_PASSWORD:}` | Redis 密码，无密码留空 |
 | `spring.data.redis.database` | `${REDIS_DATABASE:0}` | Redis 库号 |
@@ -254,10 +282,14 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `spring.ai.mcp.server.sse-endpoint` | `/sse` | MCP SSE 端点 |
 | `spring.ai.mcp.server.sse-message-endpoint` | `/mcp/message` | MCP 消息端点 |
 
-### 4.10 REST API 一览
+### 4.11 REST API 一览
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| GET | `/api/auth/csrf` | 初始化 XSRF Cookie |
+| GET | `/api/auth/session` | 查询当前登录状态 |
+| POST | `/api/auth/login` | 表单字段 username/password，需 CSRF |
+| POST | `/api/auth/logout` | 退出并销毁 Session，需 CSRF |
 | GET | `/api/canvas/{workspaceId}` | 画布全量状态（含 version、nodes） |
 | POST | `/api/canvas/{workspaceId}/shots` | 新建镜头（支持 model / ratio / resolution / duration） |
 | POST | `/api/canvas/{workspaceId}/storyboards` | 批量新建分镜 |
@@ -277,6 +309,25 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | POST | `/api/uploads` | 上传参考图并建节点 |
 | GET | `/api/meta` | 供应商、AI mock 状态、MCP 端点等元信息 |
 
+### 4.12 CLI 客户端（`cli/`）
+
+`cli/aigc.mjs` 是基于现有 REST 接口的零依赖命令行客户端（Node.js 16+，仅用内置模块）：
+
+```bash
+node cli/aigc.mjs login --username admin --password ***
+node cli/aigc.mjs push --prompt "海边日落" --group "A组"
+node cli/aigc.mjs canvas
+node cli/aigc.mjs assets --type video
+node cli/aigc.mjs upload --file ./a.png
+node cli/aigc.mjs rm --id 12
+```
+
+- 覆盖 `login / logout / canvas / assets / push / storyboard / upload / rm / rm-image`；
+- 登录态（Cookie + 最新 CSRF Token + 服务地址）保存在 `~/.aigc-cli/session.json`；
+- 所有写操作自动先请求 `/api/auth/csrf` 再带 `X-XSRF-TOKEN`，登录后 Session 轮换会重新取 Token；
+- 鉴权口径与网页一致（Session），MCP Bearer Token 仍只对 `/sse`、`/mcp/message` 生效；
+- `--json` 输出原始响应，便于脚本二次处理。
+
 ---
 
 ## 5. 前端架构
@@ -285,9 +336,10 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 
 ```text
 web/src
+├── AuthGate.vue             # 登录门禁：会话检查通过后才挂载 App，处理登出与 401
 ├── App.vue                  # 布局、Vue Flow 画布、图同步、拖拽排序、连线校验、快照保存
-├── main.js                  # VueFlow 样式与插件注册
-├── api.js                   # axios 封装（含上传 / 节点 / AI）
+├── main.js                  # 根组件挂载 AuthGate，注册 VueFlow 样式
+├── api.js                   # axios 封装（Session/CSRF、401 通知、上传 / 节点 / AI）
 ├── style.css                # 暗色主题与 Vue Flow 覆盖
 ├── store/canvas.js          # 单一 reactive store：数据 + WS 事件 + 业务动作
 └── components
@@ -304,8 +356,12 @@ web/src
     ├── ShotInspector.vue    # 右侧检查器：只读详情、参数、重试、取消、删除；可收起
     ├── NewShotDialog.vue    # 新建提示词（@ 引用、粘贴/拖入上传）
     ├── PreviewDialog.vue    # 成片预览
+    ├── AssetDialog.vue      # 资产管理：生成视频 / 生成图片 / 上传图片，支持预览与下载
+    ├── UsageGuide.vue       # 系统使用说明整页：快速开始 / MCP 接入 / CLI 使用 / 常见问题
     └── McpDialog.vue        # MCP 接入说明
 ```
+
+主题切换通过 `web/src/theme.js` 与 `style.css` 的 `html[data-theme='light']` 变量覆盖实现，详见 5.9。
 
 ### 5.2 状态与事件
 
@@ -351,6 +407,39 @@ web/src
 
 后端重启期间标签变为「已断开」，恢复后自动回到「实时连接」并补拉画布状态，无需刷新页面（已实测）。
 
+### 5.7 资产管理
+
+顶栏「资产管理」打开 `AssetDialog`，数据直接复用画布状态，不额外请求接口：
+
+- **生成视频**：`tasks` 中 `videoUrl` 非空的镜头，缩略图取 `coverUrl`；
+- **生成图片**：`images` 中 `source = AI` 且已有 `url` 的节点；
+- **上传图片**：`images` 中 `source = UPLOAD` 的节点（老数据按 `prompt` 是否为空兜底判断）；
+- 支持分类筛选、点击预览（图片 / 视频播放）与下载。
+
+`canvas_image.source` 在写入时确定：`UploadController` 上传与外部 URL 引用记 `UPLOAD`，AI 图片节点及重新生成记 `AI`，历史数据由启动脚本回填。
+
+### 5.8 画布多选与批量操作
+
+- **多选**：`Shift + 拖拽` 框选（Vue Flow `selectionKeyCode`），`Ctrl / ⌘ + 点击` 追加选择（`multiSelectionKeyCode`）；分组节点不可选。
+- **浮动工具条**：选中任意镜头后出现在画布底部，显示「已选 N 个镜头」，提供重新生成 / 取消 / 删除，`×` 清除选择。
+- **批量执行**：分别调用 `retryTasks` / `cancelTasks` / `removeTasks`，内部 `Promise.allSettled` 并发请求并汇总成功/失败数量；删除后同步清理引用边与详情面板选中态。
+- **并发说明**：多选提交只是让多个镜头尽快进入队列；真正并行由调度器保证——每 800ms 最多提交 5 个 `QUEUED` 任务，任务之间互不阻塞（见 4.4）。
+
+### 5.9 主题切换与画布缩放
+
+- **主题**：`web/src/theme.js` 维护 `theme`（`dark` / `light`），写入 `document.documentElement.dataset.theme` 并持久化到 `localStorage('aigc.theme')`。
+- **实现方式**：`style.css` 中 `:root` 定义夜间设计变量，`html[data-theme='light']` 只覆盖变量（背景、面板、卡片、表面层级、强调文字、遮罩等），组件无需感知主题。
+- **入口**：顶栏「白天模式 / 夜间模式」按钮；画布点阵背景与 Web 颜色随主题联动。
+- **缩放上限**：Vue Flow `maxZoom` 调整为 `3`，可以把镜头节点放大查看细节；`minZoom` 保持 0.3。
+
+### 5.10 节点快捷键（复制 / 删除）
+
+- **Ctrl / ⌘ + D**：对当前选中的节点直接复制。镜头复制提示词与参数，并复制其全部图片引用连线；图片复制提示词、状态与全部镜头连线；文本 / 脚本复制标题与内容。新节点偏移 `36px` 后自动选中，多选时逐个复制。
+- **Alt + 拖动**：拖拽开始时记录原节点坐标，落点处创建副本（镜头 / 图片 / 文本），副本保留提示词与参数但**不复制连线**；原节点回到起始位置。
+- **Backspace / Delete**：删除所有选中节点（分组节点除外），按类型分别调用 `removeTask` / `removeImage` / `removeCanvasNode`，镜头与图片的引用连线由后端级联清理。
+- **输入保护**：焦点在 `input` / `textarea` / `contenteditable` 时不触发快捷键；Vue Flow 自带 `deleteKeyCode` 已置为 `null`，删除统一走本逻辑。
+- **复制镜头注意**：后端幂等键包含 `shotIndex`，副本按分组取下一个序号，因此不会命中幂等返回原任务。
+
 ---
 
 ## 6. 部署与运行
@@ -358,8 +447,11 @@ web/src
 ### 6.1 本地（默认，零依赖）
 
 ```powershell
-# 后端
+# 后端（Maven 与 java 都必须使用 JDK 17）
 cd server
+$env:AIGC_ADMIN_USERNAME='admin'
+$env:AIGC_ADMIN_PASSWORD='<替换为你的强密码>'
+$env:MCP_API_TOKEN='<替换为至少32字符的随机Token>'
 mvn -DskipTests package
 java -jar target/aigc-video-server-0.1.0.jar
 
@@ -376,14 +468,19 @@ docker compose up -d          # 根目录 docker-compose.yml：mysql:3306、mini
 java -jar target/aigc-video-server-0.1.0.jar --spring.profiles.active=mysql
 ```
 
-MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key / secret-key / bucket。
+MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key / secret-key / bucket。桶必须保持私有；早期版本自动创建的公共读策略需要在已有桶上手动移除。
 
 ### 6.3 生产注意事项
 
+- 必须通过 HTTPS 暴露网页、REST、MCP 与 WSS，并设 `AIGC_COOKIE_SECURE=true`；不要把 8080 直接暴露到公网。
+- 使用 Nginx / 网关同源反向代理 `/api`、`/files`、`/sse`、`/mcp/message`、`/ws/canvas`，转发 `X-Forwarded-Proto/Host` 并配置 WebSocket Upgrade；后端已启用 `forward-headers-strategy=framework`。
+- 管理员密码与 `MCP_API_TOKEN` 使用不同的随机值，只放在部署环境 / Secret 管理中，不写入仓库或前端；Token 泄露后应立即轮换。
+- H2 控制台默认关闭；对象存储桶保持私有，已有公开读桶需先收紧权限。
 - H2 文件库不适合多实例并发，生产应使用 MySQL；
 - WebSocket 广播默认单实例；多实例设 `AIGC_REDIS_ENABLED=true` 并配置 `REDIS_HOST/PORT/PASSWORD/DATABASE`，Redis 故障时自动回退本地；
-- 调度为进程内 `@Scheduled`，多实例仍需 ShedLock / Redisson 锁或独立 worker（当前未实现）；
-- MCP 当前为 SSE；升级到支持 Streamable HTTP 的 Spring AI 版本后可切换 `/mcp`，多实例需会话粘滞；
+- 调度为进程内 `@Scheduled`；多实例设 `AIGC_REDIS_ENABLED=true` 后由 Redis 分布式锁保证同一时刻只有一个实例扫表；
+- 网页 Session 默认存实例内存；多实例需设 `AIGC_SESSION_REDIS_ENABLED=true` 共享登录态（Redis 不可用时将无法登录，需保证 Redis 高可用）；
+- MCP 当前为 SSE，会话仍绑定单个实例，多实例需在网关层做会话粘滞；
 - 画布快照已做 `version` 乐观锁，冲突返回 409；前端会提示并同步最新布局。
 
 ---
@@ -404,12 +501,14 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 
 ## 8. 已知限制
 
-1. 调度与 MCP 会话仍是单实例语义；WebSocket 可通过 Redis Pub/Sub 跨实例，但调度锁与 MCP 粘滞未实现。
+1. 调度已支持 Redis 分布式锁、网页 Session 可选择存 Redis；MCP 的 SSE 会话仍绑定单实例，多实例需网关会话粘滞。
 2. H2 仅适合本地/演示。
 3. `seedance`、AI 脚本 / 图片 / 优化都需要 `ARK_API_KEY`，未配置时回退 mock。
 4. MCP 仅 SSE（受 Spring AI 1.0.0 限制）。
 5. 画布快照已做乐观锁；但同一标签页内并发保存仍按最后响应为准，极端情况下会触发一次 409 重载。
 6. 导演台 / 智能剪辑 / 音频节点仅为菜单占位，无实际能力。
+7. 当前为单管理员、单租户，未提供用户注册、角色权限或按用户隔离工作空间。
+8. 预签名 URL 过期后需要刷新画布 / 页面；真实 COS / OSS / MinIO 签名下载需在具备凭据的环境验证。
 
 ---
 

@@ -11,6 +11,9 @@ public record ImageNode(
         Double height,
         String prompt,
         String status,
-        String errorMsg
+        String errorMsg,
+        String source
 ) {
+    public static final String SOURCE_UPLOAD = "UPLOAD";
+    public static final String SOURCE_AI = "AI";
 }

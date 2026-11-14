@@ -10,6 +10,8 @@ import ShotInspector from './components/ShotInspector.vue'
 import NewShotDialog from './components/NewShotDialog.vue'
 import PreviewDialog from './components/PreviewDialog.vue'
 import McpDialog from './components/McpDialog.vue'
+import AssetDialog from './components/AssetDialog.vue'
+import UsageGuide from './components/UsageGuide.vue'
 import ShotNode from './components/ShotNode.vue'
 import ImageNode from './components/ImageNode.vue'
 import ImageGenNode from './components/ImageGenNode.vue'
@@ -31,9 +33,20 @@ import {
   createCanvasNode,
   updateCanvasNode,
   createAiImageNode,
+  createImageNode,
+  createShot,
+  removeTask,
+  removeImage,
+  removeCanvasNode,
+  retryTasks,
+  cancelTasks,
+  removeTasks,
   toast
 } from './store/canvas'
 import { api } from './api'
+import { theme, toggleTheme } from './theme'
+
+const emit = defineEmits(['logout'])
 
 const SHOT_W = 320
 const SHOT_H = 220
@@ -58,6 +71,8 @@ const nodes = ref([])
 const edges = ref([])
 const showNewShot = ref(false)
 const showMcp = ref(false)
+const showAssets = ref(false)
+const showGuide = ref(false)
 const fileInput = ref(null)
 const dragging = ref(false)
 const contextMenu = ref(null)
@@ -78,7 +93,7 @@ let snapshotPositions = {}
 let saveTimer = null
 let ready = false
 
-const { setViewport, getViewport, fitView, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle } =
+const { setViewport, getViewport, fitView, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, removeSelectedElements } =
   useVueFlow()
 
 const groups = computed(() => {
@@ -111,8 +126,39 @@ const connectionText = computed(() => {
   return '已断开'
 })
 
+// 画布点阵背景随主题切换，避免白天模式下仍是深色网格
+const patternColor = computed(() => (theme.value === 'light' ? '#dfe4ee' : '#24282F'))
+
 // 正从图片锚点拖出连线时给镜头卡片加高亮，提示整张卡片都可落点
 const linking = computed(() => connectionStartHandle.value?.nodeId?.startsWith('image-'))
+
+// 画布多选：只对镜头节点做批量操作
+const selectedShots = computed(() =>
+  (getSelectedNodes.value || []).filter((node) => node.type === 'shot')
+)
+
+async function batchRetry() {
+  const ids = selectedShots.value.map((node) => Number(node.id.slice(5)))
+  if (!ids.length) return
+  await retryTasks(ids)
+}
+
+async function batchCancel() {
+  const ids = selectedShots.value.map((node) => Number(node.id.slice(5)))
+  if (!ids.length) return
+  await cancelTasks(ids)
+}
+
+async function batchRemove() {
+  const ids = selectedShots.value.map((node) => Number(node.id.slice(5)))
+  if (!ids.length) return
+  await removeTasks(ids)
+  removeSelectedElements()
+}
+
+function clearSelection() {
+  removeSelectedElements()
+}
 
 function computeLayout() {
   const map = new Map()
@@ -246,6 +292,135 @@ function onNodeDrag({ node }) {
   explicit.set(node.id, { x: node.position.x, y: node.position.y })
 }
 
+// Alt + 拖动：复制节点但不带连线，原节点留在原位
+const COPY_OFFSET = 36
+let altDrag = null
+
+function onNodeDragStart({ node, event }) {
+  altDrag =
+    event?.altKey && node && node.type !== 'group'
+      ? { id: node.id, position: { x: node.position.x, y: node.position.y } }
+      : null
+}
+
+async function duplicateNode(node, { x, y, withEdges = true }) {
+  if (node.type === 'shot') {
+    const task = state.tasks.find((item) => item.id === Number(node.id.slice(5)))
+    if (!task) return
+    const created = await createShot({
+      prompt: task.prompt,
+      groupId: task.groupId,
+      model: task.model,
+      ratio: task.ratio,
+      duration: task.duration,
+      resolution: task.resolution
+    })
+    explicit.set(`shot-${created.id}`, { x, y })
+    if (withEdges) {
+      const imageIds = state.edges
+        .filter((edge) => edge.taskId === task.id)
+        .map((edge) => edge.imageId)
+      for (const imageId of imageIds) await createEdge(created.id, imageId)
+    }
+    return `shot-${created.id}`
+  }
+
+  if (node.type === 'image' || node.type === 'imageGen') {
+    const image = state.images.find((item) => item.id === Number(node.id.slice(6)))
+    if (!image) return
+    let created
+    if (image.url) {
+      created = await createImageNode({
+        name: image.name,
+        url: image.url,
+        x,
+        y,
+        width: image.width,
+        height: image.height,
+        prompt: image.prompt,
+        status: image.status,
+        source: image.source
+      })
+    } else {
+      created = await createAiImageNode({ x, y, prompt: image.prompt })
+    }
+    explicit.set(`image-${created.id}`, { x, y })
+    if (withEdges) {
+      const taskIds = state.edges
+        .filter((edge) => edge.imageId === image.id)
+        .map((edge) => edge.taskId)
+      for (const taskId of taskIds) await createEdge(taskId, created.id)
+    }
+    return `image-${created.id}`
+  }
+
+  if (node.type === 'text' || node.type === 'script') {
+    const item = state.canvasNodes.find((entry) => entry.id === Number(node.id.slice(5)))
+    if (!item) return
+    const created = await createCanvasNode({
+      type: item.type,
+      title: item.title,
+      prompt: item.prompt,
+      content: item.content,
+      x,
+      y,
+      width: item.width,
+      height: item.height
+    })
+    explicit.set(`node-${created.id}`, { x, y })
+    return `node-${created.id}`
+  }
+}
+
+function selectOnlyNode(nodeId) {
+  nodes.value.forEach((node) => {
+    node.selected = node.id === nodeId
+  })
+}
+
+function selectedActionNodes() {
+  return getSelectedNodes.value.filter((node) => node && node.type !== 'group')
+}
+
+function isTypingTarget(target) {
+  if (!target) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
+}
+
+async function deleteNodes(list) {
+  for (const node of list) {
+    try {
+      if (node.type === 'shot') await removeTask(Number(node.id.slice(5)))
+      else if (node.type === 'image' || node.type === 'imageGen') await removeImage(Number(node.id.slice(6)))
+      else if (node.type === 'text' || node.type === 'script') await removeCanvasNode(Number(node.id.slice(5)))
+    } catch (e) {
+      toast(`删除失败：${e.message}`)
+    }
+  }
+}
+
+function onKeydown(event) {
+  if (isTypingTarget(event.target)) return
+  const list = selectedActionNodes()
+  if (!list.length) return
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'd') {
+    event.preventDefault()
+    for (const node of list) {
+      duplicateNode(node, { x: node.position.x + COPY_OFFSET, y: node.position.y + COPY_OFFSET })
+        .then((id) => {
+          if (id && list.length === 1) selectOnlyNode(id)
+        })
+        .catch((e) => toast(`复制失败：${e.message}`))
+    }
+    return
+  }
+  if (event.key === 'Backspace') {
+    event.preventDefault()
+    deleteNodes(list)
+  }
+}
+
 function freezeLayout() {
   for (const node of nodes.value) {
     explicit.set(node.id, { x: node.position.x, y: node.position.y })
@@ -284,6 +459,23 @@ async function applyOrderFromPositions() {
 
 async function onNodeDragStop({ node }) {
   if (!node) return
+  if (altDrag && altDrag.id === node.id) {
+    const start = altDrag.position
+    const drop = { x: node.position.x, y: node.position.y }
+    altDrag = null
+    node.position = { ...start }
+    explicit.set(node.id, { ...start })
+    if (Math.abs(drop.x - start.x) > 2 || Math.abs(drop.y - start.y) > 2) {
+      try {
+        const id = await duplicateNode(node, { x: drop.x, y: drop.y, withEdges: false })
+        if (id) selectOnlyNode(id)
+      } catch (e) {
+        toast(`复制失败：${e.message}`)
+      }
+    }
+    scheduleSave()
+    return
+  }
   explicit.set(node.id, { x: node.position.x, y: node.position.y })
   freezeLayout()
   if (node.type === 'shot') {
@@ -528,8 +720,12 @@ async function bootstrap() {
   }
 }
 
-onMounted(bootstrap)
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  bootstrap()
+})
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
   disconnectRealtime()
   clearTimeout(saveTimer)
 })
@@ -555,9 +751,14 @@ onBeforeUnmount(() => {
 
       <div class="topbar-actions">
         <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="onToolbarUpload" />
+        <button class="btn ghost" @click="showAssets = true">资产管理</button>
         <button class="btn ghost" @click="fileInput.click()">上传图片</button>
         <button class="btn ghost" @click="showMcp = true">MCP 接入</button>
-        <button class="btn primary" @click="showNewShot = true">新建提示词</button>
+        <button class="btn ghost" @click="showGuide = true">使用说明</button>
+        <button class="btn ghost theme-toggle" @click="toggleTheme">
+          {{ theme === 'dark' ? '白天模式' : '夜间模式' }}
+        </button>
+        <button class="btn ghost logout" @click="emit('logout')">退出登录</button>
       </div>
     </header>
 
@@ -582,11 +783,14 @@ onBeforeUnmount(() => {
           :node-types="nodeTypes"
           :edge-types="edgeTypes"
           :min-zoom="0.3"
-          :max-zoom="1.6"
+          :max-zoom="3"
           :nodes-draggable="true"
           :pan-on-drag="true"
           :connect-on-click="false"
           :delete-key-code="null"
+          :selection-key-code="'Shift'"
+          :multi-selection-key-code="['Control', 'Meta']"
+          @node-drag-start="onNodeDragStart"
           @node-drag="onNodeDrag"
           @node-drag-stop="onNodeDragStop"
           @node-click="onNodeClick"
@@ -594,7 +798,7 @@ onBeforeUnmount(() => {
           @pane-click="contextMenu = null"
           @connect="onConnect"
         >
-          <Background :gap="18" :size="1" pattern-color="#24282F" />
+          <Background :gap="18" :size="1" :pattern-color="patternColor" />
           <Controls position="bottom-left" />
           <MiniMap
             position="bottom-right"
@@ -621,6 +825,15 @@ onBeforeUnmount(() => {
           @close="contextMenu = null"
         />
 
+        <div v-if="selectedShots.length" class="selection-bar">
+          <span class="selection-count">已选 {{ selectedShots.length }} 个镜头</span>
+          <span class="selection-hint muted">Shift + 拖拽框选，Ctrl + 点击追加</span>
+          <button class="btn ghost sm" @click="batchRetry">重新生成</button>
+          <button class="btn ghost sm" @click="batchCancel">取消</button>
+          <button class="btn danger sm" @click="batchRemove">删除</button>
+          <button class="icon-btn" title="清除选择" @click="clearSelection">×</button>
+        </div>
+
         <div
           v-if="!state.loading && !state.tasks.length && !state.images.length && !state.canvasNodes.length"
           class="empty-state"
@@ -645,6 +858,8 @@ onBeforeUnmount(() => {
       @close="showNewShot = false; newShotPosition = null"
     />
     <McpDialog v-if="showMcp" @close="showMcp = false" />
+    <AssetDialog v-if="showAssets" @close="showAssets = false" />
+    <UsageGuide v-if="showGuide" @close="showGuide = false" />
     <PreviewDialog v-if="state.previewTask" :task="state.previewTask" @close="state.previewTask = null" />
 
     <div v-if="state.toast" class="toast">{{ state.toast }}</div>

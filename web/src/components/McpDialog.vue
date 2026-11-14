@@ -12,7 +12,10 @@ const config = computed(() =>
       mcpServers: {
         'aigc-canvas': {
           type: 'sse',
-          url: endpoint.value
+          url: endpoint.value,
+          headers: {
+            Authorization: 'Bearer <MCP_API_TOKEN>'
+          }
         }
       }
     },
@@ -56,6 +59,7 @@ function copy(text) {
         <div class="field">
           <span class="field-label">客户端配置</span>
           <pre class="code-block">{{ config }}</pre>
+          <p class="muted">将占位符替换为服务端环境变量 MCP_API_TOKEN 的值。Token 不会下发到网页，请勿提交到代码仓库。</p>
           <button class="btn ghost sm" @click="copy(config)">复制配置</button>
         </div>
 

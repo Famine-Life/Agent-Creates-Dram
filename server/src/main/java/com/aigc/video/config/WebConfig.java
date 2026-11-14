@@ -14,6 +14,7 @@ import java.nio.file.Paths;
 public class WebConfig implements WebMvcConfigurer {
 
     private final StorageProperties storageProperties;
+    private final SecurityProperties securityProperties;
 
     /** 本地存储的成片通过 /files/** 暴露，便于前端直接播放 */
     @Override
@@ -29,9 +30,14 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] origins = securityProperties.allowedOriginPatterns();
+        if (origins.length == 0) {
+            return;
+        }
         registry.addMapping("/api/**")
-                .allowedOriginPatterns("*")
+                .allowedOriginPatterns(origins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*");
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }

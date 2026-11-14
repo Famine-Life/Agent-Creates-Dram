@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.Map;
 
@@ -26,7 +27,10 @@ public class MetaController {
                 "provider", providerProperties.getDefaultName(),
                 "providers", new String[]{"mock", "seedance"},
                 "storage", storageProperties.getType(),
-                "mcpEndpoint", "http://localhost:8080/sse",
+                "mcpEndpoint", ServletUriComponentsBuilder.fromCurrentContextPath()
+                        .path("/sse")
+                        .build()
+                        .toUriString(),
                 "mcpTransport", "sse",
                 "wsPath", "/ws/canvas/{workspaceId}",
                 "aiMock", aiProperties.mockEnabled(),

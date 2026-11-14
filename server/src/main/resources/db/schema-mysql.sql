@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS canvas_image (
     status       VARCHAR(24)   NULL,
     error_msg    VARCHAR(1024) NULL,
     provider     VARCHAR(32)   NULL,
+    source       VARCHAR(16)   NULL,
     created_at   DATETIME      NULL,
     KEY idx_image_ws (workspace_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;

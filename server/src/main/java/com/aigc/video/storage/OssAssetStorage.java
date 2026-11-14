@@ -3,6 +3,7 @@ package com.aigc.video.storage;
 import com.aigc.video.config.StorageProperties;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.CannedAccessControlList;
 import com.aliyun.oss.model.ObjectMetadata;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
+import java.util.Date;
 
 /** 阿里云 OSS 图床/对象存储，aigc.storage.type=oss 时启用 */
 @Slf4j
@@ -33,6 +35,7 @@ public class OssAssetStorage implements AssetStorage {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(bytes.length);
         metadata.setContentType(contentType == null ? "application/octet-stream" : contentType);
+        metadata.setObjectAcl(CannedAccessControlList.Private);
         try {
             client().putObject(cfg.getBucket(), fileName, new ByteArrayInputStream(bytes), metadata);
         } catch (Exception e) {
@@ -44,6 +47,25 @@ public class OssAssetStorage implements AssetStorage {
     @Override
     public boolean owns(String url) {
         return url != null && url.startsWith(baseUrl() + "/");
+    }
+
+    @Override
+    public String accessUrl(String url) {
+        if (!owns(url)) {
+            return url;
+        }
+        StorageProperties.Oss cfg = properties.getOss();
+        String objectKey = url.substring((baseUrl() + "/").length());
+        int query = objectKey.indexOf('?');
+        if (query >= 0) {
+            objectKey = objectKey.substring(0, query);
+        }
+        Date expiration = new Date(System.currentTimeMillis() + properties.getSignedUrlTtlSeconds() * 1000L);
+        try {
+            return client().generatePresignedUrl(cfg.getBucket(), objectKey, expiration).toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("生成阿里云 OSS 签名地址失败：" + objectKey, e);
+        }
     }
 
     private String baseUrl() {

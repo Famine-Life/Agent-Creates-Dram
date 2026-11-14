@@ -44,5 +44,8 @@ public class CanvasImage {
 
     private String provider;
 
+    /** 图片来源：UPLOAD 用户上传 / AI 接口生成 */
+    private String source;
+
     private LocalDateTime createdAt;
 }

@@ -8,6 +8,9 @@ public record ImageRequest(
         Double x,
         Double y,
         Double width,
-        Double height
+        Double height,
+        String prompt,
+        String status,
+        String source
 ) {
 }

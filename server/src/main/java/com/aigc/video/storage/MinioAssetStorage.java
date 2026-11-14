@@ -2,10 +2,11 @@ package com.aigc.video.storage;
 
 import com.aigc.video.config.StorageProperties;
 import io.minio.BucketExistsArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import io.minio.SetBucketPolicyArgs;
+import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -55,6 +56,29 @@ public class MinioAssetStorage implements AssetStorage {
         return url != null && url.startsWith(publicBase() + "/");
     }
 
+    @Override
+    public String accessUrl(String url) {
+        if (!owns(url)) {
+            return url;
+        }
+        StorageProperties.Minio cfg = properties.getMinio();
+        String objectKey = url.substring((publicBase() + "/").length());
+        int query = objectKey.indexOf('?');
+        if (query >= 0) {
+            objectKey = objectKey.substring(0, query);
+        }
+        try {
+            return client().getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                    .method(Method.GET)
+                    .bucket(cfg.getBucket())
+                    .object(objectKey)
+                    .expiry(properties.getSignedUrlTtlSeconds())
+                    .build());
+        } catch (Exception e) {
+            throw new IllegalStateException("生成 MinIO 签名地址失败：" + objectKey, e);
+        }
+    }
+
     private String publicBase() {
         StorageProperties.Minio cfg = properties.getMinio();
         String base = cfg.getEndpoint();
@@ -68,13 +92,7 @@ public class MinioAssetStorage implements AssetStorage {
         StorageProperties.Minio cfg = properties.getMinio();
         if (!client().bucketExists(BucketExistsArgs.builder().bucket(cfg.getBucket()).build())) {
             client().makeBucket(MakeBucketArgs.builder().bucket(cfg.getBucket()).build());
-            client().setBucketPolicy(SetBucketPolicyArgs.builder()
-                    .bucket(cfg.getBucket())
-                    .config("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\","
-                            + "\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],"
-                            + "\"Resource\":[\"arn:aws:s3:::" + cfg.getBucket() + "/*\"]}]}")
-                    .build());
-            log.info("已创建 MinIO 桶 {} 并设置为公开读", cfg.getBucket());
+            log.info("已创建私有 MinIO 桶 {}", cfg.getBucket());
         }
     }
 

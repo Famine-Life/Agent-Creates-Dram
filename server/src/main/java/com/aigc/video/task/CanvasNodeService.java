@@ -17,6 +17,7 @@ import com.aigc.video.mapper.CanvasNodeMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
+import com.aigc.video.storage.AssetService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,6 +53,7 @@ public class CanvasNodeService {
     private final AiService aiService;
     private final AiProperties aiProperties;
     private final ObjectMapper objectMapper;
+    private final AssetService assetService;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "aigc-ai-worker");
@@ -188,6 +190,7 @@ public class CanvasNodeService {
         image.setUrl("");
         image.setPrompt(prompt == null ? "" : prompt.trim());
         image.setStatus(STATUS_IDLE);
+        image.setSource(ImageNode.SOURCE_AI);
         image.setX(x);
         image.setY(y);
         image.setWidth(260d);
@@ -212,6 +215,7 @@ public class CanvasNodeService {
                 .set(CanvasImage::getPrompt, text)
                 .set(CanvasImage::getStatus, STATUS_RUNNING)
                 .set(CanvasImage::getErrorMsg, null)
+                .set(CanvasImage::getSource, ImageNode.SOURCE_AI)
                 .set(CanvasImage::getProvider, aiProperties.mockEnabled() ? "mock" : "ark"));
         broadcastImage(workspaceId, imageId);
 
@@ -287,9 +291,9 @@ public class CanvasNodeService {
     }
 
     private ImageNode toImageNode(CanvasImage image) {
-        return new ImageNode(image.getId(), image.getName(), image.getUrl(),
+        return new ImageNode(image.getId(), image.getName(), assetService.accessUrl(image.getUrl()),
                 image.getX(), image.getY(), image.getWidth(), image.getHeight(),
-                image.getPrompt(), image.getStatus(), image.getErrorMsg());
+                image.getPrompt(), image.getStatus(), image.getErrorMsg(), image.getSource());
     }
 
     private CanvasNode requireNode(Long workspaceId, Long nodeId) {

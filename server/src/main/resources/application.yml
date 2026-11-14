@@ -1,5 +1,14 @@
 server:
   port: 8080
+  # 经 Nginx / 网关反向代理时，按 X-Forwarded-* 生成正确的 HTTPS 外链
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        name: AIGCSESSION
+        http-only: true
+        same-site: strict
+        secure: ${AIGC_COOKIE_SECURE:false}
 
 spring:
   application:
@@ -16,7 +25,8 @@ spring:
       schema-locations: classpath:db/schema-h2.sql
   h2:
     console:
-      enabled: true
+      # 公网部署不开放数据库控制台；本地排障时再通过环境变量显式开启
+      enabled: ${AIGC_H2_CONSOLE_ENABLED:false}
       path: /h2-console
   jackson:
     default-property-inclusion: non_null
@@ -54,8 +64,22 @@ mybatis-plus:
     banner: false
 
 aigc:
+  security:
+    # 单租户管理员；公网部署必须显式配置，不提供默认密码
+    admin-username: ${AIGC_ADMIN_USERNAME:admin}
+    admin-password: ${AIGC_ADMIN_PASSWORD:admin@888}
+    # MCP 独立凭证，至少 32 个字符，与网页登录密码分开管理
+    mcp-token: ${MCP_API_TOKEN:10cf1fdf6ad958eeffa9853f6885cec9}
+    cookie-secure: ${AIGC_COOKIE_SECURE:false}
+    # 可选的跨域前端 / WebSocket 来源，多个用英文逗号分隔；同源部署留空
+    allowed-origins: ${AIGC_ALLOWED_ORIGINS:}
+  session:
+    # 多实例共享登录态：true 时 Session 写入 Redis（各实例需连同一个 Redis）；
+    # 单实例保持 false，沿用容器内存 Session，无需 Redis 也能登录
+    redis-enabled: ${AIGC_SESSION_REDIS_ENABLED:false}
   realtime:
-    # 多实例部署置 true：画布事件走 Redis Pub/Sub，跨实例推送；单实例保持 false
+    # 多实例部署置 true：画布事件走 Redis Pub/Sub，跨实例推送；
+    # 同时启用任务调度的分布式锁，避免多个实例重复扫描任务表
     redis-enabled: ${AIGC_REDIS_ENABLED:false}
   provider:
     # mock = 无需任何密钥即可跑通全链路；seedance = 火山方舟即梦
@@ -76,6 +100,8 @@ aigc:
     type: ${AIGC_STORAGE_TYPE:local}
     local-dir: ./data/files
     public-prefix: /files
+    # 私有对象存储签名 URL 有效期；数据库只保存稳定 URL
+    signed-url-ttl-seconds: ${AIGC_SIGNED_URL_TTL_SECONDS:3600}
     minio:
       endpoint: http://127.0.0.1:9000
       access-key: minioadmin

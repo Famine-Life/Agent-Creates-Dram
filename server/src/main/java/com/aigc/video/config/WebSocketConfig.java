@@ -13,10 +13,15 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final CanvasWebSocketHandler canvasWebSocketHandler;
+    private final SecurityProperties securityProperties;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(canvasWebSocketHandler, "/ws/canvas/*")
-                .setAllowedOriginPatterns("*");
+        var registration = registry.addHandler(canvasWebSocketHandler, "/ws/canvas/*");
+        String[] origins = securityProperties.allowedOriginPatterns();
+        // 不配置额外来源时，Spring 默认只允许同源；握手请求同时由 Spring Security 校验 Session。
+        if (origins.length > 0) {
+            registration.setAllowedOriginPatterns(origins);
+        }
     }
 }
