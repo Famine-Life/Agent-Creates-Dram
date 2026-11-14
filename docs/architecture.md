@@ -1,7 +1,9 @@
 # AIGC 视频画布工作台 · 架构设计
 
-> 版本：v0.1 ｜ 更新日期：2026-11-14
+> 版本：v0.2 ｜ 更新日期：2026-11-14
 > 关联文档：[产品设计](./product-design.md) ｜ [UI 稿](./ui-mockup.html) ｜ [变更记录](./task-records/)
+>
+> v0.2 更新：画布节点（文本 / 脚本 / 图片 / 视频）、AI 脚本 / 图片 / 提示词优化、生成参数（模型 / 比例 / 清晰度 / 时长）、Redis Pub/Sub 可选广播、画布快照乐观锁。
 
 ---
 
@@ -9,12 +11,13 @@
 
 把「AI 生成的分镜提示词」直接变成画布上可播放的视频节点：
 
-- 外部 AI 客户端通过 **MCP** 推送提示词，或人在画布上手动新建；
+- 外部 AI 客户端通过 **MCP** 推送提示词，或人在画布上右键手动创建节点；
 - 一条提示词 = 一个视频节点，异步生成，进度实时回填；
 - 图片节点作为参考图，通过连线与镜头节点形成**多对多**引用，提示词里用 `@图片1` 引用；
+- 内置 AI 能力：脚本节点生成分镜、图片节点文生图、提示词一键优化（Ark，未配置密钥时 mock）；
 - 默认 `mock` 供应商 8 秒出片，无需任何密钥即可跑通全链路；生产切换 `seedance`（火山方舟）。
 
-设计目标：**单机单实例、无 Redis / 无 MQ / 无 Docker 也能完整运行**，同时保留 MySQL、MinIO、COS、OSS 的切换能力。
+设计目标：**默认单机单实例、无 Redis / 无 MQ / 无 Docker 也能完整运行**；需要水平扩容时，通过配置开启 Redis Pub/Sub 广播，并保留 MySQL、MinIO、COS、OSS 的切换能力。
 
 ---
 
@@ -24,18 +27,16 @@
 ┌──────────────────┐   MCP：SSE /sse        ┌────────────────────────────────────┐
 │ AI 客户端         │ ────────────────────►  │ Spring Boot 3.4.5  (:8080)          │
 │ (WorkBuddy/Trae) │   REST：/api/**        │ api / task / provider / realtime   │
-└──────────────────┘                        │ storage / mapper / domain / config │
-                                            └───────┬──────────────┬─────────────┘
-                                                    │ JDBC         │ WebSocket
-                                             ┌──────▼──────┐  ┌────▼──────────────────┐
-                                             │ H2 文件库    │  │ Vue 3 + Vue Flow (5173)│
-                                             │ / MySQL 8   │  │ 节点 / 连线 / 进度      │
-                                             └─────────────┘  └────▲──────────────────┘
-                                                                  │ /files/** 静态资源
-                                             ┌─────────────┐      │
-                                             │ 本地 / MinIO │
-                                             │ / COS / OSS  │
-                                             └─────────────┘
+└──────────────────┘                        │ storage / ai / mapper / domain     │
+                                            └───┬────────┬──────────┬────────────┘
+                                                │ JDBC   │ WS       │ HTTP
+                                         ┌──────▼────┐ ┌─▼───────┐ ┌▼─────────────┐
+                                         │ H2 / MySQL│ │ 浏览器   │ │ 火山方舟 Ark  │
+                                         └───────────┘ │ Vue Flow │ │ 文本 / 图片   │
+                                                       └──────────┘ └──────────────┘
+                                       可选：┌──────────┐
+                                             │ Redis    │  Pub/Sub 跨实例广播
+                                             └──────────┘
 ```
 
 关键取舍：
@@ -43,9 +44,9 @@
 | 关注点 | 方案 | 原因 |
 | --- | --- | --- |
 | 任务驱动 | DB 轮询（`next_poll_at` + 退避） | 不引入 MQ，重启后任务不丢 |
-| 实时推送 | 单实例内存 WebSocket 广播 | 单机部署，无跨实例需求 |
+| 实时推送 | 默认单实例内存广播；可选 Redis Pub/Sub | 单机零依赖，多实例通过配置开启 |
 | 幂等 | `sha256(ws|group|shotIndex|prompt)` + 唯一索引 | 同一提示词重复推送只产生一个节点 |
-| 并发控制 | CAS `UPDATE ... WHERE status = ?` | 避免重复提交 / 状态覆盖 |
+| 并发控制 | 任务状态 CAS + 画布 `version` 乐观锁 | 避免重复提交与多标签页互相覆盖 |
 | 产物 | 生成成功后立即转存自有存储 | 第三方 URL 会过期 |
 
 ---
@@ -58,6 +59,8 @@
 | ORM | MyBatis-Plus | 3.5.9 |
 | MCP | Spring AI MCP Server（WebMVC，SSE） | 1.0.0 |
 | 数据库 | H2（文件模式，MySQL 兼容）/ MySQL 8 | — |
+| 缓存 / 广播 | Redis（可选，Pub/Sub） | Spring Data Redis |
+| AI | 火山方舟 Ark（chat / images），未配置密钥走 mock | HTTP |
 | 对象存储 | 本地磁盘 / MinIO / 腾讯云 COS / 阿里云 OSS | minio 8.5.12 / cos_api 5.6.227 / aliyun-sdk-oss 3.17.4 |
 | 前端 | Vue 3 + Vite | 3.4 / 4.5（Node 16 兼容） |
 | 画布 | @vue-flow/core + background / controls / minimap | 1.41 / 1.3 / 1.1 / 1.5 |
@@ -73,17 +76,18 @@
 
 | 包 | 关键类 | 职责 |
 | --- | --- | --- |
-| `api` | `CanvasController`、`TaskController`、`UploadController`、`MetaController`、`ApiExceptionHandler` | REST 入口、参数校验、异常映射 |
-| `api.dto` | `ShotRequest`、`StoryboardRequest`、`TaskNode`、`ImageNode`、`EdgeView`、`CanvasState` 等 | 前后端 / MCP 契约 |
+| `api` | `CanvasController`、`TaskController`、`UploadController`、`MetaController`、`ApiExceptionHandler` | REST 入口、参数校验、异常映射（含 409） |
+| `api.dto` | `ShotRequest`、`StoryboardRequest`、`TaskNode`、`ImageNode`、`EdgeView`、`CanvasState`、`CanvasNodeView`、`SnapshotRequest` | 前后端 / MCP 契约 |
 | `api.mcp` | `McpCanvasTools` | `@Tool` 方法：`push_shot`、`push_storyboard`、`get_canvas_state` |
-| `task` | `TaskService`、`TaskDispatcher`、`TaskStatus` | 业务编排、调度轮询、状态机 |
-| `provider` | `VideoProvider`、`MockVideoProvider`、`SeedanceVideoProvider`、`ProviderRegistry`、`SubmitCommand/SubmitResult/PollResult` | 供应商 SPI 与注册表 |
+| `task` | `TaskService`、`TaskDispatcher`、`TaskStatus` | 业务编排、调度轮询、状态机、快照乐观锁 |
+| `ai` | `AiService`、`AiProperties` | 脚本生成、文生图、提示词优化（Ark / mock） |
+| `provider` | `VideoProvider`、`MockVideoProvider`、`SeedanceVideoProvider`、`ProviderRegistry`、`SubmitCommand/SubmitResult/PollResult` | 供应商 SPI 与注册表；提交带 ratio / resolution / duration |
 | `storage` | `AssetStorage`、`LocalAssetStorage`、`MinioAssetStorage`、`AssetService` | 上传落盘、远端产物转存 |
-| `realtime` | `CanvasWebSocketHandler`、`CanvasSocketRegistry`、`CanvasEvent` | WebSocket 会话管理与广播 |
+| `realtime` | `CanvasWebSocketHandler`、`CanvasSocketRegistry`、`CanvasEvent`、`CanvasEventRelay`、`RedisCanvasEventRelay`、`RedisCanvasSubscriber` | WebSocket 会话管理；可选 Redis Pub/Sub 跨实例广播 |
 | `mapper` | 各 `*Mapper`（MyBatis-Plus） | 数据访问 |
-| `domain` | `Workspace`、`Canvas`、`GenerationTask`、`CanvasImage`、`TaskImageRef` | 表实体 |
-| `config` | `WebSocketConfig`、`WebConfig`、`McpToolConfig` | WS 注册、`/files` 静态映射、MCP 工具注册 |
-| `common` | `BadRequestException`、`NotFoundException` | 业务异常 |
+| `domain` | `Workspace`、`Canvas`、`GenerationTask`、`CanvasImage`、`CanvasNode`、`TaskImageRef` | 表实体 |
+| `config` | `WebSocketConfig`、`WebConfig`、`McpToolConfig`、`RedisCanvasSubscriptionConfig` | WS 注册、`/files` 静态映射、MCP 工具注册、Redis 订阅 |
+| `common` | `BadRequestException`、`NotFoundException`、`ConflictException` | 业务异常 |
 
 ### 4.2 核心链路
 
@@ -102,6 +106,18 @@ TaskDispatcher.tick（默认 800ms）
          └─ FAILED / 超时：FAILED / TIMEOUT → node.failed
 ```
 
+画布内创作链路：
+
+```text
+右键菜单 ─► POST /nodes（文本/脚本）
+              └─► POST /nodes/{id}/script ─► AiService.chat ─► 分镜列表 ─► 加入画布（createStoryboard）
+右键菜单 ─► POST /images/ai ─► AiService.generateImage ─► canvas_image(status=SUCCEEDED) ─► image.created
+提示词编辑器 ─► PUT /tasks/{id}/prompt
+              ├─ regenerate=false：只保存 prompt / model / ratio / resolution / duration
+              └─ regenerate=true：resetForRegenerate → 重新入队
+提示词优化 ─► POST /ai/prompt/optimize ─► AiService.optimizePrompt ─► 返回文本，不落库
+```
+
 ### 4.3 任务状态机
 
 | 状态 | 含义 | 后续 |
@@ -115,6 +131,8 @@ TaskDispatcher.tick（默认 800ms）
 
 - 终止态重试走 `retry`：`resetForRegenerate` 显式把 `provider_task_id`、`video_url`、`error_msg`、`next_poll_at` 等置空后回到队列。
 - 「编辑提示词并重新生成」保持 **id / 分组 / 镜号 / 画布坐标** 不变，只重置生成相关字段。
+- 参数保存（`regenerate=false`）只更新 `prompt / model / ratio / resolution / duration`，不改变任务状态、不消耗生成次数。
+- 模型与清晰度联动校验在 `TaskService.normalize*` 完成：`mock` 仅支持 480P/720P，`seedance` 支持 480P/720P/1080P/4K，非法值回退 720P。
 
 ### 4.4 调度、幂等与一致性
 
@@ -123,16 +141,21 @@ TaskDispatcher.tick（默认 800ms）
 - 幂等键：`sha256(workspaceId|groupId|shotIndex|prompt)`，写入 `idem_key`（唯一索引 `uk_task_idem`）；重复推送直接复用节点。
 - 供应商任务号唯一：`UNIQUE(provider, provider_task_id)`。
 - 调度线程池 `spring.task.scheduling.pool.size=2`；`AssetService.transfer` 对同源 URL 做了内存缓存，避免多个 mock 任务重复下载同一个演示视频阻塞轮询。
+- **多实例注意**：提交阶段已有状态 CAS，不会重复提交；但每个实例仍会扫表，且 `pollRunning` 可能重复轮询。生产多实例建议加 ShedLock / Redisson 锁，或改为独立 worker + MQ。
+- **画布快照乐观锁**：`saveSnapshot(workspaceId, snapshot, baseVersion)` 使用 `UPDATE ... WHERE id=? AND version=?`，影响行数为 0 抛 `ConflictException` → HTTP 409；前端提示并重新拉取最新布局。未传 `baseVersion` 的旧客户端仍按最后写入生效。
 
 ### 4.5 数据模型
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
 | `workspace` | `id`、`name` | 工作空间（默认 1） |
-| `canvas` | `workspace_id`、`version`、`snapshot`、`updated_at` | 画布快照（节点坐标、视口），`version` 预留并发控制 |
-| `generation_task` | `group_id`、`shot_index`、`prompt`、`provider`、`provider_task_id`、`status`、`progress`、`video_url`、`poll_count`、`idem_key`、`next_poll_at` | 视频节点（一条提示词一行） |
-| `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height` | 画布图片节点 |
+| `canvas` | `workspace_id`、`version`、`snapshot`、`updated_at` | 画布快照；`version` 用于多标签页 / 多实例乐观锁 |
+| `canvas_node` | `workspace_id`、`type`、`title`、`prompt`、`content`、`status`、`error_msg`、`x`、`y`、`width`、`height` | 文本 / 脚本节点 |
+| `generation_task` | `group_id`、`shot_index`、`prompt`、`provider`、`model`、`ratio`、`resolution`、`duration`、`provider_task_id`、`status`、`progress`、`video_url`、`poll_count`、`idem_key`、`next_poll_at` | 视频节点（一条提示词一行） |
+| `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height`、`prompt`、`status`、`error_msg`、`provider` | 画布图片节点（支持 AI 生成态） |
 | `task_image_ref` | `task_id`、`image_id`、`sort_index`、`UNIQUE(task_id,image_id)` | 图片→镜头引用，一行 = 画布一条连线 |
+
+生成参数默认值：`model` 取供应商默认，`ratio=16:9`，`resolution=720P`，`duration=5`。
 
 关系：
 
@@ -162,7 +185,9 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `edge.created` | `EdgeView` | 新增紫色引用线 |
 | `edge.deleted` | `{edgeId, taskId}` | 移除连线并刷新节点徽标 |
 
-> 广播为单实例内存实现（`CanvasSocketRegistry`）。多实例部署需替换为 Redis Pub/Sub 或 STOMP Broker。
+> 广播默认走单实例内存（`CanvasSocketRegistry.deliverLocal`）。多实例部署时设 `AIGC_REDIS_ENABLED=true`：
+> `broadcast` 先 publish 到 Redis 频道 `aigc:canvas:events`，各实例的 `RedisCanvasSubscriber` 收到后只推自己持有的连接；
+> Redis 不可用或发布失败时自动回退本地推送。频道全局，不受 `REDIS_DATABASE` 影响。
 
 ### 4.7 MCP 接入
 
@@ -217,6 +242,15 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `aigc.storage.oss.*` | — | 阿里云 OSS：endpoint、access-key-id、access-key-secret、bucket、public-url |
 | `aigc.poll-timeout-seconds` | `900` | 单任务轮询超时 |
 | `spring.task.scheduling.pool.size` | `2` | 调度线程数 |
+| `aigc.realtime.redis-enabled` | `${AIGC_REDIS_ENABLED:false}` | 多实例时开启 Redis Pub/Sub 广播 |
+| `spring.data.redis.host/port` | `${REDIS_HOST:localhost}` / `${REDIS_PORT:6379}` | Redis 地址 |
+| `spring.data.redis.password` | `${REDIS_PASSWORD:}` | Redis 密码，无密码留空 |
+| `spring.data.redis.database` | `${REDIS_DATABASE:0}` | Redis 库号 |
+| `spring.data.redis.timeout/connect-timeout` | `800ms` | 快速失败并回退本地广播 |
+| `aigc.ai.base-url` | `${ARK_BASE_URL:...}` | Ark API 地址 |
+| `aigc.ai.api-key` | `${ARK_API_KEY:}` | 为空时脚本 / 图片 / 优化走 mock |
+| `aigc.ai.script-model` | `doubao-seed-1-6-250615` | 分镜脚本模型 |
+| `aigc.ai.image-model` | `doubao-seedream-3-0-t2i-250415` | 文生图模型 |
 | `spring.ai.mcp.server.sse-endpoint` | `/sse` | MCP SSE 端点 |
 | `spring.ai.mcp.server.sse-message-endpoint` | `/mcp/message` | MCP 消息端点 |
 
@@ -224,19 +258,24 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/canvas/{workspaceId}` | 画布全量状态 |
-| POST | `/api/canvas/{workspaceId}/shots` | 新建镜头 |
+| GET | `/api/canvas/{workspaceId}` | 画布全量状态（含 version、nodes） |
+| POST | `/api/canvas/{workspaceId}/shots` | 新建镜头（支持 model / ratio / resolution / duration） |
 | POST | `/api/canvas/{workspaceId}/storyboards` | 批量新建分镜 |
-| PUT | `/api/canvas/{workspaceId}/snapshot` | 保存坐标/视口快照 |
+| PUT | `/api/canvas/{workspaceId}/snapshot` | 保存坐标/视口；`baseVersion` 冲突返回 409 |
 | PUT | `/api/canvas/{workspaceId}/order` | 保存分组内排序 |
+| POST / PUT / DELETE | `/api/canvas/{workspaceId}/nodes[/{nodeId}]` | 文本 / 脚本节点增改删 |
+| POST | `/api/canvas/{workspaceId}/nodes/{nodeId}/script` | AI 生成分镜脚本 |
+| POST | `/api/canvas/{workspaceId}/images/ai` | AI 生成图片 |
+| POST | `/api/canvas/{workspaceId}/images/{imageId}/generate` | 图片节点重新生成 |
 | POST / PUT / DELETE | `/api/canvas/{workspaceId}/images[/{imageId}]` | 图片节点增改删 |
 | POST / DELETE | `/api/canvas/{workspaceId}/edges[/{edgeId}]` | 引用连线增删 |
-| PUT | `/api/tasks/{taskId}/prompt` | 改提示词（可选重新生成） |
+| POST | `/api/canvas/{workspaceId}/ai/prompt/optimize` | 一键优化提示词 |
+| PUT | `/api/tasks/{taskId}/prompt` | 改提示词 / 参数；`regenerate=false` 仅保存 |
 | POST | `/api/tasks/{taskId}/retry` | 重试 |
 | POST | `/api/tasks/{taskId}/cancel` | 取消 |
 | DELETE | `/api/tasks/{taskId}` | 删除节点 |
 | POST | `/api/uploads` | 上传参考图并建节点 |
-| GET | `/api/meta` | 供应商、MCP 端点等元信息 |
+| GET | `/api/meta` | 供应商、AI mock 状态、MCP 端点等元信息 |
 
 ---
 
@@ -246,18 +285,23 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 
 ```text
 web/src
-├── App.vue                  # 布局、Vue Flow 画布、图同步、拖拽排序、连线校验
+├── App.vue                  # 布局、Vue Flow 画布、图同步、拖拽排序、连线校验、快照保存
 ├── main.js                  # VueFlow 样式与插件注册
-├── api.js                   # axios 封装（含上传）
+├── api.js                   # axios 封装（含上传 / 节点 / AI）
 ├── style.css                # 暗色主题与 Vue Flow 覆盖
 ├── store/canvas.js          # 单一 reactive store：数据 + WS 事件 + 业务动作
 └── components
-    ├── ShotNode.vue         # 视频节点卡片（进度/视频/操作）
+    ├── ShotNode.vue         # 视频节点（16:9 媒体、预览按钮、下方提示词编辑器）
+    ├── PromptEditor.vue     # 提示词编辑器：@ 图片、模型 / 比例 / 清晰度 / 时长、全屏、优化
     ├── ImageNode.vue        # 图片节点（右侧源锚点）
     ├── GroupNode.vue        # 分组标签
+    ├── CanvasContextMenu.vue# 画布右键菜单（8 项）
+    ├── ScriptNode.vue       # 脚本节点（AI 生成分镜）
+    ├── TextNode.vue         # 文本节点
+    ├── ImageGenNode.vue     # AI 图片节点
     ├── ImageRefEdge.vue     # 紫色虚线引用边（可悬浮删除）
     ├── Sidebar.vue          # 分组/镜头列表、搜索、折叠为图标栏
-    ├── ShotInspector.vue    # 右侧检查器：改提示词、重试、取消、删除
+    ├── ShotInspector.vue    # 右侧检查器：只读详情、参数、重试、取消、删除；可收起
     ├── NewShotDialog.vue    # 新建提示词（@ 引用、粘贴/拖入上传）
     ├── PreviewDialog.vue    # 成片预览
     └── McpDialog.vue        # MCP 接入说明
@@ -265,21 +309,24 @@ web/src
 
 ### 5.2 状态与事件
 
-`store/canvas.js` 用 `reactive` 维护：`tasks / images / edges / snapshot / selectedTaskId / selectedImageId / inspectorEdit / previewTask / keyword / connection / toast`。
+`store/canvas.js` 用 `reactive` 维护：`tasks / images / nodes / edges / snapshot / version / selectedTaskId / selectedImageId / previewTask / keyword / connection / toast`。
 
-- `loadAll()`：拉取 `/api/canvas/1` 并整体覆盖；
+- `loadAll()`：拉取 `/api/canvas/1` 并整体覆盖，同时记录 `version`；
 - `connectRealtime()`：WS 断线后按 `1/2/4/8s` 指数退避重连，重连成功再 `loadAll()` 补齐状态；
-- `handleEvent()`：按 `4.6` 的事件表做 `upsert / remove`，并同步选中项与检查器。
+- `handleEvent()`：按 `4.6` 的事件表做 `upsert / remove`，并同步选中项与检查器；
+- `savePrompt()` / `updateShotSettings()`：编辑提示词或改参数，后者固定 `regenerate=false`；
+- 保存快照携带 `state.version`，成功后用响应回写；409 时提示并 `loadAll()`。
 
 ### 5.3 画布渲染与布局
 
-- 节点类型：`shot`（镜头卡片）、`image`（图片）、`group`（分组标签）。
-- 布局常量：`SHOT_W=260`、`SHOT_H=238`、列距 28、行距 `SHOT_H+224`。
+- 节点类型：`shot`（镜头卡片）、`image`（图片）、`group`（分组标签）、`text`（文本）、`script`（脚本）。
+- 布局常量：`SHOT_W=320`、`SHOT_H=220`、列距 28、行距 `SHOT_H+224=444`；媒体区 320×180（16:9）。
 - 坐标优先级：**用户显式坐标 > `canvas.snapshot` 中保存的坐标 > 自动布局**。
 - `syncGraph()` 增量维护节点/边，尽量保留对象引用，避免重渲染抖动。
-- 用户拖动节点后：同组按 `x` 重排镜号 → `PUT /order`；图片坐标单独持久化。
+- 用户拖动节点后：同组按 `x` 重排镜号 → `PUT /order`；图片 / 文本节点坐标单独持久化。
 - 视口：优先恢复 `snapshot.viewport`，否则 `fitView({ padding: 0.12 })`；视口变化 700ms 防抖保存。
 - 侧栏支持折叠为 58px 图标栏（展开、新建、分组跳转、进行中数量），状态存 `localStorage`；点击分组图标会展开侧栏并定位该组首个镜头。
+- 检查器可收起为右侧窄条，展开按钮 `« 详情` 浮在画布右上角，状态同样存 `localStorage`。
 - 支持把图片文件直接拖到画布：`screenToFlowCoordinate` 定位并上传。
 
 ### 5.4 连线交互（图片 → 镜头，多对多）
@@ -291,7 +338,16 @@ web/src
 - 拖拽连线期间画布根节点加 `.linking`，所有镜头卡片高亮 + `crosshair`，提示「整张卡片都是落点」。
 - 已存在相同 `(imageId, taskId)` 时提示且不重复建边。
 
-### 5.5 重连
+### 5.5 节点内交互（v0.2）
+
+- **视频区**：默认 `controls` 隐藏，悬停出现中央播放按钮；点击视频只内联播放，不再弹窗；右上角 `⤢` 才打开 `PreviewDialog`。
+- **提示词编辑器**：位于镜头节点下方，宽 320、整体 `aspect-ratio: 16/9`；工具栏（上传 / 画布参考 / @图片）+ 文本域 + 底部（模型 select、参数汇总按钮、`✦` 优化、发送）。
+- **参数面板**：点击汇总按钮展开，比例网格、清晰度按钮组、时长滑块；滑块与面板容器带 `nodrag`，避免被 Vue Flow 节点拖拽抢事件。
+- **时长滑块**：拖动时只改本地值，`change` 时调用 `updateShotSettings` 保存，避免接口回填造成“拖不动”。
+- **全屏编辑**：`Teleport` 到 body，1040×82vh，`Esc` / 遮罩 / `⤡` 关闭。
+- **提示词优化**：`AiService.optimizePrompt` 返回文本，浮层支持复制、重新生成、填充输入框；填充不自动提交。
+
+### 5.6 重连
 
 后端重启期间标签变为「已断开」，恢复后自动回到「实时连接」并补拉画布状态，无需刷新页面（已实测）。
 
@@ -325,9 +381,10 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 ### 6.3 生产注意事项
 
 - H2 文件库不适合多实例并发，生产应使用 MySQL；
-- WebSocket 广播为单实例内存实现，多实例需引入 Redis Pub/Sub；
-- 调度为进程内 `@Scheduled`，多实例部署需加分布式锁或改为独立 worker；
-- MCP 当前为 SSE；升级到支持 Streamable HTTP 的 Spring AI 版本后可切换 `/mcp`。
+- WebSocket 广播默认单实例；多实例设 `AIGC_REDIS_ENABLED=true` 并配置 `REDIS_HOST/PORT/PASSWORD/DATABASE`，Redis 故障时自动回退本地；
+- 调度为进程内 `@Scheduled`，多实例仍需 ShedLock / Redisson 锁或独立 worker（当前未实现）；
+- MCP 当前为 SSE；升级到支持 Streamable HTTP 的 Spring AI 版本后可切换 `/mcp`，多实例需会话粘滞；
+- 画布快照已做 `version` 乐观锁，冲突返回 409；前端会提示并同步最新布局。
 
 ---
 
@@ -338,6 +395,8 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 | 新增视频供应商 | 实现 `VideoProvider`（`name/submit/poll`），注册为 Bean，`ProviderRegistry` 自动发现；请求里传 `provider` 或改默认值 |
 | 新增画布事件 | 后端 `CanvasEvent.of(type, data)` 广播，前端 `handleEvent` 增加分支 |
 | 新增 MCP 工具 | 在 `McpCanvasTools` 加 `@Tool` 方法，启动日志确认 `Registered tools: N` |
+| 新增模型 / 清晰度 | 前端 `ShotNode.vue` 的选项常量 + 后端 `TaskService.normalize*` 白名单同步修改 |
+| 新增 AI 能力 | 在 `AiService` 增加方法（Ark 调用 + mock 兜底），新增接口放 `CanvasController` |
 | 新增表字段 | 同步修改 `schema-h2.sql` 与 `schema-mysql.sql`，并更新对应 `domain` / DTO |
 | 切换存储 | 实现 `AssetStorage` 新 Bean（条件 `aigc.storage.type`） |
 
@@ -345,11 +404,12 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 
 ## 8. 已知限制
 
-1. 单实例 WebSocket 与进程内调度，不支持水平扩容。
+1. 调度与 MCP 会话仍是单实例语义；WebSocket 可通过 Redis Pub/Sub 跨实例，但调度锁与 MCP 粘滞未实现。
 2. H2 仅适合本地/演示。
-3. `seedance` 需要 `ARK_API_KEY`，未配置时回退 `mock`。
+3. `seedance`、AI 脚本 / 图片 / 优化都需要 `ARK_API_KEY`，未配置时回退 mock。
 4. MCP 仅 SSE（受 Spring AI 1.0.0 限制）。
-5. `canvas.version` 已建字段但保存快照时未做乐观锁校验，多标签页同时拖动可能互相覆盖。
+5. 画布快照已做乐观锁；但同一标签页内并发保存仍按最后响应为准，极端情况下会触发一次 409 重载。
+6. 导演台 / 智能剪辑 / 音频节点仅为菜单占位，无实际能力。
 
 ---
 

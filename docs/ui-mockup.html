@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AIGC 视频画布 · UI 设计稿 v0.1</title>
+<title>AIGC 视频画布 · UI 设计稿 v0.2</title>
 <style>
   :root {
     --bg: #0A0B0D;
@@ -546,6 +546,190 @@
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
   .note-line { font-size: 10px; color: var(--faint); margin-top: 6px; }
+
+  /* ---------- v0.2 组件规格浮层 ---------- */
+  .spec-sheet {
+    width: 1140px; max-width: calc(100vw - 56px); max-height: 88vh;
+    display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border-strong);
+    border-radius: 16px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); overflow: hidden;
+  }
+  .spec-head { display: flex; align-items: flex-start; gap: 10px; padding: 16px 20px 13px; border-bottom: 1px solid var(--border); }
+  .spec-head h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .spec-head .sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+  .spec-head .icon-btn { margin-left: auto; }
+  .spec-body { padding: 16px 20px 20px; overflow-y: auto; }
+  .spec-body::-webkit-scrollbar { width: 6px; }
+  .spec-body::-webkit-scrollbar-thumb { background: #262B33; border-radius: 3px; }
+  .spec-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .spec-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px 15px; }
+  .spec-card.wide { grid-column: span 2; }
+  .spec-title { font-size: 12.5px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+  .spec-title .tag-mini {
+    font-size: 9.5px; color: #C6BFFF; background: rgba(124, 107, 255, .12);
+    border: 1px solid rgba(124, 107, 255, .32); border-radius: 5px; padding: 1px 5px; font-weight: 500;
+  }
+  .spec-desc { font-size: 10.5px; color: var(--muted); margin: 4px 0 12px; line-height: 1.6; }
+  .spec-stage {
+    padding: 14px 10px; border: 1px dashed var(--border-strong); border-radius: 10px;
+    background-color: #0C0E12;
+    background-image: radial-gradient(circle, #1D2128 1px, transparent 1px);
+    background-size: 18px 18px;
+    display: flex; justify-content: center;
+  }
+  .spec-note { font-size: 9.5px; color: var(--faint); margin-top: 8px; line-height: 1.6; }
+
+  .canvas-hint {
+    position: absolute; right: 14px; top: 12px; z-index: 6;
+    font-size: 10px; color: var(--faint);
+    background: rgba(17, 19, 23, .86); border: 1px solid var(--border);
+    padding: 4px 9px; border-radius: 7px;
+  }
+
+  /* 规格中的静态镜头节点 */
+  .node.static { position: relative; width: 320px; cursor: default; }
+  .node.static:hover { transform: none; border-color: var(--border); }
+  .node.static .media { height: 180px; }
+  .media-actions { position: absolute; right: 6px; top: 6px; z-index: 3; display: flex; gap: 4px; }
+  .media-btn {
+    height: 22px; padding: 0 7px; border-radius: 6px; font-size: 9.5px;
+    border: 1px solid rgba(255, 255, 255, .16); background: rgba(8, 9, 11, .72);
+    color: #DDE1E8; display: inline-flex; align-items: center; gap: 3px; backdrop-filter: blur(4px);
+  }
+  .media-btn:hover { border-color: rgba(255, 255, 255, .34); background: rgba(8, 9, 11, .9); }
+
+  /* 提示词编辑器（320 × 180） */
+  .pe {
+    width: 320px; height: 180px; display: flex; flex-direction: column;
+    background: #12151A; border: 1px solid var(--border); border-radius: 11px;
+    overflow: hidden; margin-top: 8px;
+  }
+  .pe-bar { height: 28px; flex: 0 0 28px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-bottom: 1px solid var(--border); }
+  .pe-tool {
+    height: 19px; padding: 0 6px; border-radius: 5px; font-size: 9.5px;
+    border: 1px solid var(--border); background: var(--panel-3); color: var(--muted);
+  }
+  .pe-tool:hover { color: var(--text); border-color: var(--border-strong); }
+  .pe-thumbs { display: flex; gap: 3px; margin-left: auto; }
+  .pe-thumbs i {
+    position: relative; width: 16px; height: 16px; border-radius: 4px;
+    background: linear-gradient(135deg, #3B4250, #232830); border: 1px solid #3A404B;
+    font-style: normal; font-family: var(--mono); font-size: 8px; color: #B9C0CC;
+    display: grid; place-items: center;
+  }
+  .pe-icon {
+    width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--panel-3); color: var(--muted); font-size: 10px;
+    display: grid; place-items: center; padding: 0;
+  }
+  .pe-icon:hover { color: var(--text); border-color: var(--border-strong); }
+  .pe-input {
+    flex: 1; min-height: 0; padding: 7px 9px; overflow: hidden;
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.6; color: #C4C9D2;
+  }
+  .pe-input .at { color: #C6BFFF; background: rgba(124, 107, 255, .13); border-radius: 3px; padding: 0 3px; }
+  .pe-input .ph { color: var(--faint); }
+  .pe-foot { height: 32px; flex: 0 0 32px; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-top: 1px solid var(--border); }
+  .pe-select {
+    height: 22px; max-width: 112px; padding: 0 5px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--panel-3); color: #C9CDD5; font-size: 9.5px; outline: none;
+  }
+  .pe-params {
+    height: 22px; padding: 0 7px; border-radius: 5px; font-family: var(--mono); font-size: 9.5px;
+    border: 1px solid rgba(124, 107, 255, .32); background: rgba(124, 107, 255, .1); color: #C6BFFF;
+  }
+  .pe-params:hover { background: rgba(124, 107, 255, .2); }
+  .pe-send {
+    width: 22px; height: 22px; margin-left: auto; border-radius: 5px; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; font-size: 12px; display: grid; place-items: center; padding: 0;
+  }
+  .pe-opt {
+    width: 22px; height: 22px; margin-left: 4px; border-radius: 5px; padding: 0;
+    border: 1px solid var(--border); background: var(--panel-3); color: #C6BFFF; font-size: 10px;
+    display: grid; place-items: center;
+  }
+  .pe-opt:hover { border-color: rgba(124, 107, 255, .4); background: rgba(124, 107, 255, .12); }
+
+  /* 参数面板 */
+  .pp { width: 100%; max-width: 330px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px; padding: 11px 12px 13px; }
+  .pp-block + .pp-block { margin-top: 12px; }
+  .pp-label { font-size: 9.5px; color: var(--faint); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; }
+  .pp-label .link { margin-left: auto; font-size: 9px; color: #C6BFFF; letter-spacing: 0; text-transform: none; }
+  .pp-ratio-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  .pp-ratio {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 5px 0 4px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+    font-family: var(--mono); font-size: 8.5px; color: var(--muted);
+  }
+  .pp-ratio:hover { border-color: var(--border-strong); color: #C9CDD5; }
+  .pp-ratio.active { border-color: rgba(124, 107, 255, .55); background: rgba(124, 107, 255, .12); color: #C6BFFF; }
+  .pp-box { display: block; border: 1.4px solid currentColor; border-radius: 2px; opacity: .85; }
+  .pp-box.r169 { width: 18px; height: 10px; }
+  .pp-box.r916 { width: 10px; height: 18px; }
+  .pp-box.r11  { width: 14px; height: 14px; }
+  .pp-box.r43  { width: 17px; height: 13px; }
+  .pp-box.r34  { width: 13px; height: 17px; }
+  .pp-box.r219 { width: 19px; height: 8px; }
+  .pp-res { display: flex; gap: 5px; flex-wrap: wrap; }
+  .pp-chip {
+    height: 25px; padding: 0 9px; border-radius: 6px; font-size: 10px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  }
+  .pp-chip:hover { color: #C9CDD5; border-color: var(--border-strong); }
+  .pp-chip.active { border-color: rgba(124, 107, 255, .55); background: rgba(124, 107, 255, .12); color: #C6BFFF; }
+  .pp-chip:disabled { opacity: .35; cursor: not-allowed; }
+  .pp-slider-row { display: flex; align-items: center; gap: 10px; }
+  .pp-range {
+    -webkit-appearance: none; appearance: none; flex: 1; height: 4px; border-radius: 2px; outline: none;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--v, 9%), #262B33 var(--v, 9%), #262B33 100%);
+    cursor: pointer;
+  }
+  .pp-range::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent); cursor: grab; box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
+  }
+  .pp-range::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--accent); cursor: grab;
+  }
+  .pp-val { width: 34px; text-align: right; font-family: var(--mono); font-size: 11px; color: #C6BFFF; }
+
+  /* 右键菜单 */
+  .ctx-menu { width: 100%; max-width: 250px; background: var(--panel-3); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; box-shadow: 0 18px 40px rgba(0, 0, 0, .5); }
+  .ctx-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 8px;
+    border: 0; border-radius: 6px; background: transparent; color: #C9CDD5; font-size: 11px; text-align: left;
+  }
+  .ctx-item:hover { background: rgba(124, 107, 255, .13); color: #fff; }
+  .ctx-item .ic { width: 14px; text-align: center; color: var(--muted); font-size: 11px; }
+  .ctx-item .tip { margin-left: auto; font-size: 9px; color: var(--faint); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+
+  /* 检查器收起态 */
+  .collapsed-demo { position: relative; height: 168px; border: 1px dashed var(--border-strong); border-radius: 10px; overflow: hidden;
+    background-image: radial-gradient(circle, #1D2128 1px, transparent 1px); background-size: 18px 18px; }
+  .collapse-btn {
+    position: absolute; right: 40px; top: 10px; height: 24px; padding: 0 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: rgba(17, 19, 23, .92); color: var(--muted); font-size: 10px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .collapse-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .right-strip {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 34px;
+    background: var(--panel); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 9px;
+  }
+  .right-strip .strip-label { writing-mode: vertical-rl; font-size: 10px; letter-spacing: 2px; color: var(--faint); }
+  .right-strip .icon-btn { width: 22px; height: 22px; border-radius: 5px; }
+
+  /* 优化结果浮层 */
+  .opt-pop { width: 320px; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; box-shadow: 0 18px 40px rgba(0, 0, 0, .5); }
+  .opt-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 10.5px; color: #C9CDD5; }
+  .opt-head .spark { color: #C6BFFF; }
+  .opt-body { padding: 9px 10px; font-family: var(--mono); font-size: 10px; line-height: 1.65; color: #C4C9D2; background: #0F1116; max-height: 96px; overflow: hidden; }
+  .opt-foot { display: flex; align-items: center; gap: 5px; padding: 8px 10px; }
+  .opt-foot .btn { height: 24px; padding: 0 8px; font-size: 10px; }
+  .opt-foot .btn.primary { margin-left: auto; }
 </style>
 </head>
 <body>
@@ -582,6 +766,11 @@
       <span class="tag">演示</span>
     </div>
 
+    <button class="btn" id="specBtn">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M2.2 6.6h11.6M6 6.6v6.2" stroke="currentColor" stroke-width="1.1"/></svg>
+      v0.2 组件规格
+    </button>
+
     <button class="btn" id="mcpBtn">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 3 2.5 6.5a2.2 2.2 0 0 0 3 3.1l3-3M10 13l3.5-3.5a2.2 2.2 0 0 0-3-3.1l-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
       MCP 接入
@@ -592,7 +781,7 @@
       新建提示词
     </button>
 
-    <div class="review-badge">设计稿 v0.1 · 待评审</div>
+    <div class="review-badge">设计稿 v0.2 · 待评审</div>
   </header>
 
   <div class="body">
@@ -708,6 +897,8 @@
           上传图片
         </button>
       </div>
+
+      <div class="canvas-hint">画布总览（86% 缩放）· 节点组件规格见顶部「v0.2 组件规格」</div>
 
       <div class="group-label" style="left:24px;top:12px"><span class="gdot"></span><b>分镜组 A</b> 雨夜霓虹 · 3 镜</div>
       <div class="group-label" style="left:24px;top:334px"><span class="gdot g2"></span><b>分镜组 B</b> 地铁站台 · 3 镜</div>
@@ -1115,6 +1306,170 @@
   </div>
 </div>
 
+<!-- ============ v0.2 组件规格 ============ -->
+<div class="modal" id="specModal">
+  <div class="spec-sheet">
+    <div class="spec-head">
+      <div>
+        <h3>UI 设计稿 v0.2 · 组件规格</h3>
+        <div class="sub">镜头节点 320 × 180（16:9）· 节点下方提示词编辑器 · 参数面板 · 右键菜单 · 检查器收起</div>
+      </div>
+      <button class="icon-btn" data-close><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="spec-body">
+      <div class="spec-grid">
+
+        <!-- 镜头节点 + 提示词编辑器 -->
+        <section class="spec-card">
+          <div class="spec-title">镜头节点 <span class="tag-mini">320 × 180 · 16:9</span></div>
+          <div class="spec-desc">只保留标题栏与媒体区，不再有提示词预览与底部操作栏。点击视频不弹窗，点击右上角「⤢ 预览」才打开播放弹窗。</div>
+          <div class="spec-stage">
+            <div>
+              <article class="node static">
+                <div class="node-head">
+                  <span class="shot-no">A-02</span>
+                  <span class="node-title">撑伞回眸</span>
+                  <span class="pill ok">已完成</span>
+                </div>
+                <div class="media">
+                  <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20close%20up%2C%20young%20woman%20holding%20clear%20umbrella%2C%20looking%20back%20over%20shoulder%2C%20rainy%20neon%20city%20bokeh%2C%20night%2C%20cinematic%20lighting%2C%20film%20still&image_size=landscape_16_9" alt="撑伞回眸" />
+                  <div class="veil"></div>
+                  <div class="media-actions">
+                    <button class="media-btn" data-spec-preview>⤢ 预览</button>
+                    <button class="media-btn" onclick="toast('已开始下载成片（设计稿演示）')">↓</button>
+                  </div>
+                  <button class="play" aria-label="播放">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff"/></svg>
+                  </button>
+                  <span class="dur">5.0s</span>
+                </div>
+              </article>
+
+              <div class="pe">
+                <div class="pe-bar">
+                  <button class="pe-tool">＋ 上传</button>
+                  <button class="pe-tool">▣ 画布参考</button>
+                  <button class="pe-tool">@ 图片</button>
+                  <span class="pe-thumbs"><i>1</i><i>2</i></span>
+                  <button class="pe-icon" title="全屏编辑" data-spec-fullscreen>⤢</button>
+                </div>
+                <div class="pe-input">女主撑透明伞回头，浅景深，<span class="at">@图片1</span> 的脸部特征，霓虹灯牌虚化，雨丝可见，缓慢回眸<span class="ph">｜</span></div>
+                <div class="pe-foot">
+                  <select class="pe-select" id="specModel">
+                    <option value="seedance">Seedance 1.0 Pro</option>
+                    <option value="mock">Mock 视频</option>
+                  </select>
+                  <button class="pe-params" id="peParams">16:9 · 720P · 5s</button>
+                  <button class="pe-opt" title="一键优化提示词" onclick="toast('AI 优化完成：结果见下方「提示词优化结果」')">✦</button>
+                  <button class="pe-send" title="发送并重新生成">↑</button>
+                </div>
+              </div>
+              <div class="spec-note" style="width:320px">编辑器与节点同宽、整体 16:9；默认无进度条，播放后才出现；⌘/Ctrl + Enter 发送。</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 参数面板 -->
+        <section class="spec-card">
+          <div class="spec-title">参数面板 <span class="tag-mini">模型 · 比例 · 清晰度 · 时长</span></div>
+          <div class="spec-desc">点击编辑器底部「16:9 · 720P · 5s」展开；清晰度与模型绑定，切换模型时非法值自动回退 720P。</div>
+          <div class="spec-stage">
+            <div class="pp">
+              <div class="pp-block">
+                <div class="pp-label">比例</div>
+                <div class="pp-ratio-grid">
+                  <button class="pp-ratio active" data-ratio="16:9"><span class="pp-box r169"></span>16:9</button>
+                  <button class="pp-ratio" data-ratio="9:16"><span class="pp-box r916"></span>9:16</button>
+                  <button class="pp-ratio" data-ratio="1:1"><span class="pp-box r11"></span>1:1</button>
+                  <button class="pp-ratio" data-ratio="4:3"><span class="pp-box r43"></span>4:3</button>
+                  <button class="pp-ratio" data-ratio="3:4"><span class="pp-box r34"></span>3:4</button>
+                  <button class="pp-ratio" data-ratio="21:9"><span class="pp-box r219"></span>21:9</button>
+                </div>
+              </div>
+              <div class="pp-block">
+                <div class="pp-label">清晰度 <span class="link">随模型联动</span></div>
+                <div class="pp-res">
+                  <button class="pp-chip" data-res="480P">480P</button>
+                  <button class="pp-chip active" data-res="720P">720P</button>
+                  <button class="pp-chip" data-res="1080P">1080P</button>
+                  <button class="pp-chip" data-res="4K">4K</button>
+                </div>
+              </div>
+              <div class="pp-block">
+                <div class="pp-label">视频时长 <span class="link">4–15s</span></div>
+                <div class="pp-slider-row">
+                  <input class="pp-range" id="ppRange" type="range" min="4" max="15" step="1" value="5" style="--v:9%" />
+                  <span class="pp-val" id="ppDur">5s</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="spec-note">Mock 视频仅 480P / 720P；Seedance 1.0 Pro 支持 480P / 720P / 1080P / 4K。变更即保存，不触发重新生成。</div>
+        </section>
+
+        <!-- 右键菜单 -->
+        <section class="spec-card">
+          <div class="spec-title">画布右键菜单 <span class="tag-mini">8 项</span></div>
+          <div class="spec-desc">画布空白处右键唤起，在落点处创建节点；导演台 / 智能剪辑 / 音频为后续版本占位。</div>
+          <div class="spec-stage">
+            <div class="ctx-menu">
+              <button class="ctx-item"><span class="ic">T</span>文本</button>
+              <button class="ctx-item"><span class="ic">✎</span>脚本<span class="tip">AI 生成分镜</span></button>
+              <button class="ctx-item"><span class="ic">▣</span>图片<span class="tip">文生图</span></button>
+              <button class="ctx-item"><span class="ic">▶</span>视频<span class="tip">新建镜头</span></button>
+              <div class="ctx-sep"></div>
+              <button class="ctx-item"><span class="ic">◫</span>导演台<span class="tip">占位</span></button>
+              <button class="ctx-item"><span class="ic">✂</span>智能剪辑<span class="tip">占位</span></button>
+              <button class="ctx-item"><span class="ic">♪</span>音频<span class="tip">占位</span></button>
+              <div class="ctx-sep"></div>
+              <button class="ctx-item"><span class="ic">＋</span>添加资源<span class="tip">上传文件</span></button>
+            </div>
+          </div>
+          <div class="spec-note">脚本节点可把 AI 生成的分镜「加入画布」；图片节点可从右侧圆点拖线到镜头作为参考图。</div>
+        </section>
+
+        <!-- 检查器收起 -->
+        <section class="spec-card">
+          <div class="spec-title">检查器收起 <span class="tag-mini">localStorage 记忆</span></div>
+          <div class="spec-desc">检查器右上角「»」收起到右侧边缘，画布右上角出现「« 详情」重新展开；检查器内提示词只读。</div>
+          <div class="spec-stage">
+            <div class="collapsed-demo" style="width:100%">
+              <button class="collapse-btn">« 详情</button>
+              <div class="right-strip">
+                <button class="icon-btn" title="展开检查器">»</button>
+                <span class="strip-label">节点详情</span>
+              </div>
+            </div>
+          </div>
+          <div class="spec-note">提示词编辑已移到节点下方内联编辑器，检查器只保留状态、参数与操作。</div>
+        </section>
+
+        <!-- 优化结果 + 全屏 + 冲突 -->
+        <section class="spec-card wide">
+          <div class="spec-title">提示词优化与全屏 <span class="tag-mini">✦ / ⤢</span></div>
+          <div class="spec-desc">点击 ✦ 调用 AI 优化提示词，结果浮层提供复制 / 关闭 / 重新生成 / 填充到输入框；填充只写入编辑框，不自动提交。</div>
+          <div class="spec-stage" style="justify-content:flex-start; gap:18px; align-items:flex-start">
+            <div class="opt-pop">
+              <div class="opt-head"><span class="spark">✦</span>优化结果</div>
+              <div class="opt-body">女主回眸特写，透明伞面挂满雨珠，浅景深虚化霓虹灯牌，雨丝斜落，冷调霓虹与暖调肤色对比，缓慢回眸，电影级色彩，35mm 胶片颗粒。</div>
+              <div class="opt-foot">
+                <button class="btn sm" onclick="toast('已复制优化结果')">复制</button>
+                <button class="btn sm" onclick="toast('正在重新生成优化结果…')">↻ 重新生成</button>
+                <button class="btn sm primary" onclick="toast('已填充到输入框（未发送）')">填充到输入框</button>
+              </div>
+            </div>
+            <div class="spec-note" style="margin-top:0; max-width:280px">
+              全屏编辑：编辑器右上角 ⤢ 打开约 1040 × 82vh 浮层，保留模型、比例、清晰度、时长与 @ 图片，Esc / 遮罩关闭。<br><br>
+              保存冲突：多标签页 / 多实例保存返回 409，提示「画布已在其他窗口更新」并自动同步最新布局。
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1351,6 +1706,46 @@
 
   // 复制
   $$('[data-copy]').forEach((b) => b.addEventListener('click', () => toast('提示词已复制')));
+
+  // ---------- v0.2 组件规格 ----------
+  const SPEC = { model: 'seedance', ratio: '16:9', res: '720P', dur: 5 };
+  const SPEC_RES = { seedance: ['480P', '720P', '1080P', '4K'], mock: ['480P', '720P'] };
+
+  function syncSpecParams() {
+    $$('.pp-chip').forEach((c) => {
+      c.disabled = !SPEC_RES[SPEC.model].includes(c.dataset.res);
+      c.classList.toggle('active', c.dataset.res === SPEC.res);
+    });
+    $$('.pp-ratio').forEach((r) => r.classList.toggle('active', r.dataset.ratio === SPEC.ratio));
+    const range = $('#ppRange');
+    if (range) {
+      range.value = SPEC.dur;
+      range.style.setProperty('--v', (((SPEC.dur - 4) / 11) * 100).toFixed(1) + '%');
+    }
+    $('#ppDur').textContent = SPEC.dur + 's';
+    $('#peParams').textContent = SPEC.ratio + ' · ' + SPEC.res + ' · ' + SPEC.dur + 's';
+  }
+
+  $('#specBtn').addEventListener('click', () => $('#specModal').classList.add('show'));
+  $('#specModel').addEventListener('change', (e) => {
+    SPEC.model = e.target.value;
+    if (!SPEC_RES[SPEC.model].includes(SPEC.res)) SPEC.res = '720P';
+    syncSpecParams();
+    toast(SPEC.model === 'mock' ? 'Mock 视频仅支持 480P / 720P，已回退 720P' : '已切换 Seedance 1.0 Pro');
+  });
+  $$('.pp-ratio').forEach((b) => b.addEventListener('click', () => { SPEC.ratio = b.dataset.ratio; syncSpecParams(); }));
+  $$('.pp-chip').forEach((b) => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    SPEC.res = b.dataset.res;
+    syncSpecParams();
+  }));
+  $('#ppRange').addEventListener('input', (e) => { SPEC.dur = Number(e.target.value); syncSpecParams(); });
+  $$('[data-spec-preview]').forEach((b) => b.addEventListener('click', () => {
+    $('#pvTitle').textContent = 'A-02 撑伞回眸';
+    $('#previewModal').classList.add('show');
+  }));
+  $$('[data-spec-fullscreen]').forEach((b) => b.addEventListener('click', () => toast('打开全屏编辑器：约 1040 × 82vh（设计稿演示）')));
+  syncSpecParams();
 
   let toastTimer;
   function toast(msg) {
