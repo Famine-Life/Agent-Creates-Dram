@@ -17,11 +17,13 @@ import com.aigc.video.config.ProviderProperties;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.GenerationTask;
+import com.aigc.video.domain.PromptRecord;
 import com.aigc.video.domain.TaskImageRef;
 import com.aigc.video.domain.Workspace;
 import com.aigc.video.mapper.CanvasImageMapper;
 import com.aigc.video.mapper.CanvasMapper;
 import com.aigc.video.mapper.GenerationTaskMapper;
+import com.aigc.video.mapper.PromptRecordMapper;
 import com.aigc.video.mapper.TaskImageRefMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
 import com.aigc.video.realtime.CanvasEvent;
@@ -63,6 +65,7 @@ public class TaskService {
     private static final double IMAGE_H = 166;
 
     private final GenerationTaskMapper taskMapper;
+    private final PromptRecordMapper promptRecordMapper;
     private final CanvasImageMapper imageMapper;
     private final TaskImageRefMapper refMapper;
     private final CanvasMapper canvasMapper;
@@ -94,6 +97,14 @@ public class TaskService {
         );
     }
 
+    public List<PromptRecord> listPromptRecords(Long workspaceId) {
+        requireCanvas(workspaceId);
+        return promptRecordMapper.selectList(Wrappers.<PromptRecord>lambdaQuery()
+                .eq(PromptRecord::getWorkspaceId, workspaceId)
+                .orderByDesc(PromptRecord::getId)
+                .last("LIMIT 200"));
+    }
+
     // ---------------------------------------------------------------- 镜头任务
 
     @Transactional
@@ -115,6 +126,7 @@ public class TaskService {
         if (existing != null) {
             log.info("幂等命中，复用任务 id={}", existing.getId());
             attachImages(existing, resolveImages(workspaceId, canvas.getId(), request));
+            recordPrompt(workspaceId, existing.getId(), request.prompt());
             return node(existing.getId());
         }
 
@@ -140,6 +152,7 @@ public class TaskService {
         taskMapper.insert(task);
 
         attachImages(task, resolveImages(workspaceId, canvas.getId(), request));
+        recordPrompt(workspaceId, task.getId(), request.prompt());
 
         TaskNode node = node(task.getId());
         socketRegistry.broadcast(workspaceId, CanvasEvent.of("node.created", node));
@@ -204,11 +217,21 @@ public class TaskService {
                 normalizeResolution(request.resolution() == null || request.resolution().isBlank()
                         ? task.getResolution() : request.resolution(), model));
         taskMapper.update(null, update);
+        recordPrompt(task.getWorkspaceId(), taskId, request.prompt());
         if (request.regenerate() == null || request.regenerate()) {
             resetForRegenerate(taskId);
         }
         broadcastTask("node.updated", taskId);
         return node(taskId);
+    }
+
+    private void recordPrompt(Long workspaceId, Long taskId, String prompt) {
+        PromptRecord record = new PromptRecord();
+        record.setWorkspaceId(workspaceId);
+        record.setTaskId(taskId);
+        record.setPrompt(prompt.trim());
+        record.setCreatedAt(LocalDateTime.now());
+        promptRecordMapper.insert(record);
     }
 
     @Transactional

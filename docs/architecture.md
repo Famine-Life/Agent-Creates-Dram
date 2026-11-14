@@ -1,6 +1,6 @@
 # AIGC 视频画布工作台 · 架构设计
 
-> 版本：v0.2 ｜ 更新日期：2026-11-14
+> 版本：v0.2 ｜ 更新日期：2026-11-15
 > 关联文档：[产品设计](./product-design.md) ｜ [UI 稿](./ui-mockup.html) ｜ [变更记录](./task-records/)
 >
 > v0.2 更新：画布节点（文本 / 脚本 / 图片 / 视频）、AI 脚本 / 图片 / 提示词优化、生成参数（模型 / 比例 / 清晰度 / 时长）、Redis Pub/Sub 可选广播、画布快照乐观锁。
@@ -88,7 +88,7 @@
 | `storage` | `AssetStorage`、`LocalAssetStorage`、`MinioAssetStorage`、`AssetService` | 上传落盘、远端产物转存 |
 | `realtime` | `CanvasWebSocketHandler`、`CanvasSocketRegistry`、`CanvasEvent`、`CanvasEventRelay`、`RedisCanvasEventRelay`、`RedisCanvasSubscriber` | WebSocket 会话管理；可选 Redis Pub/Sub 跨实例广播 |
 | `mapper` | 各 `*Mapper`（MyBatis-Plus） | 数据访问 |
-| `domain` | `Workspace`、`Canvas`、`GenerationTask`、`CanvasImage`、`CanvasNode`、`TaskImageRef` | 表实体 |
+| `domain` | `Workspace`、`Canvas`、`GenerationTask`、`PromptRecord`、`CanvasImage`、`CanvasNode`、`TaskImageRef` | 表实体 |
 | `config` | `SecurityConfig`、`SecurityProperties`、`McpAuthenticationFilter`、`SessionConfig`、`WebSocketConfig`、`WebConfig`、`McpToolConfig` | Session/CSRF、MCP Token、多实例 Session、同源与跨域限制、WS 注册、`/files` 静态映射、MCP 工具注册 |
 | `common` | `BadRequestException`、`NotFoundException`、`ConflictException` | 业务异常 |
 
@@ -97,9 +97,10 @@
 ```text
 MCP push_shot ─┐
 REST POST shots┴─► TaskService.createShot
-                     │ 1. 计算 idemKey，命中则直接返回已有节点
+                     │ 1. 计算 idemKey，命中则复用已有节点
                      │ 2. insert generation_task(status=QUEUED)
-                     │ 3. 绑定参考图 task_image_ref（可选）并广播 edge.created
+                     │ 3. 每次提交均 insert prompt_record（含幂等命中）
+                     │ 4. 绑定参考图 task_image_ref（可选）并广播 edge.created
                      └─► 广播 node.created（画布立刻长卡片）
 TaskDispatcher.tick（默认 800ms）
    ├─ submitQueued：CAS QUEUED→SUBMITTED，provider.submit()，记录 providerTaskId
@@ -116,6 +117,7 @@ TaskDispatcher.tick（默认 800ms）
               └─► POST /nodes/{id}/script ─► AiService.chat ─► 分镜列表 ─► 加入画布（createStoryboard）
 右键菜单 ─► POST /images/ai ─► AiService.generateImage ─► canvas_image(status=SUCCEEDED) ─► image.created
 提示词编辑器 ─► PUT /tasks/{id}/prompt
+              ├─ 每次修改均写入 prompt_record
               ├─ regenerate=false：只保存 prompt / model / ratio / resolution / duration
               └─ regenerate=true：resetForRegenerate → 重新入队
 提示词优化 ─► POST /ai/prompt/optimize ─► AiService.optimizePrompt ─► 返回文本，不落库
@@ -155,6 +157,7 @@ TaskDispatcher.tick（默认 800ms）
 | `canvas` | `workspace_id`、`version`、`snapshot`、`updated_at` | 画布快照；`version` 用于多标签页 / 多实例乐观锁 |
 | `canvas_node` | `workspace_id`、`type`、`title`、`prompt`、`content`、`status`、`error_msg`、`x`、`y`、`width`、`height` | 文本 / 脚本节点 |
 | `generation_task` | `group_id`、`shot_index`、`prompt`、`provider`、`model`、`ratio`、`resolution`、`duration`、`provider_task_id`、`status`、`progress`、`video_url`、`poll_count`、`idem_key`、`next_poll_at` | 视频节点（一条提示词一行） |
+| `prompt_record` | `workspace_id`、`task_id`、`prompt`、`created_at` | 镜头提示词提交 / 修改历史；REST、CLI、MCP 统一记录，幂等重复提交也保留 |
 | `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height`、`prompt`、`status`、`error_msg`、`provider`、`source` | 画布图片节点（`source` 区分 `UPLOAD` 上传 / `AI` 生成） |
 | `task_image_ref` | `task_id`、`image_id`、`sort_index`、`UNIQUE(task_id,image_id)` | 图片→镜头引用，一行 = 画布一条连线 |
 
@@ -291,6 +294,7 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | POST | `/api/auth/login` | 表单字段 username/password，需 CSRF |
 | POST | `/api/auth/logout` | 退出并销毁 Session，需 CSRF |
 | GET | `/api/canvas/{workspaceId}` | 画布全量状态（含 version、nodes） |
+| GET | `/api/canvas/{workspaceId}/prompt-records` | 最近 200 条镜头提示词记录，按时间倒序 |
 | POST | `/api/canvas/{workspaceId}/shots` | 新建镜头（支持 model / ratio / resolution / duration） |
 | POST | `/api/canvas/{workspaceId}/storyboards` | 批量新建分镜 |
 | PUT | `/api/canvas/{workspaceId}/snapshot` | 保存坐标/视口；`baseVersion` 冲突返回 409 |

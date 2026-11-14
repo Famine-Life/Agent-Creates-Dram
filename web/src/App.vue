@@ -11,6 +11,7 @@ import NewShotDialog from './components/NewShotDialog.vue'
 import PreviewDialog from './components/PreviewDialog.vue'
 import McpDialog from './components/McpDialog.vue'
 import AssetDialog from './components/AssetDialog.vue'
+import PromptRecordDialog from './components/PromptRecordDialog.vue'
 import UsageGuide from './components/UsageGuide.vue'
 import ShotNode from './components/ShotNode.vue'
 import ImageNode from './components/ImageNode.vue'
@@ -72,6 +73,7 @@ const edges = ref([])
 const showNewShot = ref(false)
 const showMcp = ref(false)
 const showAssets = ref(false)
+const showPromptRecords = ref(false)
 const showGuide = ref(false)
 const fileInput = ref(null)
 const dragging = ref(false)
@@ -752,6 +754,7 @@ onBeforeUnmount(() => {
       <div class="topbar-actions">
         <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="onToolbarUpload" />
         <button class="btn ghost" @click="showAssets = true">资产管理</button>
+        <button class="btn ghost" @click="showPromptRecords = true">提示词记录</button>
         <button class="btn ghost" @click="fileInput.click()">上传图片</button>
         <button class="btn ghost" @click="showMcp = true">MCP 接入</button>
         <button class="btn ghost" @click="showGuide = true">使用说明</button>
@@ -859,6 +862,7 @@ onBeforeUnmount(() => {
     />
     <McpDialog v-if="showMcp" @close="showMcp = false" />
     <AssetDialog v-if="showAssets" @close="showAssets = false" />
+    <PromptRecordDialog v-if="showPromptRecords" @close="showPromptRecords = false" />
     <UsageGuide v-if="showGuide" @close="showGuide = false" />
     <PreviewDialog v-if="state.previewTask" :task="state.previewTask" @close="state.previewTask = null" />
 

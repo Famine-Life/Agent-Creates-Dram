@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS generation_task (
     KEY idx_task_poll (status, next_poll_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
+CREATE TABLE IF NOT EXISTS prompt_record (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    workspace_id BIGINT   NOT NULL,
+    task_id      BIGINT   NOT NULL,
+    prompt       LONGTEXT NOT NULL,
+    created_at   DATETIME NULL,
+    KEY idx_prompt_record_ws (workspace_id),
+    KEY idx_prompt_record_task (task_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
 CREATE TABLE IF NOT EXISTS canvas_image (
     id           BIGINT AUTO_INCREMENT PRIMARY KEY,
     workspace_id BIGINT        NOT NULL,

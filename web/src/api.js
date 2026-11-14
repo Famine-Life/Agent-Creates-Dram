@@ -33,6 +33,7 @@ export const api = {
   logout: () => http.post('/auth/logout'),
   meta: () => http.get('/meta'),
   canvas: (workspaceId) => http.get(`/canvas/${workspaceId}`),
+  promptRecords: (workspaceId) => http.get(`/canvas/${workspaceId}/prompt-records`),
   createShot: (workspaceId, body) => http.post(`/canvas/${workspaceId}/shots`, body),
   createStoryboard: (workspaceId, body) => http.post(`/canvas/${workspaceId}/storyboards`, body),
   savePrompt: (taskId, body) => http.put(`/tasks/${taskId}/prompt`, body),

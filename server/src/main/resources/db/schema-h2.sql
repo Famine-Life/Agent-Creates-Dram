@@ -40,6 +40,18 @@ CREATE TABLE IF NOT EXISTS generation_task (
 CREATE INDEX IF NOT EXISTS idx_task_ws   ON generation_task (workspace_id);
 CREATE INDEX IF NOT EXISTS idx_task_poll ON generation_task (status, next_poll_at);
 
+-- 镜头提示词提交历史（REST / CLI / MCP 统一在业务层记录）
+CREATE TABLE IF NOT EXISTS prompt_record (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    workspace_id BIGINT NOT NULL,
+    task_id      BIGINT NOT NULL,
+    prompt       CLOB   NOT NULL,
+    created_at   TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_record_ws   ON prompt_record (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_record_task ON prompt_record (task_id);
+
 -- 画布上的图片节点（参考图）
 CREATE TABLE IF NOT EXISTS canvas_image (
     id           BIGINT AUTO_INCREMENT PRIMARY KEY,

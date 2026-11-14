@@ -15,6 +15,7 @@ import com.aigc.video.api.dto.SnapshotRequest;
 import com.aigc.video.api.dto.StoryboardRequest;
 import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.ai.AiService;
+import com.aigc.video.domain.PromptRecord;
 import com.aigc.video.task.CanvasNodeService;
 import com.aigc.video.task.TaskService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,11 @@ public class CanvasController {
     @GetMapping
     public CanvasState state(@PathVariable Long workspaceId) {
         return taskService.getCanvas(workspaceId);
+    }
+
+    @GetMapping("/prompt-records")
+    public List<PromptRecord> promptRecords(@PathVariable Long workspaceId) {
+        return taskService.listPromptRecords(workspaceId);
     }
 
     @PostMapping("/shots")
