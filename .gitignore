@@ -1,0 +1,25 @@
+# Java / Maven
+server/target/
+*.class
+*.log
+
+# 本地数据库与上传文件
+server/data/
+
+# Node / 前端构建
+web/node_modules/
+web/dist/
+
+# 环境与 IDE
+.env
+.env.*
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# 工具产物（非源码）
+/META-INF/
+/org/
+.screenshots/
+.trae-html-share-packages/

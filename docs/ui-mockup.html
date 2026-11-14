@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AIGC 视频画布 · UI 设计稿 v0.1</title>
+<style>
+  :root {
+    --bg: #0A0B0D;
+    --panel: #111317;
+    --panel-2: #171A1F;
+    --panel-3: #1C2027;
+    --border: #24282F;
+    --border-strong: #333944;
+    --text: #E9EBEF;
+    --muted: #8D939E;
+    --faint: #5F6672;
+    --accent: #7C6BFF;
+    --accent-soft: rgba(124, 107, 255, .14);
+    --success: #46D39A;
+    --warn: #F0B429;
+    --danger: #F2555A;
+    --info: #6EA8FE;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  button { font-family: inherit; cursor: pointer; }
+  ::selection { background: rgba(124, 107, 255, .35); }
+
+  .app { height: 100vh; display: flex; flex-direction: column; min-width: 1240px; }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar {
+    height: 56px; flex: 0 0 56px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: relative; z-index: 20;
+  }
+
+  .logo { display: flex; align-items: center; gap: 9px; padding-right: 8px; }
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 9px;
+    background: var(--accent);
+    display: grid; place-items: center;
+    box-shadow: 0 4px 14px rgba(124, 107, 255, .35);
+  }
+  .logo-mark svg { display: block; }
+  .logo-name { font-size: 13.5px; font-weight: 650; letter-spacing: .2px; }
+  .logo-sub { font-size: 11px; color: var(--faint); margin-top: -1px; }
+
+  .divider-v { width: 1px; height: 22px; background: var(--border); }
+
+  .ws-chip {
+    display: flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 10px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 12px; color: #C9CDD5;
+  }
+  .ws-chip .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .ws-chip svg { opacity: .55; }
+
+  .top-spacer { flex: 1; }
+
+  .conn {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--muted);
+    padding: 5px 9px; border-radius: 7px;
+  }
+  .conn .live { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px rgba(70, 211, 154, .14); }
+
+  .provider {
+    display: flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 9px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 11.5px; color: #C9CDD5;
+  }
+  .provider b { font-weight: 600; color: var(--text); }
+  .provider .tag { font-size: 10px; color: var(--warn); background: rgba(240, 180, 41, .12); padding: 1px 5px; border-radius: 4px; }
+
+  .btn {
+    height: 32px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    font-size: 12px; display: inline-flex; align-items: center; gap: 6px;
+    transition: background .15s, border-color .15s, transform .1s;
+  }
+  .btn:hover { background: #1E222A; border-color: var(--border-strong); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 4px 16px rgba(124, 107, 255, .28); }
+  .btn.primary:hover { background: #8B7BFF; border-color: #8B7BFF; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 27px; padding: 0 9px; font-size: 11.5px; border-radius: 7px; }
+  .btn.danger { color: var(--danger); border-color: rgba(242, 85, 90, .3); background: rgba(242, 85, 90, .08); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .review-badge {
+    font-size: 10.5px; color: #C6BFFF; background: rgba(124, 107, 255, .12);
+    border: 1px dashed rgba(124, 107, 255, .45); padding: 3px 8px; border-radius: 999px;
+  }
+
+  /* ---------- 三栏 ---------- */
+  .body { flex: 1; display: grid; grid-template-columns: 272px 1fr 312px; min-height: 0; }
+
+  /* ---------- 左侧提示词面板 ---------- */
+  .left {
+    background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .panel-head { padding: 12px 12px 8px; display: flex; align-items: center; gap: 8px; }
+  .panel-title { font-size: 12.5px; font-weight: 650; }
+  .count { font-size: 10.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
+  .icon-btn {
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); display: grid; place-items: center;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+  .search {
+    margin: 2px 12px 8px; height: 30px; display: flex; align-items: center; gap: 7px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 0 9px;
+  }
+  .search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11.5px; }
+  .search input::placeholder { color: var(--faint); }
+
+  .filters { display: flex; gap: 4px; padding: 0 12px 8px; }
+  .chip {
+    height: 25px; padding: 0 9px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); font-size: 11px;
+  }
+  .chip:hover { background: var(--panel-2); color: #C9CDD5; }
+  .chip.active { background: rgba(124, 107, 255, .13); border-color: rgba(124, 107, 255, .35); color: #BDB4FF; }
+
+  .prompt-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+  .prompt-list::-webkit-scrollbar { width: 6px; }
+  .prompt-list::-webkit-scrollbar-thumb { background: #262B33; border-radius: 3px; }
+
+  .group-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; color: var(--faint); letter-spacing: .3px;
+    padding: 10px 4px 6px; text-transform: uppercase;
+  }
+  .group-head .gdot { width: 5px; height: 5px; border-radius: 50%; background: #7C6BFF; }
+  .group-head .gdot.g2 { background: #4FB3D9; }
+  .group-head .muted { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+  .prompt-item {
+    width: 100%; display: flex; align-items: flex-start; gap: 8px; text-align: left;
+    padding: 8px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: var(--text); margin-bottom: 2px;
+  }
+  .prompt-item:hover { background: var(--panel-2); }
+  .prompt-item.active { background: var(--accent-soft); border-color: rgba(124, 107, 255, .38); }
+  .pi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+  .pi-title { display: block; max-width: 100%; font-size: 12px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pi-sub { display: block; max-width: 100%; font-size: 10.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; margin-top: 5px; background: var(--faint); }
+  .dot.ok { background: var(--success); }
+  .dot.run { background: var(--warn); box-shadow: 0 0 0 3px rgba(240, 180, 41, .12); }
+  .dot.fail { background: var(--danger); }
+
+  .mcp-card {
+    margin: 8px 12px 12px; padding: 10px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .mcp-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .mcp-row .dot { margin: 0; width: 6px; height: 6px; flex-basis: 6px; }
+  .mcp-name { font-weight: 600; font-size: 11.5px; }
+  .mcp-endpoint { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin: 6px 0 8px; }
+  .mcp-card .btn { width: 100%; justify-content: center; }
+
+  /* ---------- 画布 ---------- */
+  .canvas {
+    position: relative; overflow: hidden; min-width: 0;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, #1D2128 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: -1px -1px;
+  }
+
+  .canvas-toolbar {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 2px;
+    background: rgba(17, 19, 23, .92); border: 1px solid var(--border);
+    border-radius: 9px; padding: 3px; backdrop-filter: blur(8px); z-index: 6;
+  }
+  .tool {
+    height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .tool:hover { background: var(--panel-3); color: var(--text); }
+  .tool.active { background: var(--panel-3); color: var(--text); }
+
+  .group-label {
+    position: absolute; z-index: 4;
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--muted);
+    background: rgba(17, 19, 23, .86); border: 1px solid var(--border);
+    padding: 4px 9px; border-radius: 7px;
+  }
+  .group-label b { color: #C9CDD5; font-weight: 600; }
+  .group-label .gdot { width: 6px; height: 6px; border-radius: 50%; background: #7C6BFF; }
+  .group-label .gdot.g2 { background: #4FB3D9; }
+
+  .edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+
+  /* ---------- 节点卡片 ---------- */
+  .node {
+    position: absolute; z-index: 3; width: 260px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; text-align: left;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .32);
+    transition: border-color .16s, box-shadow .16s, opacity .2s, transform .16s;
+    cursor: pointer;
+  }
+  .node:hover { border-color: #3A404B; transform: translateY(-1px); }
+  .node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(124, 107, 255, .45), 0 14px 34px rgba(0, 0, 0, .5); }
+  .node.dim { opacity: .22; filter: saturate(.3); }
+
+  /* ---------- 图片节点与连线 ---------- */
+  .node.img-node { width: 148px; height: 166px; overflow: visible; }
+  .img-thumb { position: relative; height: 110px; background: #0E1014; border-radius: 13px 13px 0 0; overflow: hidden; }
+  .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .img-idx {
+    position: absolute; left: 5px; top: 5px; padding: 1px 5px; border-radius: 4px;
+    background: rgba(8, 9, 11, .82); color: #fff; font-family: var(--mono); font-size: 9px;
+  }
+  .img-foot { padding: 7px 8px; }
+  .img-name { font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .img-meta { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 9.5px; color: var(--faint); }
+  .port {
+    position: absolute; right: -5px; top: 55px; z-index: 4;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px rgba(124, 107, 255, .65);
+    cursor: crosshair;
+  }
+  .port:hover { background: #fff; box-shadow: 0 0 0 3px rgba(124, 107, 255, .3); }
+  .edge { fill: none; stroke: rgba(124, 107, 255, .5); stroke-width: 1.4; stroke-dasharray: 4 4; pointer-events: stroke; }
+  .edge.alt { stroke: rgba(79, 179, 217, .45); }
+  .edge.hot { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+  .edge-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+
+  .node-head { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 10px; cursor: grab; }
+  .node-head:active { cursor: grabbing; }
+  .shot-no {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; white-space: nowrap;
+  }
+  .node-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .pill { font-size: 10px; padding: 2.5px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+  .pill.ok { color: var(--success); background: rgba(70, 211, 154, .12); border-color: rgba(70, 211, 154, .24); }
+  .pill.run { color: var(--warn); background: rgba(240, 180, 41, .12); border-color: rgba(240, 180, 41, .26); }
+  .pill.fail { color: var(--danger); background: rgba(242, 85, 90, .12); border-color: rgba(242, 85, 90, .26); }
+  .pill.idle { color: var(--muted); background: #1A1D23; border-color: #2A2F38; }
+  .pill.info { color: var(--info); background: rgba(110, 168, 254, .12); border-color: rgba(110, 168, 254, .26); }
+
+  .media { position: relative; height: 146px; background: #0E1014; overflow: hidden; }
+  .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .media .veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 9, 11, .05) 0%, rgba(8, 9, 11, .55) 100%); }
+
+  .play {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, .35);
+    background: rgba(12, 14, 17, .55); backdrop-filter: blur(6px);
+    color: #fff; display: grid; place-items: center;
+  }
+  .play:hover { background: var(--accent); border-color: var(--accent); }
+  .dur {
+    position: absolute; right: 7px; bottom: 7px;
+    font-family: var(--mono); font-size: 9.5px; color: #DDE1E8;
+    background: rgba(8, 9, 11, .7); border-radius: 4px; padding: 1px 5px;
+  }
+
+  .node-body { padding: 9px 10px 10px; }
+  .node-prompt {
+    margin: 0; font-family: var(--mono); font-size: 10.5px; line-height: 1.45; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 30px;
+  }
+
+  .progressbar { height: 3px; background: #1E222A; border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .progressbar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+  .node-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-size: 10px; color: var(--faint); }
+  .node-meta .pct { font-family: var(--mono); color: var(--muted); }
+
+  .ring {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 54px; height: 54px; border-radius: 50%;
+    background: conic-gradient(var(--warn) calc(var(--p) * 1%), rgba(255, 255, 255, .14) 0);
+    display: grid; place-items: center;
+  }
+  .ring::before { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: rgba(10, 11, 13, .82); }
+  .ring span { position: relative; font-family: var(--mono); font-size: 11px; color: #E9EBEF; }
+
+  .skeleton {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, #12151A 0%, #191D24 40%, #12151A 80%);
+    background-size: 220% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+  .queued-note {
+    position: absolute; inset: 0; display: grid; place-items: center; gap: 4px;
+    color: var(--faint); font-size: 11px; text-align: center;
+  }
+
+  .fail-veil {
+    position: absolute; inset: 0; background: rgba(10, 11, 13, .72);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+    text-align: center; padding: 0 18px;
+  }
+  .fail-veil .err { font-size: 10.5px; color: #F2A0A3; line-height: 1.4; }
+  .fail-veil .retry {
+    height: 24px; padding: 0 9px; border-radius: 6px; font-size: 10.5px;
+    border: 1px solid rgba(242, 85, 90, .35); background: rgba(242, 85, 90, .14); color: #FF9A9D;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  /* ---------- 画布控件 ---------- */
+  .zoom {
+    position: absolute; left: 14px; bottom: 14px; z-index: 6;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: rgba(17, 19, 23, .92); border: 1px solid var(--border); border-radius: 9px;
+  }
+  .zoom button {
+    width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); display: grid; place-items: center; font-size: 14px;
+  }
+  .zoom button:hover { background: var(--panel-3); color: var(--text); }
+  .zoom .lvl { font-family: var(--mono); font-size: 10.5px; color: var(--muted); padding: 0 6px; }
+
+  .minimap {
+    position: absolute; right: 14px; bottom: 14px; z-index: 6;
+    width: 178px; height: 106px; border-radius: 9px;
+    background: rgba(14, 16, 20, .94); border: 1px solid var(--border);
+    padding: 6px; overflow: hidden;
+  }
+  .minimap .mm-grid { position: relative; width: 100%; height: 100%; background-image: radial-gradient(circle, #22262D 1px, transparent 1px); background-size: 10px 10px; }
+  .mm-node { position: absolute; border-radius: 2px; background: #2B3038; border: 1px solid #3A404B; }
+  .mm-node.ok { background: rgba(70, 211, 154, .35); border-color: rgba(70, 211, 154, .6); }
+  .mm-node.run { background: rgba(240, 180, 41, .35); border-color: rgba(240, 180, 41, .6); }
+  .mm-node.fail { background: rgba(242, 85, 90, .35); border-color: rgba(242, 85, 90, .6); }
+  .mm-view { position: absolute; inset: 14px 10px; border: 1px solid rgba(124, 107, 255, .55); border-radius: 3px; background: rgba(124, 107, 255, .06); }
+
+  /* ---------- 右侧检查器 ---------- */
+  .right {
+    background: var(--panel); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: 0; overflow-y: auto;
+  }
+  .right::-webkit-scrollbar { width: 6px; }
+  .right::-webkit-scrollbar-thumb { background: #262B33; border-radius: 3px; }
+
+  .insp-head { display: flex; align-items: flex-start; gap: 8px; padding: 13px 14px 10px; border-bottom: 1px solid var(--border); }
+  .eyebrow { font-size: 10px; color: var(--faint); letter-spacing: .6px; text-transform: uppercase; }
+  .insp-title { font-size: 13px; font-weight: 650; margin-top: 3px; }
+  .insp-head .icon-btn { margin-left: auto; }
+
+  .insp-block { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .insp-block:last-of-type { border-bottom: 0; }
+  .insp-status { display: flex; align-items: center; gap: 8px; }
+  .insp-status .time { font-size: 10.5px; color: var(--faint); margin-left: auto; font-family: var(--mono); }
+
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+  .bar { flex: 1; height: 4px; background: #1E222A; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar-row .pct { font-family: var(--mono); font-size: 10.5px; color: var(--muted); width: 30px; text-align: right; }
+
+  .label { font-size: 10px; color: var(--faint); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 7px; }
+
+  .prompt-box {
+    position: relative; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 9px 10px 28px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.6; color: #C4C9D2;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .copy {
+    position: absolute; right: 6px; bottom: 6px; height: 20px; padding: 0 7px;
+    border-radius: 5px; border: 1px solid var(--border); background: var(--panel-3);
+    color: var(--muted); font-size: 9.5px;
+  }
+  .copy:hover { color: var(--text); }
+
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .param { background: var(--panel-2); padding: 7px 9px; }
+  .param .k { font-size: 9.5px; color: var(--faint); }
+  .param .v { font-size: 11px; color: #C9CDD5; margin-top: 2px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .timeline { list-style: none; margin: 0; padding: 0 0 0 2px; }
+  .timeline li { position: relative; padding: 0 0 11px 18px; font-size: 11px; color: var(--muted); }
+  .timeline li::before {
+    content: ""; position: absolute; left: 0; top: 4px; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--panel-3); border: 1px solid var(--border-strong);
+  }
+  .timeline li::after { content: ""; position: absolute; left: 3px; top: 13px; bottom: 0; width: 1px; background: var(--border); }
+  .timeline li:last-child { padding-bottom: 0; }
+  .timeline li:last-child::after { display: none; }
+  .timeline li.done { color: #C9CDD5; }
+  .timeline li.done::before { background: var(--success); border-color: var(--success); }
+  .timeline li.now { color: var(--warn); }
+  .timeline li.now::before { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 0 3px rgba(240, 180, 41, .14); }
+  .timeline li.fail::before { background: var(--danger); border-color: var(--danger); }
+  .timeline li.fail { color: #F2A0A3; }
+  .timeline .t { float: right; font-family: var(--mono); font-size: 9.5px; color: var(--faint); }
+
+  .error-box {
+    display: none; margin-top: 8px; padding: 8px 9px; border-radius: 7px;
+    background: rgba(242, 85, 90, .08); border: 1px solid rgba(242, 85, 90, .25);
+    color: #F2A0A3; font-size: 10.5px; line-height: 1.45;
+  }
+  .error-box.show { display: block; }
+
+  .insp-actions { margin-top: auto; padding: 12px 14px; display: flex; gap: 6px; border-top: 1px solid var(--border); }
+  .insp-actions .btn { flex: 1; justify-content: center; padding: 0 6px; font-size: 11px; }
+
+  .editor { display: none; }
+  .editor.show { display: block; }
+  .editor .textarea { min-height: 88px; font-size: 11px; }
+  .editor-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 7px; }
+
+  /* ---------- 弹层 ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 60; display: none; place-items: center;
+    background: rgba(4, 5, 7, .68); backdrop-filter: blur(3px);
+  }
+  .modal.show { display: grid; }
+  .dialog {
+    width: 520px; max-width: calc(100vw - 40px);
+    background: var(--panel); border: 1px solid var(--border-strong);
+    border-radius: 16px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+    overflow: hidden;
+  }
+  .dialog-head { display: flex; align-items: center; padding: 16px 18px 12px; }
+  .dialog-head h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .dialog-head .sub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+  .dialog-head .icon-btn { margin-left: auto; }
+  .dialog-body { padding: 0 18px 4px; }
+  .field { margin-bottom: 13px; }
+  .field label { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .field label .hint { color: var(--faint); font-size: 10px; }
+  .field label em { color: var(--danger); font-style: normal; }
+  .input, .textarea, .select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 12px; outline: none;
+    font-family: inherit;
+  }
+  .input:focus, .textarea:focus, .select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .textarea { min-height: 104px; resize: vertical; line-height: 1.6; font-family: var(--mono); font-size: 11.5px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tpl-row { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+  .tpl {
+    height: 23px; padding: 0 8px; border-radius: 6px; font-size: 10.5px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .tpl:hover { color: #C9CDD5; border-color: var(--border-strong); }
+  .ref-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ref-thumb { position: relative; width: 56px; height: 56px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ref-thumb .idx {
+    position: absolute; left: 3px; top: 3px; min-width: 14px; height: 14px; padding: 0 3px;
+    border-radius: 4px; background: rgba(8, 9, 11, .82); color: #fff;
+    font-family: var(--mono); font-size: 9px; display: grid; place-items: center;
+  }
+  .ref-thumb .rm {
+    position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; padding: 0;
+    border: 0; border-radius: 4px; background: rgba(8, 9, 11, .82); color: #fff;
+    font-size: 10px; line-height: 1; display: grid; place-items: center; opacity: 0; transition: opacity .15s;
+  }
+  .ref-thumb:hover .rm { opacity: 1; }
+  .ref-add {
+    width: 56px; height: 56px; border-radius: 8px; border: 1px dashed var(--border-strong);
+    background: var(--panel-2); color: var(--muted); font-size: 15px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  }
+  .ref-add span { font-size: 9px; }
+  .ref-add:hover { border-color: var(--accent); color: #BDB4FF; }
+  .mention-row { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 10px; color: var(--faint); flex-wrap: wrap; }
+  .mention {
+    height: 22px; padding: 0 7px; border-radius: 5px; font-size: 10px;
+    border: 1px solid rgba(124, 107, 255, .32); background: rgba(124, 107, 255, .1); color: #C6BFFF;
+  }
+  .mention:hover { background: rgba(124, 107, 255, .2); }
+  .ref-badge {
+    position: absolute; left: 7px; top: 7px; z-index: 2;
+    display: flex; align-items: center; gap: 4px;
+    padding: 2px 6px; border-radius: 5px; font-size: 9px; color: #DDE1E8;
+    background: rgba(8, 9, 11, .72); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(4px);
+  }
+  .ref-strip { display: flex; gap: 6px; }
+  .ref-strip img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); }
+
+  .dialog-foot { display: flex; align-items: center; gap: 8px; padding: 14px 18px 16px; }
+  .dialog-foot .tip { font-size: 10px; color: var(--faint); margin-right: auto; font-family: var(--mono); }
+  .dialog-foot .btn { min-width: 88px; justify-content: center; }
+
+  .preview-dialog { width: 760px; }
+  .preview-media { position: relative; aspect-ratio: 16 / 9; background: #000; }
+  .preview-media img, .preview-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview-media .play { width: 54px; height: 54px; }
+  .preview-meta { display: flex; gap: 14px; padding: 12px 18px 16px; align-items: center; }
+  .preview-meta .name { font-size: 13px; font-weight: 600; }
+  .preview-meta .desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .popover {
+    position: fixed; top: 64px; right: 14px; width: 404px; z-index: 55;
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .55); display: none;
+  }
+  .popover.show { display: block; }
+  .pop-head { padding: 13px 15px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  .pop-head h4 { margin: 0; font-size: 12.5px; }
+  .pop-head .icon-btn { margin-left: auto; }
+  .pop-body { padding: 12px 15px 15px; }
+  .code {
+    background: #0C0E12; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.65;
+    color: #B9C0CC; white-space: pre; overflow-x: auto; margin: 8px 0 10px;
+  }
+  .code .k { color: #9C8CFF; }
+  .code .s { color: #7FD8AE; }
+  .tool-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .tool-item { display: flex; gap: 8px; align-items: baseline; font-size: 10.5px; color: var(--muted); }
+  .tool-item code { font-family: var(--mono); font-size: 10px; color: #C6BFFF; background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+    background: #1E222A; border: 1px solid var(--border-strong); color: var(--text);
+    padding: 8px 14px; border-radius: 9px; font-size: 11.5px; z-index: 90;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .note-line { font-size: 10px; color: var(--faint); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <path d="M4 2.6v10.8l9-5.4-9-5.4Z" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-name">AIGC Studio</div>
+        <div class="logo-sub">视频画布工作台</div>
+      </div>
+    </div>
+
+    <div class="divider-v"></div>
+
+    <div class="ws-chip">
+      <span class="ws-dot"></span>
+      默认工作空间
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="top-spacer"></div>
+
+    <div class="conn"><span class="live"></span>实时通道已连接</div>
+
+    <div class="provider">
+      供应商 <b>Mock</b>
+      <span class="tag">演示</span>
+    </div>
+
+    <button class="btn" id="mcpBtn">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 3 2.5 6.5a2.2 2.2 0 0 0 3 3.1l3-3M10 13l3.5-3.5a2.2 2.2 0 0 0-3-3.1l-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      MCP 接入
+    </button>
+
+    <button class="btn primary" id="newBtn">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      新建提示词
+    </button>
+
+    <div class="review-badge">设计稿 v0.1 · 待评审</div>
+  </header>
+
+  <div class="body">
+
+    <!-- ============ 左侧提示词面板 ============ -->
+    <aside class="left">
+      <div class="panel-head">
+        <span class="panel-title">提示词</span>
+        <span class="count">6</span>
+        <div class="top-spacer"></div>
+        <button class="icon-btn" title="新建提示词" data-open-new>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="search">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.2" stroke="#5F6672" stroke-width="1.3"/><path d="m10.2 10.2 3 3" stroke="#5F6672" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <input placeholder="搜索提示词 / 镜号" />
+      </div>
+
+      <div class="filters">
+        <button class="chip active" data-filter="all">全部</button>
+        <button class="chip" data-filter="running">生成中</button>
+        <button class="chip" data-filter="done">已完成</button>
+        <button class="chip" data-filter="fail">失败</button>
+      </div>
+
+      <div class="prompt-list">
+        <div class="group-head"><span class="gdot"></span>分镜组 A · 雨夜霓虹<span class="muted">3 镜</span></div>
+
+        <button class="prompt-item" data-target="a1">
+          <span class="shot-no">A-01</span>
+          <span class="pi-main">
+            <span class="pi-title">雨夜霓虹街道</span>
+            <span class="pi-sub">缓慢推进，赛博朋克，湿润地面反光</span>
+          </span>
+          <span class="dot ok"></span>
+        </button>
+
+        <button class="prompt-item active" data-target="a2">
+          <span class="shot-no">A-02</span>
+          <span class="pi-main">
+            <span class="pi-title">撑伞回眸</span>
+            <span class="pi-sub">中景，浅景深，霓虹灯牌虚化</span>
+          </span>
+          <span class="dot run"></span>
+        </button>
+
+        <button class="prompt-item" data-target="a3">
+          <span class="shot-no">A-03</span>
+          <span class="pi-main">
+            <span class="pi-title">伞面雨滴</span>
+            <span class="pi-sub">微距，慢动作，雨滴折射霓虹</span>
+          </span>
+          <span class="dot"></span>
+        </button>
+
+        <div class="group-head"><span class="gdot g2"></span>分镜组 B · 地铁站台<span class="muted">3 镜</span></div>
+
+        <button class="prompt-item" data-target="b1">
+          <span class="shot-no">B-01</span>
+          <span class="pi-main">
+            <span class="pi-title">空旷站台</span>
+            <span class="pi-sub">广角，顶灯闪烁，冷蓝色调</span>
+          </span>
+          <span class="dot ok"></span>
+        </button>
+
+        <button class="prompt-item" data-target="b2">
+          <span class="shot-no">B-02</span>
+          <span class="pi-main">
+            <span class="pi-title">列车进站</span>
+            <span class="pi-sub">运动模糊，逆光剪影，冷暖对比</span>
+          </span>
+          <span class="dot fail"></span>
+        </button>
+
+        <button class="prompt-item" data-target="b3">
+          <span class="shot-no">B-03</span>
+          <span class="pi-main">
+            <span class="pi-title">上车回望</span>
+            <span class="pi-sub">中景，玻璃反射城市灯光</span>
+          </span>
+          <span class="dot ok"></span>
+        </button>
+      </div>
+
+      <div class="mcp-card">
+        <div class="mcp-row"><span class="dot ok"></span><span class="mcp-name">MCP 服务已连接</span><span class="muted" style="margin-left:auto;font-size:10px">3 个工具</span></div>
+        <div class="mcp-endpoint">http://localhost:8080/sse</div>
+        <button class="btn sm" id="mcpBtn2">查看接入配置</button>
+      </div>
+    </aside>
+
+    <!-- ============ 画布 ============ -->
+    <main class="canvas" id="canvas">
+
+      <div class="canvas-toolbar">
+        <button class="tool active">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 1.5 9.5 6 6.2 6.8 4.8 10 2 1.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          选择
+        </button>
+        <button class="tool">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M4 1.5v9M8 1.5v9M1.5 4h9M1.5 8h9" stroke="currentColor" stroke-width="1.1"/></svg>
+          自动布局
+        </button>
+        <button class="tool">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 4V1.5H4M8 1.5h2.5V4M10.5 8v2.5H8M4 10.5H1.5V8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          适应视图
+        </button>
+        <button class="tool" id="uploadImg">
+          <svg width="11" height="11" viewBox="0 0 14 14" fill="none"><rect x="1.8" y="2.6" width="10.4" height="8.8" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="m2.8 9.8 3-2.6 2.1 1.8 1.9-1.5 1.8 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          上传图片
+        </button>
+      </div>
+
+      <div class="group-label" style="left:24px;top:12px"><span class="gdot"></span><b>分镜组 A</b> 雨夜霓虹 · 3 镜</div>
+      <div class="group-label" style="left:24px;top:334px"><span class="gdot g2"></span><b>分镜组 B</b> 地铁站台 · 3 镜</div>
+
+      <svg class="edges" aria-hidden="true">
+        <defs>
+          <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0 0 8 4 0 8Z" fill="#3A404B"/>
+          </marker>
+        </defs>
+        <path d="M286 155 H 296" stroke="#3A404B" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+        <path d="M562 155 H 572" stroke="#3A404B" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+        <path d="M286 477 H 296" stroke="#3A404B" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+        <path d="M562 477 H 572" stroke="#3A404B" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+        <marker id="imgArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 8 4 0 8Z" fill="#7C6BFF"/>
+        </marker>
+        <path class="edge alt" d="M298,684 C258,666 200,646 162,610" marker-end="url(#imgArrow)"/>
+        <path class="edge hot" d="M478,684 C470,656 442,640 432,610" marker-end="url(#imgArrow)"/>
+        <path class="edge" d="M478,690 C540,706 610,662 620,610" marker-end="url(#imgArrow)"/>
+        <circle class="edge-dot" cx="432" cy="606" r="3"/>
+        <circle class="edge-dot" cx="620" cy="606" r="3"/>
+      </svg>
+
+      <!-- A-01 -->
+      <article class="node" data-id="a1" style="left:24px;top:44px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">A-01</span>
+          <span class="node-title">雨夜霓虹街道</span>
+          <span class="pill ok">已完成</span>
+        </div>
+        <div class="media">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20still%2C%20rainy%20neon%20street%20at%20night%2C%20cyberpunk%2C%20wet%20asphalt%20reflections%2C%20anamorphic%20lens%2C%20teal%20and%20magenta%20lighting%2C%20shallow%20depth%20of%20field%2C%20film%20grain&image_size=landscape_16_9" alt="雨夜霓虹街道" />
+          <div class="veil"></div>
+          <button class="play" data-preview="a1" aria-label="播放">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff"/></svg>
+          </button>
+          <span class="dur">5.0s</span>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">雨夜霓虹街道，镜头缓慢推进，赛博朋克色调，湿润地面反光，电影感颗粒</p>
+          <div class="node-meta"><span>Seedance · 16:9</span><span class="pct">100%</span></div>
+        </div>
+      </article>
+
+      <!-- A-02（选中 / 生成中） -->
+      <article class="node selected" data-id="a2" style="left:300px;top:44px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">A-02</span>
+          <span class="node-title">撑伞回眸</span>
+          <span class="pill run" data-role="node-pill">生成中 64%</span>
+        </div>
+        <div class="media">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20close%20up%2C%20young%20woman%20holding%20clear%20umbrella%2C%20looking%20back%20over%20shoulder%2C%20rainy%20neon%20city%20bokeh%2C%20night%2C%20cinematic%20lighting%2C%20film%20still&image_size=landscape_16_9" alt="撑伞回眸" />
+          <div class="veil" style="background:rgba(8,9,11,.45)"></div>
+          <span class="ref-badge">
+            <svg width="9" height="9" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2.5" width="11" height="9" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="m2.5 9.5 3-2.6 2.2 1.9 2-1.6 1.8 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            参考图 ×2
+          </span>
+          <div class="ring" style="--p:64"><span>64%</span></div>
+          <span class="dur">生成中</span>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">女主撑透明伞回头，浅景深，霓虹灯牌虚化，雨丝可见，缓慢回眸</p>
+          <div class="progressbar"><i style="width:64%"></i></div>
+          <div class="node-meta"><span>已用时 12s · 预计 6s</span><span class="pct">64%</span></div>
+        </div>
+      </article>
+
+      <!-- A-03（排队中） -->
+      <article class="node" data-id="a3" style="left:576px;top:44px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">A-03</span>
+          <span class="node-title">伞面雨滴</span>
+          <span class="pill idle">排队中</span>
+        </div>
+        <div class="media">
+          <div class="skeleton"></div>
+          <div class="queued-note">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.2" stroke="#4A505B" stroke-width="1.4"/><path d="M10 6.5V10l2.4 1.6" stroke="#4A505B" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span>等待调度</span>
+          </div>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">特写：雨滴落在伞面，慢动作，霓虹光斑折射，微距景深</p>
+          <div class="node-meta"><span>Seedance · 16:9</span><span class="pct">0%</span></div>
+        </div>
+      </article>
+
+      <!-- B-01 -->
+      <article class="node" data-id="b1" style="left:24px;top:366px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">B-01</span>
+          <span class="node-title">空旷站台</span>
+          <span class="pill ok">已完成</span>
+        </div>
+        <div class="media">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20wide%20shot%2C%20empty%20subway%20platform%20at%20night%2C%20flickering%20ceiling%20lights%2C%20long%20telephoto%20compression%2C%20cold%20blue%20tones%2C%20film%20grain&image_size=landscape_16_9" alt="空旷站台" />
+          <div class="veil"></div>
+          <button class="play" data-preview="b1" aria-label="播放">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff"/></svg>
+          </button>
+          <span class="dur">5.0s</span>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">空旷地铁站台，顶灯闪烁，长焦压缩，冷蓝色调，轻微手持晃动</p>
+          <div class="node-meta"><span>Seedance · 16:9</span><span class="pct">100%</span></div>
+        </div>
+      </article>
+
+      <!-- B-02（失败） -->
+      <article class="node" data-id="b2" style="left:300px;top:366px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">B-02</span>
+          <span class="node-title">列车进站</span>
+          <span class="pill fail">失败</span>
+        </div>
+        <div class="media">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20shot%2C%20subway%20train%20arriving%20at%20platform%2C%20motion%20blur%2C%20backlit%20silhouette%20of%20a%20woman%2C%20cold%20blue%20and%20warm%20amber%20contrast&image_size=landscape_16_9" alt="列车进站" />
+          <div class="fail-veil">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.4" stroke="#F2555A" stroke-width="1.4"/><path d="M10 6.2v4.6M10 13.4v.2" stroke="#F2555A" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span class="err">内容审核未通过（敏感词命中）</span>
+            <button class="retry" data-retry="b2">
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.2-2.8M10 1.6V4H7.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              重试
+            </button>
+          </div>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">列车进站，气流吹动裙摆，侧逆光剪影，运动模糊，冷暖对比</p>
+          <div class="node-meta"><span>Seedance · 16:9</span><span class="pct">—</span></div>
+        </div>
+      </article>
+
+      <!-- B-03 -->
+      <article class="node" data-id="b3" style="left:576px;top:366px" tabindex="0">
+        <div class="node-head">
+          <span class="shot-no">B-03</span>
+          <span class="node-title">上车回望</span>
+          <span class="pill ok">已完成</span>
+        </div>
+        <div class="media">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20medium%20shot%2C%20woman%20stepping%20into%20subway%20train%2C%20reflections%20on%20glass%20doors%2C%20night%2C%20moody%20lighting%2C%20film%20still&image_size=landscape_16_9" alt="上车回望" />
+          <div class="veil"></div>
+          <button class="play" data-preview="b3" aria-label="播放">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff"/></svg>
+          </button>
+          <span class="dur">5.0s</span>
+        </div>
+        <div class="node-body">
+          <p class="node-prompt">主角上车，车门关闭，玻璃反射城市灯光，镜头轻微跟随</p>
+          <div class="node-meta"><span>Seedance · 16:9</span><span class="pct">100%</span></div>
+        </div>
+      </article>
+
+      <!-- 参考图节点 -->
+      <article class="node img-node" data-img="img1" style="left:150px;top:628px" tabindex="0" title="拖拽右侧圆点连线到镜头节点">
+        <div class="img-thumb">
+          <span class="img-idx">图片 1</span>
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20man%2C%20clear%20skin%2C%20short%20black%20hair%2C%20soft%20studio%20light%2C%20neutral%20background%2C%20film%20still&image_size=square" alt="参考图1" />
+        </div>
+        <div class="img-foot">
+          <div class="img-name">男主 · 正面</div>
+          <div class="img-meta">1024×1024 · 1 个镜头引用</div>
+        </div>
+        <span class="port" title="拖拽连线到镜头"></span>
+      </article>
+
+      <article class="node img-node" data-img="img2" style="left:330px;top:628px" tabindex="0" title="拖拽右侧圆点连线到镜头节点">
+        <div class="img-thumb">
+          <span class="img-idx">图片 2</span>
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20woman%2C%20clear%20skin%2C%20long%20black%20hair%2C%20soft%20rim%20light%2C%20neutral%20background%2C%20film%20still&image_size=square" alt="参考图2" />
+        </div>
+        <div class="img-foot">
+          <div class="img-name">女主 · 正面</div>
+          <div class="img-meta">1024×1024 · 2 个镜头引用</div>
+        </div>
+        <span class="port" title="拖拽连线到镜头"></span>
+      </article>
+
+      <div class="zoom">
+        <button title="缩小">−</button>
+        <span class="lvl">86%</span>
+        <button title="放大">+</button>
+        <button title="适应视图" style="margin-left:2px">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 4V1.5H4M8 1.5h2.5V4M10.5 8v2.5H8M4 10.5H1.5V8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="minimap">
+        <div class="mm-grid">
+          <div class="mm-node ok" style="left:8px;top:8px;width:36px;height:22px"></div>
+          <div class="mm-node run" style="left:48px;top:8px;width:36px;height:22px"></div>
+          <div class="mm-node" style="left:88px;top:8px;width:36px;height:22px"></div>
+          <div class="mm-node ok" style="left:8px;top:38px;width:36px;height:22px"></div>
+          <div class="mm-node fail" style="left:48px;top:38px;width:36px;height:22px"></div>
+          <div class="mm-node ok" style="left:88px;top:38px;width:36px;height:22px"></div>
+          <div class="mm-view"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ 右侧检查器 ============ -->
+    <aside class="right">
+      <div class="insp-head">
+        <div>
+          <div class="eyebrow">节点详情</div>
+          <div class="insp-title" id="inspTitle">A-02 撑伞回眸</div>
+        </div>
+        <button class="icon-btn" title="关闭">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="insp-block">
+        <div class="insp-status">
+          <span class="pill run" id="inspPill">生成中 64%</span>
+          <span class="time" id="inspTime">12s</span>
+        </div>
+        <div class="bar-row">
+          <div class="bar"><i id="inspBar" style="width:64%"></i></div>
+          <span class="pct" id="inspPct">64%</span>
+        </div>
+        <div class="error-box" id="inspError"></div>
+      </div>
+
+      <div class="insp-block">
+        <div class="label">提示词</div>
+        <div class="prompt-box" id="inspPrompt">女主撑透明伞回头，浅景深，霓虹灯牌虚化，雨丝可见，缓慢回眸，电影级色彩
+<button class="copy" data-copy>复制</button></div>
+        <div class="editor" id="inspEditor">
+          <textarea class="textarea" id="editPrompt" placeholder="修改提示词后保存，将原地重新生成"></textarea>
+          <div class="editor-actions">
+            <button class="btn sm" id="cancelEdit">取消</button>
+            <button class="btn sm primary" id="saveEdit">保存并重新生成</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="insp-block">
+        <div class="label">参考图 · 2</div>
+        <div class="ref-strip">
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20man%20with%20short%20black%20hair%2C%20white%20shirt%2C%20soft%20studio%20lighting%2C%20clean%20background&image_size=square" alt="参考图1" />
+          <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20woman%20with%20long%20black%20hair%2C%20warm%20rim%20light%2C%20neutral%20grey%20background%2C%20film%20still&image_size=square" alt="参考图2" />
+        </div>
+        <div class="note-line">提示词中通过 @图片1、@图片2 引用</div>
+      </div>
+
+      <div class="insp-block">
+        <div class="label">参数</div>
+        <div class="params">
+          <div class="param"><div class="k">模型</div><div class="v" id="pModel">seedance-1.0-pro</div></div>
+          <div class="param"><div class="k">比例 / 时长</div><div class="v" id="pRatio">16:9 · 5s</div></div>
+          <div class="param"><div class="k">分组</div><div class="v" id="pGroup">A · 雨夜霓虹</div></div>
+          <div class="param"><div class="k">镜头序号</div><div class="v" id="pIndex">2 / 3</div></div>
+          <div class="param"><div class="k">任务 ID</div><div class="v" id="pTask">#1024</div></div>
+          <div class="param"><div class="k">供应商</div><div class="v">Mock</div></div>
+        </div>
+      </div>
+
+      <div class="insp-block">
+        <div class="label">状态时间线</div>
+        <ol class="timeline" id="timeline">
+          <li class="done">已入队 <span class="t">10:21:01</span></li>
+          <li class="done">已提交供应商 <span class="t">10:21:02</span></li>
+          <li class="now">生成中 · 64% <span class="t">10:21:05</span></li>
+          <li>完成 <span class="t">—</span></li>
+        </ol>
+      </div>
+
+      <div class="insp-actions">
+        <button class="btn" id="editBtn">编辑提示词</button>
+        <button class="btn" data-retry="current">重新生成</button>
+        <button class="btn danger" id="deleteBtn">删除</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ 新建提示词弹窗 ============ -->
+<div class="modal" id="newModal">
+  <div class="dialog">
+    <div class="dialog-head">
+      <div>
+        <h3>新建提示词</h3>
+        <div class="sub">推送后将在画布上创建一个视频生成窗口</div>
+      </div>
+      <button class="icon-btn" data-close><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div class="field">
+        <label>镜头标题 <span class="hint">选填</span></label>
+        <input class="input" placeholder="例如：撑伞回眸" />
+      </div>
+      <div class="field">
+        <label>参考图 <span class="hint">选填，最多 6 张；输入 @ 可引用</span></label>
+        <div class="ref-row">
+          <div class="ref-thumb">
+            <span class="idx">1</span>
+            <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20man%20with%20short%20black%20hair%2C%20white%20shirt%2C%20soft%20studio%20lighting%2C%20clean%20background&image_size=square" alt="参考图1" />
+            <button class="rm" title="移除">×</button>
+          </div>
+          <div class="ref-thumb">
+            <span class="idx">2</span>
+            <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20portrait%20of%20a%20young%20asian%20woman%20with%20long%20black%20hair%2C%20warm%20rim%20light%2C%20neutral%20grey%20background%2C%20film%20still&image_size=square" alt="参考图2" />
+            <button class="rm" title="移除">×</button>
+          </div>
+          <button class="ref-add" id="addRef" title="上传参考图">
+            ＋
+            <span>上传</span>
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <label>提示词 <em>*</em><span class="hint">描述画面、运镜、风格、光线</span></label>
+        <textarea class="textarea" id="newPrompt" placeholder="女主撑透明伞回头，浅景深，@图片1 的脸部特征，霓虹灯牌虚化，雨丝可见，缓慢回眸"></textarea>
+        <div class="mention-row">
+          输入 @ 引用参考图：
+          <button class="mention" data-mention="图片1">@图片1</button>
+          <button class="mention" data-mention="图片2">@图片2</button>
+        </div>
+        <div class="tpl-row">
+          <button class="tpl" data-tpl="电影感：">+ 电影感</button>
+          <button class="tpl" data-tpl="慢动作：">+ 慢动作</button>
+          <button class="tpl" data-tpl="特写：">+ 特写</button>
+          <button class="tpl" data-tpl="侧逆光：">+ 侧逆光</button>
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>分组</label>
+          <select class="select">
+            <option>自动归属新分组</option>
+            <option>A · 雨夜霓虹</option>
+            <option>B · 地铁站台</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>镜头序号</label>
+          <input class="input" value="自动递增" />
+        </div>
+      </div>
+      <div class="note-line">同一提示词 24 小时内重复推送会自动去重，不会产生重复节点。</div>
+    </div>
+    <div class="dialog-foot">
+      <span class="tip">Ctrl / ⌘ + Enter 快速提交</span>
+      <button class="btn" data-close>取消</button>
+      <button class="btn primary" id="submitPrompt">推送生成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 成片预览 ============ -->
+<div class="modal" id="previewModal">
+  <div class="dialog preview-dialog">
+    <div class="dialog-head">
+      <div>
+        <h3 id="pvTitle">A-01 雨夜霓虹街道</h3>
+        <div class="sub">Mock 演示成片 · 5.0s · 1280×720</div>
+      </div>
+      <button class="icon-btn" data-close><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="preview-media">
+      <video id="pvVideo" controls playsinline preload="none"
+        poster="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cinematic%20still%2C%20rainy%20neon%20street%20at%20night%2C%20cyberpunk%2C%20wet%20asphalt%20reflections%2C%20anamorphic%20lens%2C%20teal%20and%20magenta%20lighting%2C%20shallow%20depth%20of%20field%2C%20film%20grain&image_size=landscape_16_9"
+        src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"></video>
+    </div>
+    <div class="preview-meta">
+      <div>
+        <div class="name">雨夜霓虹街道</div>
+        <div class="desc">提示词：雨夜霓虹街道，镜头缓慢推进，赛博朋克色调</div>
+      </div>
+      <div class="top-spacer" style="flex:1"></div>
+      <button class="btn sm" data-close>关闭</button>
+      <button class="btn sm primary" onclick="toast('已加入下载队列（设计稿演示）')">下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MCP 接入浮层 ============ -->
+<div class="popover" id="mcpPop">
+  <div class="pop-head">
+    <h4>MCP 接入方式</h4>
+    <button class="icon-btn" data-close-pop><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="pop-body">
+    <div class="label">端点（SSE）</div>
+    <div class="code">http://localhost:8080/sse</div>
+    <div class="label">可用工具</div>
+    <div class="tool-list">
+      <div class="tool-item"><code>push_shot</code><span>推送单个镜头，自动创建视频节点</span></div>
+      <div class="tool-item"><code>push_storyboard</code><span>批量推送分镜脚本</span></div>
+      <div class="tool-item"><code>get_canvas_state</code><span>读取画布节点与生成状态</span></div>
+    </div>
+    <div class="label">客户端配置</div>
+    <div class="code">{
+  <span class="k">"mcpServers"</span>: {
+    <span class="k">"aigc-canvas"</span>: {
+      <span class="k">"type"</span>: <span class="s">"sse"</span>,
+      <span class="k">"url"</span>: <span class="s">"http://localhost:8080/sse"</span>
+    }
+  }
+}</div>
+    <button class="btn primary" style="width:100%;justify-content:center" onclick="toast('MCP 配置已复制（设计稿演示）')">复制配置</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const NODES = {
+    a1: { no: 'A-01', title: '雨夜霓虹街道', prompt: '雨夜霓虹街道，镜头缓慢推进，赛博朋克色调，湿润地面反光，电影感颗粒', status: 'ok', statusText: '已完成', progress: 100, group: 'A · 雨夜霓虹', index: '1 / 3', task: '#1023', time: '18s', error: '' },
+    a2: { no: 'A-02', title: '撑伞回眸', prompt: '女主撑透明伞回头，浅景深，霓虹灯牌虚化，雨丝可见，缓慢回眸，电影级色彩', status: 'run', statusText: '生成中 64%', progress: 64, group: 'A · 雨夜霓虹', index: '2 / 3', task: '#1024', time: '12s', error: '' },
+    a3: { no: 'A-03', title: '伞面雨滴', prompt: '特写：雨滴落在伞面，慢动作，霓虹光斑折射，微距景深', status: 'idle', statusText: '排队中', progress: 0, group: 'A · 雨夜霓虹', index: '3 / 3', task: '#1025', time: '—', error: '' },
+    b1: { no: 'B-01', title: '空旷站台', prompt: '空旷地铁站台，顶灯闪烁，长焦压缩，冷蓝色调，轻微手持晃动', status: 'ok', statusText: '已完成', progress: 100, group: 'B · 地铁站台', index: '1 / 3', task: '#1026', time: '16s', error: '' },
+    b2: { no: 'B-02', title: '列车进站', prompt: '列车进站，气流吹动裙摆，侧逆光剪影，运动模糊，冷暖对比', status: 'fail', statusText: '失败', progress: 0, group: 'B · 地铁站台', index: '2 / 3', task: '#1027', time: '—', error: '内容审核未通过（敏感词命中），请调整提示词后重试。' },
+    b3: { no: 'B-03', title: '上车回望', prompt: '主角上车，车门关闭，玻璃反射城市灯光，镜头轻微跟随', status: 'ok', statusText: '已完成', progress: 100, group: 'B · 地铁站台', index: '3 / 3', task: '#1028', time: '17s', error: '' }
+  };
+
+  const TIMELINES = {
+    ok: [
+      ['done', '已入队', '10:21:01'],
+      ['done', '已提交供应商', '10:21:02'],
+      ['done', '生成中', '10:21:05'],
+      ['done', '完成', '10:21:19']
+    ],
+    run: [
+      ['done', '已入队', '10:21:01'],
+      ['done', '已提交供应商', '10:21:02'],
+      ['now', '生成中 · {p}%', '10:21:05'],
+      ['', '完成', '—']
+    ],
+    idle: [
+      ['done', '已入队', '10:22:10'],
+      ['now', '等待调度', '—'],
+      ['', '生成中', '—'],
+      ['', '完成', '—']
+    ],
+    fail: [
+      ['done', '已入队', '10:20:31'],
+      ['done', '已提交供应商', '10:20:32'],
+      ['fail', '生成失败', '10:21:02'],
+      ['', '—', '—']
+    ]
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  let currentId = 'a2';
+
+  function pillClass(status) {
+    return { ok: 'ok', run: 'run', fail: 'fail', idle: 'idle' }[status] || 'idle';
+  }
+
+  function selectNode(id) {
+    const node = NODES[id];
+    if (!node) return;
+    currentId = id;
+
+    $$('.node').forEach((el) => el.classList.toggle('selected', el.dataset.id === id));
+    $$('.prompt-item').forEach((el) => el.classList.toggle('active', el.dataset.target === id));
+
+    $('#inspTitle').textContent = node.no + ' ' + node.title;
+
+    const pill = $('#inspPill');
+    pill.className = 'pill ' + pillClass(node.status);
+    pill.textContent = node.statusText;
+
+    $('#inspTime').textContent = node.time;
+    $('#inspBar').style.width = node.progress + '%';
+    $('#inspPct').textContent = node.progress + '%';
+    $('#inspPrompt').childNodes[0].nodeValue = node.prompt + '\n';
+
+    $('#pGroup').textContent = node.group;
+    $('#pIndex').textContent = node.index;
+    $('#pTask').textContent = node.task;
+
+    const err = $('#inspError');
+    err.classList.toggle('show', !!node.error);
+    err.textContent = node.error || '';
+
+    const tl = TIMELINES[node.status] || TIMELINES.idle;
+    $('#timeline').innerHTML = tl.map(([cls, label, time]) =>
+      '<li class="' + cls + '">' + label.replace('{p}', node.progress) +
+      '<span class="t">' + time + '</span></li>'
+    ).join('');
+  }
+
+  $$('.node').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-preview],[data-retry]')) return;
+      selectNode(el.dataset.id);
+    });
+  });
+
+  $$('.prompt-item').forEach((el) => {
+    el.addEventListener('click', () => selectNode(el.dataset.target));
+  });
+
+  $$('[data-preview]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const node = NODES[btn.dataset.preview];
+      $('#pvTitle').textContent = node.no + ' ' + node.title;
+      $('#previewModal').classList.add('show');
+    });
+  });
+
+  $$('[data-retry]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toast('已重新提交生成任务（设计稿演示）');
+    });
+  });
+
+  $$('.chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      $$('.chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      const f = chip.dataset.filter;
+      $$('.node').forEach((el) => {
+        const st = NODES[el.dataset.id].status;
+        const match = f === 'all' || (f === 'running' && st === 'run') ||
+          (f === 'done' && st === 'ok') || (f === 'fail' && st === 'fail');
+        el.classList.toggle('dim', !match);
+      });
+    });
+  });
+
+  // 参考图 @ 引用
+  $$('[data-mention]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const ta = $('#newPrompt');
+      const token = '@' + b.dataset.mention + ' ';
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? start;
+      ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = start + token.length;
+    });
+  });
+  $('#addRef').addEventListener('click', () => toast('已添加参考图（设计稿演示）'));
+  $('#newPrompt').addEventListener('input', (e) => {
+    if (e.target.value.endsWith('@')) toast('选择要引用的参考图');
+  });
+
+  // 画布图片节点 / 连线
+  $('#uploadImg').addEventListener('click', () => toast('选择图片后将生成画布图片节点'));
+  $$('.img-node').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toast('拖拽右侧圆点，连线到需要引用的镜头');
+    });
+  });
+  $$('.edge').forEach((el) => {
+    el.addEventListener('mouseenter', () => {
+      $$('.edge').forEach((p) => p.classList.remove('hot'));
+      el.classList.add('hot');
+    });
+  });
+
+  // 编辑提示词 / 删除镜头
+  $('#editBtn').addEventListener('click', () => {
+    if (!NODES[currentId]) return;
+    $('#editPrompt').value = NODES[currentId].prompt;
+    $('#inspPrompt').style.display = 'none';
+    $('#inspEditor').classList.add('show');
+    $('#editPrompt').focus();
+  });
+  $('#cancelEdit').addEventListener('click', () => {
+    $('#inspEditor').classList.remove('show');
+    $('#inspPrompt').style.display = '';
+  });
+  $('#saveEdit').addEventListener('click', () => {
+    const val = $('#editPrompt').value.trim();
+    if (!val) { toast('提示词不能为空'); return; }
+    NODES[currentId].prompt = val;
+    const cardPrompt = document.querySelector('.node[data-id="' + currentId + '"] .node-prompt');
+    if (cardPrompt) cardPrompt.textContent = val;
+    $('#inspPrompt').childNodes[0].nodeValue = val + '\n';
+    $('#inspEditor').classList.remove('show');
+    $('#inspPrompt').style.display = '';
+    toast('已保存，正在原地重新生成…');
+  });
+  $('#deleteBtn').addEventListener('click', () => {
+    if (!NODES[currentId]) return;
+    if (!window.confirm('删除该镜头？未完成的生成任务会被取消。')) return;
+    const card = document.querySelector('.node[data-id="' + currentId + '"]');
+    if (card) card.remove();
+    const item = document.querySelector('.prompt-item[data-target="' + currentId + '"]');
+    if (item) item.remove();
+    delete NODES[currentId];
+    toast('镜头已删除');
+  });
+
+  // 弹层
+  function openNew() { $('#newModal').classList.add('show'); setTimeout(() => $('#newPrompt').focus(), 60); }
+  $$('[data-open-new], #newBtn').forEach((b) => b.addEventListener('click', openNew));
+  $$('[data-close]').forEach((b) => b.addEventListener('click', (e) => {
+    e.target.closest('.modal').classList.remove('show');
+  }));
+  $$('.modal').forEach((m) => m.addEventListener('click', (e) => {
+    if (e.target === m) m.classList.remove('show');
+  }));
+
+  $('#submitPrompt').addEventListener('click', () => {
+    const val = $('#newPrompt').value.trim();
+    if (!val) { toast('请先填写提示词'); return; }
+    $('#newModal').classList.remove('show');
+    toast('已推送，视频节点正在创建…');
+  });
+
+  $$('[data-tpl]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const ta = $('#newPrompt');
+      ta.value = b.dataset.tpl + ta.value;
+      ta.focus();
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $$('.modal').forEach((m) => m.classList.remove('show'));
+      $('#mcpPop').classList.remove('show');
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && $('#newModal').classList.contains('show')) {
+      $('#submitPrompt').click();
+    }
+  });
+
+  // MCP 浮层
+  const toggleMcp = () => $('#mcpPop').classList.toggle('show');
+  $('#mcpBtn').addEventListener('click', toggleMcp);
+  $('#mcpBtn2').addEventListener('click', toggleMcp);
+  $$('[data-close-pop]').forEach((b) => b.addEventListener('click', () => $('#mcpPop').classList.remove('show')));
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#mcpPop') && !e.target.closest('#mcpBtn') && !e.target.closest('#mcpBtn2')) {
+      $('#mcpPop').classList.remove('show');
+    }
+  });
+
+  // 复制
+  $$('[data-copy]').forEach((b) => b.addEventListener('click', () => toast('提示词已复制')));
+
+  let toastTimer;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // 模拟进度推进
+  let p = 64;
+  setInterval(() => {
+    const node = NODES.a2;
+    if (node.progress >= 96) return;
+    p = Math.min(96, node.progress + 1);
+    node.progress = p;
+    node.statusText = '生成中 ' + p + '%';
+    const pill = document.querySelector('[data-id="a2"] [data-role="node-pill"]');
+    if (pill) pill.textContent = node.statusText;
+    const ring = document.querySelector('[data-id="a2"] .ring');
+    if (ring) { ring.style.setProperty('--p', p); ring.querySelector('span').textContent = p + '%'; }
+    const bar = document.querySelector('[data-id="a2"] .progressbar i');
+    if (bar) bar.style.width = p + '%';
+    const meta = document.querySelector('[data-id="a2"] .node-meta .pct');
+    if (meta) meta.textContent = p + '%';
+    if (currentId === 'a2') {
+      $('#inspPill').textContent = node.statusText;
+      $('#inspBar').style.width = p + '%';
+      $('#inspPct').textContent = p + '%';
+    }
+  }, 1800);
+</script>
+</body>
+</html>
