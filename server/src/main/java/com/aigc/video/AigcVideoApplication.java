@@ -5,6 +5,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+/**
+ * 封装项目中的业务数据与功能。
+ */
 @SpringBootApplication
 @EnableScheduling
 @MapperScan("com.aigc.video.mapper")

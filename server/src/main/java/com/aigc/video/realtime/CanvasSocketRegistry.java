@@ -17,6 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 画布连接注册表。
  * 单实例直接推送本地 session；开启 Redis 后先 publish，由各实例订阅后再推送本地连接。
  */
+/**
+ * 处理画布实时事件的推送与转发。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

@@ -11,6 +11,9 @@ import java.net.URI;
 import java.util.UUID;
 
 /** 上传与转存的统一入口 */
+/**
+ * 管理生成资源与文件存储。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

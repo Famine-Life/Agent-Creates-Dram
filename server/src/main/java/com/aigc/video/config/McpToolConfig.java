@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /** 把 @Tool 方法注册成 MCP 工具，端点 /sse（SSE 传输） */
+/**
+ * 配置应用组件与运行参数。
+ */
 @Configuration
 public class McpToolConfig {
 

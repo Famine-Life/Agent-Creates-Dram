@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 
 /** 订阅 Redis 画布事件，并推送给本实例的 WebSocket 连接 */
+/**
+ * 处理画布实时事件的推送与转发。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

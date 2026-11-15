@@ -4,6 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+/**
+ * 配置应用组件与运行参数。
+ */
 @Data
 @Component
 @ConfigurationProperties(prefix = "aigc.storage")

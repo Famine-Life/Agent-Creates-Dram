@@ -12,6 +12,9 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.Map;
 
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler {

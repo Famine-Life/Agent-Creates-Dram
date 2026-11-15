@@ -16,6 +16,9 @@ import java.util.UUID;
  * 未开启 Redis 时退化为单实例直通；Redis 不可用时放行本次调度（任务提交本身有状态 CAS 兜底），
  * 避免锁故障导致所有任务停摆。
  */
+/**
+ * 处理画布与生成任务的业务流程。
+ */
 @Slf4j
 @Component
 public class DispatchLock {

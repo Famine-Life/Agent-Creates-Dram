@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
  * 画布（工作空间）列表与新建。
  * 一张画布 = 一条 workspace 记录 + 一条 canvas 快照记录，前端按 workspace.id 切换。
  */
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @RestController
 @RequestMapping("/api/workspaces")
 @RequiredArgsConstructor

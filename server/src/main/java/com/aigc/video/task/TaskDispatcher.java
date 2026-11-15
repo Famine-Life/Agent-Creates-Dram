@@ -26,6 +26,9 @@ import java.util.List;
  * 1. 把 QUEUED 任务提交给供应商（CAS 抢占，避免重复提交）
  * 2. 按 next_poll_at 轮询 SUBMITTED / RUNNING 任务，退避 2/3/5/8/13/20/30 秒
  */
+/**
+ * 处理画布与生成任务的业务流程。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

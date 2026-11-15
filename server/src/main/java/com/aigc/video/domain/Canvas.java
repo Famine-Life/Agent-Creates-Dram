@@ -7,6 +7,9 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * 表示持久化业务数据。
+ */
 @Data
 @TableName("canvas")
 public class Canvas {

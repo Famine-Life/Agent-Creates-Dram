@@ -14,6 +14,9 @@ import java.nio.file.Paths;
 import java.util.Base64;
 
 /** 本地磁盘存储，配合 WebConfig 的 /files/** 静态映射对外提供访问 */
+/**
+ * 管理生成资源与文件存储。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

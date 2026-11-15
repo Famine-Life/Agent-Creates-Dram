@@ -19,6 +19,9 @@ import java.util.List;
  * 暴露给 MCP 客户端（WorkBuddy / Trae 等）的工具。
  * 外部 AI 聊出分镜后调用这里，画布上就会长出一个视频节点。
  */
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @Service
 @RequiredArgsConstructor
 public class McpCanvasTools {

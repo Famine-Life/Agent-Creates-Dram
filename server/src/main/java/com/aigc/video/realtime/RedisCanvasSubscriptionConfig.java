@@ -9,6 +9,9 @@ import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 /** Redis 订阅容器：监听画布事件频道 */
+/**
+ * 处理画布实时事件的推送与转发。
+ */
 @Configuration
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "aigc.realtime.redis-enabled", havingValue = "true")

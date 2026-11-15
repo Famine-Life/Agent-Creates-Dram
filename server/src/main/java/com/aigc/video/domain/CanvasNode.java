@@ -8,6 +8,9 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /** 画布上的文本 / 脚本节点 */
+/**
+ * 表示持久化业务数据。
+ */
 @Data
 @TableName("canvas_node")
 public class CanvasNode {

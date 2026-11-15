@@ -13,6 +13,9 @@ import java.util.Map;
  * 多平台 AI 配置：平台（provider）只管地址与密钥，模型（model）声明能力与协议。
  * 模型通过 "provider/model" 复合标识引用，如 ark/doubao-seed-evolving。
  */
+/**
+ * 配置应用组件与运行参数。
+ */
 @Data
 @Component
 @ConfigurationProperties(prefix = "aigc.ai")

@@ -32,6 +32,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 提供画布相关的 HTTP 接口。
+ */
 @RestController
 @RequestMapping("/api/canvas/{workspaceId}")
 @RequiredArgsConstructor

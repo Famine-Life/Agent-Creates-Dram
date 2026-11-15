@@ -16,6 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 火山方舟视频协议（Seedance）。
  * 文档：创建任务 POST /contents/generations/tasks，查询 GET /contents/generations/tasks/{id}
  */
+/**
+ * 封装外部生成平台的调用协议。
+ */
 @Slf4j
 @Component
 public class ArkVideoProvider implements VideoProvider {

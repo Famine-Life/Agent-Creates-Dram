@@ -18,6 +18,9 @@ import java.io.ByteArrayInputStream;
 import java.util.Date;
 
 /** 腾讯云 COS 图床/对象存储，aigc.storage.type=cos 时启用 */
+/**
+ * 管理生成资源与文件存储。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /** Redis Pub/Sub 版画布事件中继：AIGC_REDIS_ENABLED=true 时启用 */
+/**
+ * 处理画布实时事件的推送与转发。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

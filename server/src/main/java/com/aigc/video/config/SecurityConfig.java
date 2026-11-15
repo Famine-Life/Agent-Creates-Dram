@@ -20,6 +20,9 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+/**
+ * 配置应用组件与运行参数。
+ */
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {

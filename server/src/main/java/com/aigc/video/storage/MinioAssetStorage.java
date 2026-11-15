@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayInputStream;
 
 /** MinIO 对象存储，需要本地起 MinIO（见 docker-compose.yml 的 minio 服务） */
+/**
+ * 管理生成资源与文件存储。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

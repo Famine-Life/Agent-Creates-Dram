@@ -10,6 +10,9 @@ import org.springframework.validation.annotation.Validated;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 配置应用组件与运行参数。
+ */
 @Data
 @Validated
 @Component

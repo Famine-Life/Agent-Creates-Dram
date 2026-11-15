@@ -14,6 +14,9 @@ import java.util.Map;
  * 模型目录：把「平台配置 + 模型能力」解析成运行时模型。
  * 对外统一使用 provider/model 复合标识，未配置 api-key 的平台不参与解析与展示。
  */
+/**
+ * 负责 AI 模型选择与调用。
+ */
 @Component
 @RequiredArgsConstructor
 public class ModelCatalog {

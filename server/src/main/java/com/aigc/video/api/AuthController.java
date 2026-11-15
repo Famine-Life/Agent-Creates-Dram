@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {

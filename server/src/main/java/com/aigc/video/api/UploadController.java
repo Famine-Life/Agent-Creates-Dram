@@ -15,6 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @RestController
 @RequestMapping("/api/uploads")
 @RequiredArgsConstructor

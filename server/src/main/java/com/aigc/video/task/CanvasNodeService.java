@@ -35,6 +35,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** 文本 / 脚本节点与 AI 图片生成 */
+/**
+ * 处理画布与生成任务的业务流程。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

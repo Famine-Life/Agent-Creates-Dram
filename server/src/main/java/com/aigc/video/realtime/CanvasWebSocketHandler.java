@@ -11,6 +11,9 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 /**
  * 连接地址：ws://host:8080/ws/canvas/{workspaceId}
  */
+/**
+ * 处理画布实时事件的推送与转发。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

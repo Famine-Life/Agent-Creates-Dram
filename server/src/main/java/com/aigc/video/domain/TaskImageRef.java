@@ -11,6 +11,9 @@ import java.time.LocalDateTime;
  * 图片 -> 镜头 的引用。
  * 一条记录同时代表「画布上一条连线」与「提示词里的 @图片N」。
  */
+/**
+ * 表示持久化业务数据。
+ */
 @Data
 @TableName("task_image_ref")
 public class TaskImageRef {

@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
  * 演示协议：无需任何密钥，按配置的秒数推进度，结束后返回一段演示视频。
  * 任务 ID 里编码了提交时间，因此无需额外存储即可算出进度。
  */
+/**
+ * 封装外部生成平台的调用协议。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

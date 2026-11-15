@@ -12,6 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** 顶栏展示用的运行时信息与模型目录 */
+/**
+ * 提供应用的 HTTP 接口。
+ */
 @RestController
 @RequestMapping("/api/meta")
 @RequiredArgsConstructor

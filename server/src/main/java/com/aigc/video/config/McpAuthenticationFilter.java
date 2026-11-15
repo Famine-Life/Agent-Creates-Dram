@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Map;
 
 /** 仅 MCP 的 SSE 建流和消息端点使用独立 Bearer Token。 */
+/**
+ * 配置应用组件与运行参数。
+ */
 @RequiredArgsConstructor
 public class McpAuthenticationFilter extends OncePerRequestFilter {
 
