@@ -76,8 +76,10 @@ const showAssets = ref(false)
 const showPromptRecords = ref(false)
 const showGuide = ref(false)
 const fileInput = ref(null)
+const canvasWrap = ref(null)
 const dragging = ref(false)
 const contextMenu = ref(null)
+let lastCanvasPointer = null
 const newShotPosition = ref(null)
 const pendingUpload = ref(null)
 // 侧栏折叠状态记忆在本地，刷新后保持
@@ -691,6 +693,47 @@ async function onDrop(event) {
   }
 }
 
+function onCanvasPointerMove(event) {
+  lastCanvasPointer = { x: event.clientX, y: event.clientY }
+}
+
+function pastePoint() {
+  let screen = lastCanvasPointer
+  if (!screen) {
+    const rect = canvasWrap.value?.getBoundingClientRect()
+    screen = rect
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  }
+  try {
+    return screenToFlowCoordinate(screen)
+  } catch (e) {
+    return { x: 120, y: 120 }
+  }
+}
+
+async function onPaste(event) {
+  if (isTypingTarget(event.target)) return
+  const files = [...(event.clipboardData?.items || [])]
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
+  if (!files.length) return
+  event.preventDefault()
+  contextMenu.value = null
+  const point = pastePoint()
+  let uploaded = 0
+  for (const [index, file] of files.entries()) {
+    try {
+      await uploadImageFile(file, point.x + index * 20, point.y + index * 20)
+      uploaded += 1
+    } catch (e) {
+      toast(`粘贴图片失败：${e.message}`)
+    }
+  }
+  if (uploaded) toast(`已粘贴 ${uploaded} 张图片`)
+}
+
 let viewApplied = false
 
 function applyInitialView() {
@@ -724,10 +767,12 @@ async function bootstrap() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('paste', onPaste)
   bootstrap()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('paste', onPaste)
   disconnectRealtime()
   clearTimeout(saveTimer)
 })
@@ -774,11 +819,14 @@ onBeforeUnmount(() => {
       />
 
       <main
+        ref="canvasWrap"
         class="canvas-wrap"
         :class="{ dragging, linking }"
         @dragover.prevent="dragging = true"
         @dragleave="dragging = false"
         @drop.prevent="onDrop"
+        @pointermove="onCanvasPointerMove"
+        @pointerleave="lastCanvasPointer = null"
       >
         <VueFlow
           v-model:nodes="nodes"
