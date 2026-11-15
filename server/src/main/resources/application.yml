@@ -27,6 +27,8 @@ spring:
   sql:
     init:
       mode: always
+      # 建表脚本含中文注释与默认数据，显式指定 UTF-8，避免按平台编码读取导致乱码
+      encoding: UTF-8
       schema-locations: classpath:db/schema-h2.sql
   h2:
     console:

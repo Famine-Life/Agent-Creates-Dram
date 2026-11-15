@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { api } from '../api'
-import { WORKSPACE_ID, toast } from '../store/canvas'
+import { state, toast } from '../store/canvas'
 
 const props = defineProps({
   prompt: { type: String, default: '' },
@@ -180,7 +180,7 @@ async function runOptimize() {
   settingsOpen.value = false
   optimizing.value = true
   try {
-    const result = await api.optimizePrompt(WORKSPACE_ID, text)
+    const result = await api.optimizePrompt(state.workspaceId, text)
     optimized.value = result.prompt || ''
   } catch (e) {
     toast(`提示词优化失败：${e.message}`)

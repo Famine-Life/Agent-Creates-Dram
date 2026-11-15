@@ -1,7 +1,17 @@
 import { reactive } from 'vue'
 import { api } from '../api'
 
-export const WORKSPACE_ID = 1
+/** 默认工作空间 ID，与后端初始化脚本写入的 workspace.id=1 对应 */
+const DEFAULT_WORKSPACE_ID = 1
+
+/**
+ * 读取上次打开的画布 ID：优先用 localStorage 记住的选择，失效时回落到默认画布。
+ * workspaceId 决定所有接口路径与 WebSocket 频道，因此必须在初始化时确定。
+ */
+function initialWorkspaceId() {
+  const stored = Number(localStorage.getItem('aigc.workspace.id'))
+  return Number.isInteger(stored) && stored > 0 ? stored : DEFAULT_WORKSPACE_ID
+}
 
 export const STATUS = {
   IDLE: { text: '待编辑', tone: 'idle' },
@@ -20,7 +30,10 @@ export function statusOf(task) {
 }
 
 export const state = reactive({
-  workspaceId: WORKSPACE_ID,
+  /** 当前画布所属的工作空间 ID，切换画布时整体替换 */
+  workspaceId: initialWorkspaceId(),
+  /** 可切换的画布列表，来自 GET /api/workspaces */
+  workspaces: [],
   meta: {},
   tasks: [],
   images: [],
@@ -67,6 +80,20 @@ export async function loadAll() {
   state.links = Array.isArray(canvas?.snapshot?.links) ? canvas.snapshot.links : []
   state.imageSettings = canvas?.snapshot?.imageSettings || {}
   state.loading = false
+}
+
+/** 拉取画布列表，用于侧栏的画布切换下拉 */
+export async function loadWorkspaces() {
+  const list = await api.workspaces()
+  state.workspaces = Array.isArray(list) ? list : []
+  return state.workspaces
+}
+
+/** 新建空白画布，返回创建后的工作空间 */
+export async function createWorkspace() {
+  const created = await api.createWorkspace()
+  state.workspaces = [...state.workspaces, created].sort((a, b) => a.id - b.id)
+  return created
 }
 
 function upsert(list, item) {
@@ -203,11 +230,15 @@ export function disconnectRealtime() {
 
 function openSocket() {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+  // WebSocket 频道绑定具体画布：切换画布时必须重建连接，避免收到上一张画布的事件
   const url = `${protocol}://${location.host}/ws/canvas/${state.workspaceId}`
   state.connection = 'connecting'
-  socket = new WebSocket(url)
+  const ws = new WebSocket(url)
+  socket = ws
 
-  socket.onopen = async () => {
+  // 每次回调都校验 socket 身份：切换画布后旧连接的回调直接丢弃，防止其自动重连到新状态
+  ws.onopen = async () => {
+    if (socket !== ws) return
     state.connection = 'online'
     retryCount = 0
     try {
@@ -218,7 +249,8 @@ function openSocket() {
     }
   }
 
-  socket.onmessage = (event) => {
+  ws.onmessage = (event) => {
+    if (socket !== ws) return
     try {
       const payload = JSON.parse(event.data)
       if (payload.type === 'connected' || payload.type === 'pong') return
@@ -228,13 +260,14 @@ function openSocket() {
     }
   }
 
-  socket.onerror = () => {
+  ws.onerror = () => {
+    if (socket !== ws) return
     if (state.connection !== 'offline') state.connection = 'offline'
   }
 
-  socket.onclose = () => {
+  ws.onclose = () => {
+    if (socket !== ws || stopped) return
     state.connection = 'offline'
-    if (stopped) return
     retryCount += 1
     const delay = Math.min(8000, 1000 * Math.pow(2, retryCount - 1))
     clearTimeout(reconnectTimer)

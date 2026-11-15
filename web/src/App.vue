@@ -26,6 +26,8 @@ import CanvasContextMenu from './components/CanvasContextMenu.vue'
 import {
   state,
   loadAll,
+  loadWorkspaces,
+  createWorkspace,
   connectRealtime,
   disconnectRealtime,
   createEdge,
@@ -135,6 +137,11 @@ const connectionText = computed(() => {
   if (state.connection === 'connecting') return '连接中'
   return '已断开'
 })
+
+/** 当前画布名称：顶部标题与切换提示共用；列表未加载时回落到“默认工作空间” */
+const currentCanvasName = computed(
+  () => state.workspaces.find((item) => item.id === state.workspaceId)?.name || '默认工作空间'
+)
 
 // 画布点阵背景随主题切换，避免白天模式下仍是深色网格
 const patternColor = computed(() => (theme.value === 'light' ? '#dfe4ee' : '#24282F'))
@@ -711,40 +718,45 @@ function focusTask(taskId) {
   }
 }
 
+/** 组装画布快照：节点坐标 + 视口 + 连线 + 图片生成参数，切换画布前也会先落库 */
+function snapshotPayload() {
+  const positions = {}
+  for (const node of nodes.value) {
+    positions[node.id] = { x: Math.round(node.position.x), y: Math.round(node.position.y) }
+  }
+  let viewport = { x: 0, y: 0, zoom: 1 }
+  try {
+    if (typeof getViewport === 'function') viewport = getViewport()
+  } catch (e) {
+    /* 忽略 */
+  }
+  return { positions, viewport, links: state.links, imageSettings: state.imageSettings }
+}
+
+/** 立即保存当前画布快照；带 baseVersion 做乐观锁，切换画布前会先调用它 */
+async function saveSnapshotNow() {
+  if (!ready) return
+  const workspaceId = state.workspaceId
+  try {
+    const canvas = await api.saveSnapshot(workspaceId, snapshotPayload(), state.version)
+    if (state.workspaceId === workspaceId) state.version = canvas?.version ?? state.version
+  } catch (e) {
+    // 版本冲突：其他标签页/实例已保存过，拉取最新布局，避免互相覆盖
+    if (e.status === 409 && state.workspaceId === workspaceId) {
+      toast('画布已在其他窗口更新，已同步最新布局')
+      try {
+        await loadAll()
+      } catch (err) {
+        /* 忽略刷新失败 */
+      }
+    }
+  }
+}
+
 function scheduleSave() {
   if (!ready) return
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    const positions = {}
-    for (const node of nodes.value) {
-      positions[node.id] = { x: Math.round(node.position.x), y: Math.round(node.position.y) }
-    }
-    let viewport = { x: 0, y: 0, zoom: 1 }
-    try {
-      if (typeof getViewport === 'function') viewport = getViewport()
-    } catch (e) {
-      /* 忽略 */
-    }
-    api.saveSnapshot(
-      state.workspaceId,
-      { positions, viewport, links: state.links, imageSettings: state.imageSettings },
-      state.version
-    )
-      .then((canvas) => {
-        state.version = canvas?.version ?? state.version
-      })
-      .catch(async (e) => {
-        // 版本冲突：其他标签页/实例已保存过，拉取最新布局，避免互相覆盖
-        if (e.status === 409) {
-          toast('画布已在其他窗口更新，已同步最新布局')
-          try {
-            await loadAll()
-          } catch (err) {
-            /* 忽略刷新失败 */
-          }
-        }
-      })
-  }, 700)
+  saveTimer = setTimeout(saveSnapshotNow, 700)
 }
 
 function onPaneContextMenu(event) {
@@ -913,11 +925,70 @@ function applyInitialView() {
   fitView({ padding: 0.12, duration: 260 })
 }
 
+/** 切换画布：先保存当前快照，再重置本地视图与实时连接 */
+async function openCanvas(workspaceId) {
+  if (!workspaceId || workspaceId === state.workspaceId) return
+  clearTimeout(saveTimer)
+  await saveSnapshotNow()
+  disconnectRealtime()
+
+  state.workspaceId = workspaceId
+  localStorage.setItem('aigc.workspace.id', String(workspaceId))
+  state.loading = true
+  state.selectedTaskId = null
+  state.selectedImageId = null
+  state.selectedNodeId = null
+  state.previewTask = null
+  explicit.clear()
+  snapshotPositions = {}
+  nodes.value = []
+  edges.value = []
+  viewApplied = false
+  ready = false
+
+  try {
+    await loadAll()
+    await loadWorkspaces().catch(() => {})
+    syncGraph()
+    ready = true
+    connectRealtime()
+    setTimeout(() => {
+      if (state.snapshot?.viewport?.zoom) {
+        viewApplied = true
+        setViewport(state.snapshot.viewport)
+      } else {
+        setViewport({ x: 0, y: 0, zoom: 1 })
+        applyInitialView()
+      }
+    }, 120)
+    toast(`已切换到「${currentCanvasName.value}」`)
+  } catch (e) {
+    state.loading = false
+    toast(`加载画布失败：${e.message}`)
+  }
+}
+
+/** 下拉切换画布：select 的 value 是字符串，这里统一转成数字 ID */
+function onCanvasChange(event) {
+  openCanvas(Number(event.target.value))
+}
+
+/** 新增空白画布并立即切换过去 */
+async function addCanvas() {
+  try {
+    const created = await createWorkspace()
+    await openCanvas(created.id)
+  } catch (e) {
+    toast(`新增画布失败：${e.message}`)
+  }
+}
+
 async function bootstrap() {
   try {
     await loadAll()
     syncGraph()
     ready = true
+    loadWorkspaces().catch(() => {})
     connectRealtime()
     onMoveEnd(() => scheduleSave())
     // 等节点测量完成后再自适应视图，避免节点跑到屏幕外
@@ -949,7 +1020,7 @@ onBeforeUnmount(() => {
         <span class="logo">◈</span>
         <div>
           <strong>AIGC 画布工作台</strong>
-          <span class="muted">默认工作空间 · 提示词即镜头</span>
+          <span class="muted">{{ currentCanvasName }} · 提示词即镜头</span>
         </div>
       </div>
 
@@ -975,12 +1046,29 @@ onBeforeUnmount(() => {
     </header>
 
     <div class="workspace">
-      <Sidebar
-        :collapsed="sidebarCollapsed"
-        @new="showNewShot = true"
-        @focus="focusTask"
-        @toggle="sidebarCollapsed = !sidebarCollapsed"
-      />
+      <div class="sidebar-column" :class="{ collapsed: sidebarCollapsed }">
+        <!-- 画布切换条：下拉选择已有画布，＋ 新建空白画布（折叠时只保留 ＋ 按钮） -->
+        <div class="canvas-bar">
+          <select
+            v-if="!sidebarCollapsed"
+            class="canvas-select"
+            :value="state.workspaceId"
+            title="切换画布"
+            @change="onCanvasChange"
+          >
+            <option v-for="item in state.workspaces" :key="item.id" :value="item.id">
+              {{ item.name }}
+            </option>
+          </select>
+          <button class="icon-btn canvas-add" title="新增画布" @click="addCanvas">＋</button>
+        </div>
+        <Sidebar
+          :collapsed="sidebarCollapsed"
+          @new="showNewShot = true"
+          @focus="focusTask"
+          @toggle="sidebarCollapsed = !sidebarCollapsed"
+        />
+      </div>
 
       <main
         ref="canvasWrap"

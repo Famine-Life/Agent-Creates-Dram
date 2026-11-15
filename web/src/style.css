@@ -219,6 +219,69 @@ h2 {
   gap: 8px;
 }
 
+/* 左侧栏目：画布切换条 + 提示词面板 */
+.sidebar-column {
+  width: 258px;
+  flex: 0 0 258px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  transition: width 0.18s ease, flex-basis 0.18s ease;
+}
+
+.sidebar-column.collapsed {
+  width: 58px;
+  flex: 0 0 58px;
+}
+
+/* 宽度由外层栏目控制，折叠态跟随外层 */
+.sidebar-column > .sidebar,
+.sidebar-column > .sidebar.collapsed {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-right: none;
+  transition: none;
+}
+
+.canvas-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.sidebar-column.collapsed .canvas-bar {
+  padding: 12px 8px 0;
+  justify-content: center;
+}
+
+.canvas-select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.canvas-select:focus {
+  border-color: var(--brand);
+}
+
+/* 新建画布按钮（＋），与下拉框同高 */
+.canvas-add {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+}
+
 .head-actions {
   display: flex;
   align-items: center;

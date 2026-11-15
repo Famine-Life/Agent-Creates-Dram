@@ -7,4 +7,6 @@ spring:
   sql:
     init:
       mode: always
+      # 建表脚本含中文字段注释，显式指定 UTF-8，避免按平台编码读取导致注释乱码
+      encoding: UTF-8
       schema-locations: classpath:db/schema-mysql.sql
