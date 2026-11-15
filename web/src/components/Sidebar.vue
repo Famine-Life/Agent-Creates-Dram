@@ -27,7 +27,7 @@ const groups = computed(() => {
 })
 
 const running = computed(
-  () => state.tasks.filter((t) => ['RECEIVED', 'QUEUED', 'SUBMITTED', 'RUNNING'].includes(t.status)).length
+  () => state.tasks.filter((t) => ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(t.status)).length
 )
 
 const selectedGroup = computed(

@@ -14,6 +14,7 @@ import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.ConflictException;
 import com.aigc.video.common.NotFoundException;
+import com.aigc.video.common.TooManyRequestsException;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.GenerationTask;
@@ -38,6 +39,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
@@ -60,6 +62,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class TaskService {
+
+    @Value("${aigc.dispatch.max-queued-tasks:1000}")
+    private int maxQueuedTasks;
 
     public static final String DEFAULT_GROUP = "默认分组";
 
@@ -136,6 +141,8 @@ public class TaskService {
                 return node(existing.getId());
             }
         }
+
+        if (!draft) ensureQueueCapacity();
 
         GenerationTask task = new GenerationTask();
         task.setWorkspaceId(workspaceId);
@@ -502,6 +509,11 @@ public class TaskService {
     // ---------------------------------------------------------------- 内部实现
 
     private void resetForRegenerate(Long taskId) {
+        GenerationTask current = requireTask(taskId);
+        if (!TaskStatus.QUEUED.name().equals(current.getStatus())
+                && !TaskStatus.RECEIVED.name().equals(current.getStatus())) {
+            ensureQueueCapacity();
+        }
         taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
                 .set(GenerationTask::getStatus, TaskStatus.QUEUED.name())
@@ -514,6 +526,14 @@ public class TaskService {
                 .set(GenerationTask::getVideoUrl, null)
                 .set(GenerationTask::getCoverUrl, null)
                 .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    private void ensureQueueCapacity() {
+        long queuedCount = taskMapper.selectCount(Wrappers.<GenerationTask>lambdaQuery()
+                .in(GenerationTask::getStatus, TaskStatus.RECEIVED.name(), TaskStatus.QUEUED.name()));
+        if (queuedCount >= maxQueuedTasks) {
+            throw new TooManyRequestsException("生成队列已满，请稍后再提交（上限 " + maxQueuedTasks + " 个待提交任务）");
+        }
     }
 
     /** 按图片顺序补齐引用，已存在的跳过 */

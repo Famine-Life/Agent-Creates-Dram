@@ -15,6 +15,10 @@ public record PollResult(String status, int progress, String videoUrl, String co
         return new PollResult("RUNNING", progress, null, null, null);
     }
 
+    public static PollResult queued() {
+        return new PollResult("QUEUED", 3, null, null, null);
+    }
+
     public static PollResult succeeded(String videoUrl, String coverUrl) {
         return new PollResult("SUCCEEDED", 100, videoUrl, coverUrl, null);
     }

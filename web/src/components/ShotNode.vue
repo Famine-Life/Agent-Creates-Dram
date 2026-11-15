@@ -30,7 +30,7 @@ const started = ref(false)
 const hovering = ref(false)
 const task = computed(() => props.data.task)
 const status = computed(() => statusOf(task.value))
-const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTED', 'RUNNING'].includes(task.value.status))
+const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(task.value.status))
 const isDraft = computed(() => task.value.status === 'IDLE')
 const ready = computed(() => task.value.status === 'SUCCEEDED' && !!task.value.videoUrl)
 const editorVisible = computed(() => props.selected || state.selectedTaskId === task.value.id)
@@ -42,9 +42,11 @@ const model = computed(() => task.value.modelKey || task.value.model || '')
 const modelOption = computed(() => videoModels.value.find((item) => item.value === model.value))
 const modelLabel = computed(() => modelOption.value?.label || task.value.model || model.value || '-')
 const stageText = computed(() => {
-  if (task.value.status === 'QUEUED' || task.value.status === 'RECEIVED') {
+  if (['QUEUED', 'RECEIVED', 'PROVIDER_QUEUED'].includes(task.value.status)) {
+    if (task.value.status === 'PROVIDER_QUEUED') return '等待火山方舟平台资源'
     return `使用 ${modelLabel.value} 模型排队中`
   }
+  if (task.value.status === 'SUBMIT_UNKNOWN') return '提交结果不确定，请确认方舟控制台后再重试'
   return `使用 ${modelLabel.value} 模型生成中`
 })
 const ratio = computed(() => task.value.ratio || '16:9')
@@ -118,6 +120,14 @@ async function onSubmitPrompt(text) {
   } finally {
     saving.value = false
   }
+}
+
+function onRetry() {
+  if (task.value.status === 'SUBMIT_UNKNOWN'
+      && !window.confirm('提交结果不确定。请先在方舟控制台检查任务，确认没有已接收的生成任务后再重试，以免重复生成。继续？')) {
+    return
+  }
+  guard(retryTask(task.value.id), '重新生成')
 }
 
 async function saveSettings(patch) {
@@ -212,8 +222,8 @@ async function onCancel() {
             <div class="err-title">待编辑</div>
             <div class="err-msg">在下方填写提示词后点击「生成」</div>
           </template>
-          <template v-else-if="task.status === 'FAILED' || task.status === 'TIMEOUT'">
-            <div class="err-title">生成失败</div>
+          <template v-else-if="task.status === 'FAILED' || task.status === 'TIMEOUT' || task.status === 'SUBMIT_UNKNOWN'">
+            <div class="err-title">{{ task.status === 'SUBMIT_UNKNOWN' ? '提交结果待确认' : '生成失败' }}</div>
             <div class="err-msg">{{ task.errorMsg || '请稍后重试' }}</div>
           </template>
           <template v-else-if="!active">
@@ -229,14 +239,14 @@ async function onCancel() {
           >取消任务</button>
         </div>
 
-        <div v-if="ready || task.status === 'FAILED' || task.status === 'TIMEOUT'" class="media-actions">
+        <div v-if="ready || task.status === 'FAILED' || task.status === 'TIMEOUT' || task.status === 'SUBMIT_UNKNOWN'" class="media-actions">
           <button v-if="ready" class="media-btn" title="预览" @click="openPreview">⤢</button>
           <a v-if="ready" class="media-btn" :href="task.videoUrl" target="_blank" rel="noreferrer" title="下载" @click.stop>↓</a>
           <button
             v-else
             class="media-btn"
-            title="重新生成"
-            @click.stop="guard(retryTask(task.id), '重新生成')"
+            :title="task.status === 'SUBMIT_UNKNOWN' ? '确认方舟控制台没有该任务后再重试' : '重新生成'"
+            @click.stop="onRetry"
           >↻</button>
         </div>
 

@@ -16,6 +16,7 @@ const image = computed(() => props.data.image)
 /** 编辑框中的实时文本；图生图直接用这里的最新提示词，未编辑时即已保存的提示词 */
 const draftPrompt = ref(image.value.prompt || '')
 const running = computed(() => image.value.status === 'RUNNING')
+const queued = computed(() => image.value.status === 'QUEUED')
 const failed = computed(() => image.value.status === 'FAILED')
 const ready = computed(() => image.value.status === 'SUCCEEDED' && !!image.value.url)
 const modelOptions = computed(() => state.meta.imageModels || [])
@@ -103,7 +104,8 @@ async function onDelete(e) {
       <header class="node-head">
         <span class="node-kind">图片</span>
         <span class="node-title">{{ image.name }}</span>
-        <span v-if="running" class="pill tone-busy">生成中</span>
+        <span v-if="queued" class="pill tone-idle">等待本地资源</span>
+        <span v-else-if="running" class="pill tone-busy">生成中</span>
         <span v-else-if="failed" class="pill tone-error">失败</span>
         <span v-else-if="ready" class="pill tone-done">已完成</span>
         <button class="shot-del" title="删除图片" @click="onDelete">×</button>
@@ -119,7 +121,7 @@ async function onDelete(e) {
           @click.stop="previewing = true"
         />
         <div v-else class="node-placeholder">
-          <div v-if="running" class="ring" :style="{ '--value': 66 }"><span>AI</span></div>
+          <div v-if="running || queued" class="ring" :style="{ '--value': 66 }"><span>AI</span></div>
           <template v-else-if="failed">
             <div class="err-title">生成失败</div>
             <div class="err-msg">{{ image.errorMsg || '请调整提示词后重试' }}</div>
@@ -136,7 +138,7 @@ async function onDelete(e) {
           <button
             class="media-btn"
             title="以当前图为参考重新生成（图生图）"
-            :disabled="saving || running"
+            :disabled="saving || running || queued"
             @click="onRestyle"
           >↻</button>
         </div>
@@ -161,7 +163,7 @@ async function onDelete(e) {
       :resolution-options="RESOLUTION_OPTIONS"
       :count="settings.count"
       :count-options="COUNT_OPTIONS"
-      :busy="saving || running"
+      :busy="saving || running || queued"
       :show-refs="false"
       submit-label="生成图片"
       placeholder="描述你想要的画面，例如：雨夜霓虹街头，电影感，浅景深…"

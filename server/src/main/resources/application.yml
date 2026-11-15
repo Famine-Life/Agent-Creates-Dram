@@ -88,6 +88,20 @@ aigc:
     # 多实例部署置 true：画布事件走 Redis Pub/Sub，跨实例推送；
     # 同时启用任务调度的分布式锁，避免多个实例重复扫描任务表
     redis-enabled: ${AIGC_REDIS_ENABLED:false}
+  dispatch:
+    # 方舟主账号类型：enterprise / personal，用于选择本地视频并发闸门，默认企业账号
+    account-type: ${AIGC_ACCOUNT_TYPE:enterprise}
+    enterprise-max-concurrent: ${AIGC_ENTERPRISE_VIDEO_CONCURRENCY:10}
+    personal-max-concurrent: ${AIGC_PERSONAL_VIDEO_CONCURRENCY:3}
+    # 4K 独立限流；当前方舟文档列出的企业/个人默认值均为 1
+    max-concurrent-4k: ${AIGC_VIDEO_4K_CONCURRENCY:1}
+    max-submit-retries: ${AIGC_VIDEO_SUBMIT_MAX_RETRIES:8}
+    # 数据库待提交队列软上限，超过后 API 返回 429
+    max-queued-tasks: ${AIGC_MAX_QUEUED_TASKS:1000}
+    # SUBMITTING 超时后转为 SUBMIT_UNKNOWN，避免远端已接收时盲目重复提交
+    submit-unknown-timeout-seconds: ${AIGC_SUBMIT_UNKNOWN_TIMEOUT_SECONDS:120}
+    image-worker-threads: ${AIGC_IMAGE_WORKER_THREADS:2}
+    image-queue-capacity: ${AIGC_IMAGE_QUEUE_CAPACITY:100}
   storage:
     # local = 本地磁盘 + /files；minio = MinIO；cos = 腾讯云 COS；oss = 阿里云 OSS
     type: ${AIGC_STORAGE_TYPE:local}

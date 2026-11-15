@@ -7,6 +7,7 @@ import com.aigc.video.api.dto.CanvasNodeView;
 import com.aigc.video.api.dto.ImageNode;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.NotFoundException;
+import com.aigc.video.common.TooManyRequestsException;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.CanvasNode;
@@ -22,8 +23,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,19 +32,19 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
-/** 文本 / 脚本节点与 AI 图片生成 */
-/**
- * 处理画布与生成任务的业务流程。
- */
+/** 管理文本、脚本节点及 AI 图片生成。 */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CanvasNodeService {
 
     public static final String STATUS_IDLE = "IDLE";
+    public static final String STATUS_QUEUED = "QUEUED";
     public static final String STATUS_RUNNING = "RUNNING";
     public static final String STATUS_SUCCEEDED = "SUCCEEDED";
     public static final String STATUS_FAILED = "FAILED";
@@ -58,11 +59,32 @@ public class CanvasNodeService {
     private final ObjectMapper objectMapper;
     private final AssetService assetService;
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "aigc-ai-worker");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService executor;
+
+    public CanvasNodeService(CanvasNodeMapper nodeMapper, CanvasImageMapper imageMapper,
+                             CanvasMapper canvasMapper, WorkspaceMapper workspaceMapper,
+                             CanvasSocketRegistry socketRegistry, AiService aiService,
+                             ModelCatalog modelCatalog, ObjectMapper objectMapper,
+                             AssetService assetService,
+                             @Value("${aigc.dispatch.image-worker-threads:2}") int workerThreads,
+                             @Value("${aigc.dispatch.image-queue-capacity:100}") int queueCapacity) {
+        this.nodeMapper = nodeMapper;
+        this.imageMapper = imageMapper;
+        this.canvasMapper = canvasMapper;
+        this.workspaceMapper = workspaceMapper;
+        this.socketRegistry = socketRegistry;
+        this.aiService = aiService;
+        this.modelCatalog = modelCatalog;
+        this.objectMapper = objectMapper;
+        this.assetService = assetService;
+        int threads = Math.max(1, workerThreads);
+        this.executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(Math.max(1, queueCapacity)), runnable -> {
+                    Thread thread = new Thread(runnable, "aigc-ai-worker");
+                    thread.setDaemon(true);
+                    return thread;
+                }, new ThreadPoolExecutor.AbortPolicy());
+    }
 
     @PreDestroy
     void shutdown() {
@@ -222,13 +244,18 @@ public class CanvasNodeService {
         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                 .eq(CanvasImage::getId, imageId)
                 .set(CanvasImage::getPrompt, text)
-                .set(CanvasImage::getStatus, STATUS_RUNNING)
+                .set(CanvasImage::getStatus, STATUS_QUEUED)
                 .set(CanvasImage::getErrorMsg, null)
                 .set(CanvasImage::getSource, ImageNode.SOURCE_AI)
                 .set(CanvasImage::getProvider, resolved.providerKey()));
         broadcastImage(workspaceId, imageId);
 
-        CompletableFuture.runAsync(() -> {
+        try {
+            CompletableFuture.runAsync(() -> {
+            imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
+                    .eq(CanvasImage::getId, imageId)
+                    .set(CanvasImage::getStatus, STATUS_RUNNING));
+            broadcastImage(workspaceId, imageId);
             for (int index = 0; index < quantity; index++) {
                 try {
                     String url = aiService.generateImage(text, resolved.key(), referenceUrl, size);
@@ -255,7 +282,15 @@ public class CanvasNodeService {
                     }
                 }
             }
-        }, executor);
+            }, executor);
+        } catch (RejectedExecutionException e) {
+            imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
+                    .eq(CanvasImage::getId, imageId)
+                    .set(CanvasImage::getStatus, STATUS_FAILED)
+                    .set(CanvasImage::getErrorMsg, "图片生成队列已满，请稍后重试"));
+            broadcastImage(workspaceId, imageId);
+            throw new TooManyRequestsException("图片生成队列已满，请稍后重试");
+        }
 
         return toImageNode(requireImage(workspaceId, imageId));
     }

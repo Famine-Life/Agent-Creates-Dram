@@ -12,13 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 火山方舟视频协议（Seedance）。
- * 文档：创建任务 POST /contents/generations/tasks，查询 GET /contents/generations/tasks/{id}
- */
-/**
- * 封装外部生成平台的调用协议。
- */
+/** 火山方舟 Seedance 视频协议适配器。 */
 @Slf4j
 @Component
 public class ArkVideoProvider implements VideoProvider {
@@ -103,7 +97,7 @@ public class ArkVideoProvider implements VideoProvider {
                 String message = response.path("error").path("message").asText(status);
                 yield PollResult.failed("视频生成失败：" + message);
             }
-            case "queued" -> PollResult.running(5);
+            case "queued" -> PollResult.queued();
             default -> PollResult.running(60);
         };
     }

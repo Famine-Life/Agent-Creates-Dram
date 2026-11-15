@@ -15,7 +15,7 @@ const task = computed(() => state.tasks.find((t) => t.id === state.selectedTaskI
 const image = computed(() => state.images.find((i) => i.id === state.selectedImageId) || null)
 const status = computed(() => statusOf(task.value))
 const active = computed(
-  () => task.value && ['RECEIVED', 'QUEUED', 'SUBMITTED', 'RUNNING'].includes(task.value.status)
+  () => task.value && ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(task.value.status)
 )
 const linkedShots = computed(() => {
   if (!image.value) return []

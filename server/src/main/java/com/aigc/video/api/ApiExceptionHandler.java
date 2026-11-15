@@ -3,6 +3,7 @@ package com.aigc.video.api;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.ConflictException;
 import com.aigc.video.common.NotFoundException;
+import com.aigc.video.common.TooManyRequestsException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, Object>> conflict(ConflictException e) {
         return body(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Map<String, Object>> tooManyRequests(TooManyRequestsException e) {
+        return body(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
     }
 
     @ExceptionHandler({IllegalArgumentException.class, MaxUploadSizeExceededException.class})

@@ -10,15 +10,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * 任务调度的分布式锁：多实例部署时，同一时刻只允许一个实例扫描任务表。
- * <p>
- * 未开启 Redis 时退化为单实例直通；Redis 不可用时放行本次调度（任务提交本身有状态 CAS 兜底），
- * 避免锁故障导致所有任务停摆。
- */
-/**
- * 处理画布与生成任务的业务流程。
- */
+/** 多实例调度锁；未开启 Redis 时按单实例运行，锁异常时暂停调度。 */
 @Slf4j
 @Component
 public class DispatchLock {
@@ -49,8 +41,8 @@ public class DispatchLock {
             Boolean acquired = redisTemplate.opsForValue().setIfAbsent(KEY, token, TTL);
             return Boolean.TRUE.equals(acquired) ? token : null;
         } catch (Exception e) {
-            log.warn("调度锁获取失败，本轮按单实例继续调度：{}", e.getMessage());
-            return LOCAL_TOKEN;
+            log.error("调度锁获取失败，本轮暂停任务调度：{}", e.getMessage());
+            return null;
         }
     }
 

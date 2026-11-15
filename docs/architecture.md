@@ -136,8 +136,11 @@ TaskDispatcher.tick（默认 800ms）
 | --- | --- | --- |
 | `RECEIVED` | 已入库，待调度 | `QUEUED` |
 | `QUEUED` | 排队待提交 | `SUBMITTED` / `CANCELED` |
-| `SUBMITTED` | 已提交供应商 | `RUNNING` / `FAILED` / `TIMEOUT` / `CANCELED` |
+| `SUBMITTING` | 本地已占并发槽，正在调用供应商 | `SUBMITTED` / `QUEUED` / `FAILED` / `SUBMIT_UNKNOWN` |
+| `SUBMITTED` | 供应商已接收，等待首次查询 | `PROVIDER_QUEUED` / `RUNNING` / `FAILED` / `TIMEOUT` / `CANCELED` |
+| `PROVIDER_QUEUED` | 供应商已接收，等待平台算力 | `PROVIDER_QUEUED` / `RUNNING` / `FAILED` / `TIMEOUT` / `CANCELED` |
 | `RUNNING` | 供应商生成中 | `SUCCEEDED` / `FAILED` / `TIMEOUT` / `CANCELED` |
+| `SUBMIT_UNKNOWN` | 提交超时或服务中断，供应商是否接收未知 | 人工核对后重试 |
 | `SUCCEEDED` | 成片已转存 | `QUEUED`（重新生成） |
 | `FAILED` / `TIMEOUT` / `CANCELED` | 终态 | `QUEUED`（重试） |
 
@@ -149,11 +152,16 @@ TaskDispatcher.tick（默认 800ms）
 ### 4.4 调度、幂等与一致性
 
 - `next_poll_at` 退避序列：`2 / 3 / 5 / 8 / 13 / 20 / 30` 秒；最大 `aigc.poll-timeout-seconds`（默认 900s）。
-- CAS 抢占：`UPDATE generation_task SET status='SUBMITTED' WHERE id=? AND status IN ('RECEIVED','QUEUED')`，影响行数为 0 则跳过，避免多线程重复提交。
+- 本地并发闸门按 provider/model 与清晰度分组：企业账号普通清晰度默认 10、个人账号 3，4K 默认 1；`AIGC_ACCOUNT_TYPE` 默认 `enterprise`，可用 `personal` 切换。超过本地闸门的任务保留 `QUEUED`，不调用供应商。
+- 状态区分本地 `QUEUED`、`SUBMITTING`、供应商已接收 `SUBMITTED`、供应商排队 `PROVIDER_QUEUED` 和实际运行 `RUNNING`。队列容量默认 1000，满时提交 API 返回 HTTP 429。
+- 提交方舟遇到 429 时遵循 `Retry-After` 并以 `2/3/5/8/13/20/30` 秒退避，仍处于本地队列；网络超时或 5xx 标记 `SUBMIT_UNKNOWN`，避免自动重提造成重复生成。用户检查供应商控制台后可手动重试。
+- CAS 抢占：`UPDATE generation_task SET status='SUBMITTING' WHERE id=? AND status IN ('RECEIVED','QUEUED')`，影响行数为 0 则跳过，避免多线程重复提交。
+- 提交网络结果不确定时不自动重提；`SUBMIT_UNKNOWN` 仍占用本地模型并发额度，用户核对方舟控制台后点重试会释放旧占位并重新排队。
 - 幂等键：`sha256(workspaceId|groupId|shotIndex|prompt)`，写入 `idem_key`（唯一索引 `uk_task_idem`）；重复推送直接复用节点。
 - 供应商任务号唯一：`UNIQUE(provider, provider_task_id)`。
 - 调度线程池 `spring.task.scheduling.pool.size=2`；`AssetService.transfer` 对同源 URL 做了内存缓存，避免多个 mock 任务重复下载同一个演示视频阻塞轮询。
-- **多实例调度**：`AIGC_REDIS_ENABLED=true` 时 `TaskDispatcher.tick` 先抢 Redis 锁 `aigc:dispatch:lock`（SET NX + 120s TTL，Lua 校验后释放），同一时刻只有一个实例扫表；未开启 Redis 时直通单实例逻辑。Redis 异常时本轮放行并打 WARN，提交阶段的状态 CAS 仍能兜底，不会重复提交。
+- **多实例调度**：`AIGC_REDIS_ENABLED=true` 时 `TaskDispatcher.tick` 先抢 Redis 锁 `aigc:dispatch:lock`（SET NX + 120s TTL，Lua 校验后释放），同一时刻只有一个实例扫表并读取并发占用；未开启 Redis 时按单实例运行。Redis 锁异常时暂停本轮调度，避免并发配额统计失效后超额提交。
+- **图片队列保护**：图片生成使用固定工作线程和有界队列（默认 2 个线程、100 个待执行任务）；队列满时任务标记失败并向调用端返回 HTTP 429。火山方舟图片 API 的 IPM 仍按具体图片模型在平台侧单独限流。
 - **画布快照乐观锁**：`saveSnapshot(workspaceId, snapshot, baseVersion)` 使用 `UPDATE ... WHERE id=? AND version=?`，影响行数为 0 抛 `ConflictException` → HTTP 409；前端提示并重新拉取最新布局。未传 `baseVersion` 的旧客户端仍按最后写入生效。
 
 ### 4.5 数据模型
