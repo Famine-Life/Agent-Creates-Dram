@@ -20,6 +20,7 @@ import ScriptNode from './components/ScriptNode.vue'
 import TextNode from './components/TextNode.vue'
 import GroupNode from './components/GroupNode.vue'
 import ImageRefEdge from './components/ImageRefEdge.vue'
+import LinkEdge from './components/LinkEdge.vue'
 import CanvasContextMenu from './components/CanvasContextMenu.vue'
 
 import {
@@ -36,6 +37,10 @@ import {
   createAiImageNode,
   createImageNode,
   createShot,
+  addLink,
+  fillScriptPrompt,
+  fillImagePrompt,
+  fillShotPrompt,
   removeTask,
   removeImage,
   removeCanvasNode,
@@ -66,7 +71,7 @@ const nodeTypes = {
   text: markRaw(TextNode),
   group: markRaw(GroupNode)
 }
-const edgeTypes = { ref: markRaw(ImageRefEdge) }
+const edgeTypes = { ref: markRaw(ImageRefEdge), link: markRaw(LinkEdge) }
 
 const nodes = ref([])
 const edges = ref([])
@@ -79,6 +84,7 @@ const fileInput = ref(null)
 const canvasWrap = ref(null)
 const dragging = ref(false)
 const contextMenu = ref(null)
+const linkPicker = ref(null)
 let lastCanvasPointer = null
 const newShotPosition = ref(null)
 const pendingUpload = ref(null)
@@ -271,18 +277,36 @@ function syncGraph() {
 
   nodes.value = next
 
-  edges.value = state.edges
-    .filter((edge) => ids.has(`image-${edge.imageId}`) && ids.has(`shot-${edge.taskId}`))
-    .map((edge) => ({
-      id: `edge-${edge.id}`,
-      type: 'ref',
-      source: `image-${edge.imageId}`,
-      target: `shot-${edge.taskId}`,
-      data: { edgeId: edge.id }
-    }))
+  edges.value = [
+    ...state.edges
+      .filter((edge) => ids.has(`image-${edge.imageId}`) && ids.has(`shot-${edge.taskId}`))
+      .map((edge) => ({
+        id: `edge-${edge.id}`,
+        type: 'ref',
+        source: `image-${edge.imageId}`,
+        target: `shot-${edge.taskId}`,
+        data: { edgeId: edge.id }
+      })),
+    ...state.links
+      .filter((link) => ids.has(link.source) && ids.has(link.target))
+      .map((link) => ({
+        id: `linkedge-${link.id}`,
+        type: 'link',
+        source: link.source,
+        target: link.target,
+        data: { linkId: link.id }
+      }))
+  ]
 }
 
-watch(() => [state.tasks, state.images, state.canvasNodes, state.edges], syncGraph, { deep: true })
+watch(() => [state.tasks, state.images, state.canvasNodes, state.edges, state.links], syncGraph, { deep: true })
+watch(
+  () => [state.links, state.imageSettings],
+  () => {
+    if (ready) scheduleSave()
+  },
+  { deep: true }
+)
 watch(
   () => state.snapshot,
   (snapshot) => {
@@ -314,7 +338,7 @@ async function duplicateNode(node, { x, y, withEdges = true }) {
     const created = await createShot({
       prompt: task.prompt,
       groupId: task.groupId,
-      model: task.model,
+      model: task.modelKey || task.model,
       ratio: task.ratio,
       duration: task.duration,
       resolution: task.resolution
@@ -500,36 +524,155 @@ async function onNodeDragStop({ node }) {
   scheduleSave()
 }
 
-async function onConnect(connection) {
-  const { source, target } = connection
-  if (!source?.startsWith('image-') || !target?.startsWith('shot-')) {
-    toast('请从图片右侧圆点拖到镜头卡片')
-    return
-  }
-  const imageId = Number(source.slice(6))
-  const taskId = Number(target.slice(5))
-  if (state.edges.some((edge) => edge.imageId === imageId && edge.taskId === taskId)) {
-    toast('这两个节点已经连线')
-    return
-  }
+async function applyLinkValue(action, label) {
   try {
-    await createEdge(taskId, imageId)
+    await action()
+    return true
   } catch (e) {
-    toast(`连线失败：${e.message}`)
+    toast(`${label}失败：${e.message}`)
+    return false
   }
 }
 
-// 从图片锚点拖出连线后，松开在镜头卡片的任意位置（不只是左侧小圆点）都能建立引用
+function openShotPicker(source, target) {
+  const node = state.canvasNodes.find((item) => `node-${item.id}` === source)
+  if (!node) return
+  let list = []
+  try {
+    list = JSON.parse(node.content || '[]')
+  } catch (e) {
+    list = []
+  }
+  list = Array.isArray(list) ? list.filter((shot) => shot && shot.prompt) : []
+  if (!list.length) {
+    toast('脚本还没有分镜，先在上方生成脚本')
+    return
+  }
+  linkPicker.value = { source, target, title: node.title || '分镜脚本', shots: list }
+}
+
+async function applyPickedShot(shot) {
+  const picker = linkPicker.value
+  linkPicker.value = null
+  if (!picker) return
+  const filled = await applyLinkValue(
+    () => fillShotPrompt(Number(picker.target.slice(5)), shot.prompt),
+    '写入镜头提示词'
+  )
+  if (!filled) return
+  addLink(picker.source, picker.target)
+  toast('分镜已写入镜头提示词')
+}
+
+async function onConnect(connection) {
+  const { source, target } = connection
+  if (!source || !target || source === target) return
+
+  if (source.startsWith('image-')) {
+    if (!target.startsWith('shot-')) {
+      toast('请从图片右侧圆点拖到镜头卡片')
+      return
+    }
+    const imageId = Number(source.slice(6))
+    const taskId = Number(target.slice(5))
+    if (state.edges.some((edge) => edge.imageId === imageId && edge.taskId === taskId)) {
+      toast('这两个节点已经连线')
+      return
+    }
+    try {
+      await createEdge(taskId, imageId)
+    } catch (e) {
+      toast(`连线失败：${e.message}`)
+    }
+    return
+  }
+
+  if (!source.startsWith('node-')) {
+    toast('请从文本 / 脚本 / 图片节点右侧圆点拖出连线')
+    return
+  }
+
+  const sourceNode = state.canvasNodes.find((item) => `node-${item.id}` === source)
+  if (!sourceNode) return
+  if (state.links.some((link) => link.source === source && link.target === target)) {
+    toast('这两个节点已经连线')
+    return
+  }
+
+  if (sourceNode.type === 'script') {
+    if (!target.startsWith('shot-')) {
+      toast('脚本只能连到镜头，选中分镜后写入提示词')
+      return
+    }
+    openShotPicker(source, target)
+    return
+  }
+
+  const text = (sourceNode.content || '').trim()
+  if (!text) {
+    toast('文本节点还没有内容')
+    return
+  }
+
+  if (target.startsWith('node-')) {
+    const targetNode = state.canvasNodes.find((item) => `node-${item.id}` === target)
+    if (!targetNode || targetNode.type !== 'script') {
+      toast('文本只能连到脚本、AI 图片或镜头节点')
+      return
+    }
+    const filled = await applyLinkValue(() => fillScriptPrompt(targetNode.id, text), '写入脚本提示词')
+    if (filled) {
+      addLink(source, target)
+      toast('文本已作为脚本输入')
+    }
+    return
+  }
+
+  if (target.startsWith('image-')) {
+    const targetImage = state.images.find((item) => item.id === Number(target.slice(6)))
+    if (!targetImage || !(targetImage.prompt != null || targetImage.status)) {
+      toast('文本只能连到 AI 图片节点')
+      return
+    }
+    const filled = await applyLinkValue(
+      () => fillImagePrompt(Number(target.slice(6)), text),
+      '写入图片提示词'
+    )
+    if (filled) {
+      addLink(source, target)
+      toast('文本已写入图片提示词')
+    }
+    return
+  }
+
+  if (target.startsWith('shot-')) {
+    const filled = await applyLinkValue(
+      () => fillShotPrompt(Number(target.slice(5)), text),
+      '写入镜头提示词'
+    )
+    if (filled) {
+      addLink(source, target)
+      toast('文本已写入镜头提示词')
+    }
+    return
+  }
+
+  toast('文本只能连到脚本、AI 图片或镜头节点')
+}
+
+// 从锚点拖出连线后，松开在目标节点卡片的任意位置都能建立连线
 onConnectEnd((event) => {
   const sourceId = connectionStartHandle.value?.nodeId
-  if (!sourceId?.startsWith('image-') || !event) return
+  if (!sourceId || !event) return
   const point = 'clientX' in event ? event : event.changedTouches?.[0]
   if (!point) return
   const element = document.elementFromPoint(point.clientX, point.clientY)
   // 落在锚点上时已由 @connect 处理，避免重复建边
   if (!element || element.closest('.vue-flow__handle')) return
-  const targetId = element.closest('.vue-flow__node-shot')?.getAttribute('data-id')
+  const targetId = element.closest('.vue-flow__node')?.getAttribute('data-id')
   if (!targetId) return
+  const validTarget = targetId.startsWith('shot-') || targetId.startsWith('image-') || targetId.startsWith('node-')
+  if (!validTarget) return
   onConnect({ source: sourceId, target: targetId })
 })
 
@@ -549,6 +692,14 @@ function onNodeClick({ node }) {
     state.selectedTaskId = null
     state.selectedImageId = null
   }
+}
+
+// 点击画布空白处：取消选中，收起节点下方的提示词编辑器
+function onPaneClick() {
+  contextMenu.value = null
+  state.selectedTaskId = null
+  state.selectedImageId = null
+  state.selectedNodeId = null
 }
 
 function focusTask(taskId) {
@@ -574,7 +725,11 @@ function scheduleSave() {
     } catch (e) {
       /* 忽略 */
     }
-    api.saveSnapshot(state.workspaceId, { positions, viewport }, state.version)
+    api.saveSnapshot(
+      state.workspaceId,
+      { positions, viewport, links: state.links, imageSettings: state.imageSettings },
+      state.version
+    )
       .then((canvas) => {
         state.version = canvas?.version ?? state.version
       })
@@ -609,8 +764,17 @@ async function onMenuAction(action) {
   if (!menu) return
 
   if (action === 'video') {
-    newShotPosition.value = { ...menu.flow }
-    showNewShot.value = true
+    try {
+      const node = await createShot({ prompt: '' })
+      explicit.set(`shot-${node.id}`, { x: menu.flow.x, y: menu.flow.y })
+      state.selectedTaskId = node.id
+      state.selectedImageId = null
+      state.selectedNodeId = null
+      syncGraph()
+      toast('已添加视频节点，在下方填写提示词后点击生成')
+    } catch (e) {
+      toast(`添加视频节点失败：${e.message}`)
+    }
     return
   }
   if (action === 'upload') {
@@ -790,7 +954,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="topbar-center">
-        <span class="pill tone-info">供应商 {{ state.meta.provider || 'mock' }}</span>
+        <span class="pill tone-info">供应商 {{ state.meta.providerLabel || state.meta.provider || 'mock' }}</span>
         <span class="conn" :class="state.connection">
           <i />{{ connectionText }}
         </span>
@@ -846,7 +1010,7 @@ onBeforeUnmount(() => {
           @node-drag-stop="onNodeDragStop"
           @node-click="onNodeClick"
           @pane-context-menu="onPaneContextMenu"
-          @pane-click="contextMenu = null"
+          @pane-click="onPaneClick"
           @connect="onConnect"
         >
           <Background :gap="18" :size="1" :pattern-color="patternColor" />
@@ -913,6 +1077,32 @@ onBeforeUnmount(() => {
     <PromptRecordDialog v-if="showPromptRecords" @close="showPromptRecords = false" />
     <UsageGuide v-if="showGuide" @close="showGuide = false" />
     <PreviewDialog v-if="state.previewTask" :task="state.previewTask" @close="state.previewTask = null" />
+
+    <div v-if="linkPicker" class="overlay" @click.self="linkPicker = null">
+      <div class="dialog">
+        <header class="dialog-head">
+          <div>
+            <h2>选择要写入的分镜</h2>
+            <p class="muted">{{ linkPicker.title }} · 选中后追加到目标镜头提示词</p>
+          </div>
+          <button class="icon-btn" @click="linkPicker = null">×</button>
+        </header>
+        <div class="dialog-body link-picker">
+          <button
+            v-for="(shot, index) in linkPicker.shots"
+            :key="index"
+            class="link-pick"
+            @click="applyPickedShot(shot)"
+          >
+            <span class="script-index">{{ index + 1 }}</span>
+            <span class="link-pick-text">
+              <strong>{{ shot.title || `镜头 ${index + 1}` }}</strong>
+              <span>{{ shot.prompt }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="state.toast" class="toast">{{ state.toast }}</div>
   </div>

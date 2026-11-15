@@ -4,6 +4,7 @@ import { api } from '../api'
 export const WORKSPACE_ID = 1
 
 export const STATUS = {
+  IDLE: { text: '待编辑', tone: 'idle' },
   RECEIVED: { text: '已接收', tone: 'idle' },
   QUEUED: { text: '排队中', tone: 'idle' },
   SUBMITTED: { text: '已提交', tone: 'info' },
@@ -25,6 +26,10 @@ export const state = reactive({
   images: [],
   canvasNodes: [],
   edges: [],
+  /** 文本 / 脚本节点到下游节点的连线，随画布快照保存 */
+  links: [],
+  /** AI 图片生成参数（比例 / 清晰度 / 数量），随画布快照保存 */
+  imageSettings: {},
   snapshot: null,
   version: 0,
   selectedTaskId: null,
@@ -59,6 +64,8 @@ export async function loadAll() {
   const [meta, canvas] = await Promise.all([api.meta(), api.canvas(state.workspaceId)])
   state.meta = meta
   applyCanvas(canvas)
+  state.links = Array.isArray(canvas?.snapshot?.links) ? canvas.snapshot.links : []
+  state.imageSettings = canvas?.snapshot?.imageSettings || {}
   state.loading = false
 }
 
@@ -84,6 +91,7 @@ function handleEvent(type, data) {
     case 'node.deleted':
       state.tasks = state.tasks.filter((t) => t.id !== data.taskId)
       state.edges = state.edges.filter((e) => e.taskId !== data.taskId)
+      pruneLinks(`shot-${data.taskId}`)
       if (state.selectedTaskId === data.taskId) state.selectedTaskId = null
       break
     case 'image.created':
@@ -93,6 +101,7 @@ function handleEvent(type, data) {
     case 'image.deleted':
       state.images = state.images.filter((i) => i.id !== data.imageId)
       state.edges = state.edges.filter((e) => e.imageId !== data.imageId)
+      pruneLinks(`image-${data.imageId}`)
       if (state.selectedImageId === data.imageId) state.selectedImageId = null
       break
     case 'edge.created':
@@ -107,11 +116,70 @@ function handleEvent(type, data) {
       break
     case 'canvas_node.deleted':
       state.canvasNodes = state.canvasNodes.filter((n) => n.id !== data.nodeId)
+      pruneLinks(`node-${data.nodeId}`)
       if (state.selectedNodeId === data.nodeId) state.selectedNodeId = null
       break
     default:
       break
   }
+}
+
+// ------------------------------------------------------------------ 节点连线（文本 / 脚本 -> 下游）
+
+let linkSeq = 0
+
+function pruneLinks(nodeId) {
+  if (!state.links.some((link) => link.source === nodeId || link.target === nodeId)) return
+  state.links = state.links.filter((link) => link.source !== nodeId && link.target !== nodeId)
+}
+
+/** 建立文本 / 脚本节点到下游节点的连线；重复连线直接返回已有记录 */
+export function addLink(source, target) {
+  const existing = state.links.find((link) => link.source === source && link.target === target)
+  if (existing) return existing
+  linkSeq += 1
+  const link = { id: `link-${Date.now()}-${linkSeq}`, source, target }
+  state.links.push(link)
+  return link
+}
+
+export function removeLink(linkId) {
+  state.links = state.links.filter((link) => link.id !== linkId)
+}
+
+/** 把文本追加到脚本节点的提示词（连线传值） */
+export async function fillScriptPrompt(nodeId, text) {
+  const node = state.canvasNodes.find((item) => item.id === nodeId)
+  if (!node || !text) return
+  const prompt = node.prompt ? `${node.prompt}\n\n${text}` : text
+  return updateCanvasNode(nodeId, { prompt })
+}
+
+/** 把文本追加到 AI 图片节点的提示词（连线传值） */
+export async function fillImagePrompt(imageId, text) {
+  const image = state.images.find((item) => item.id === imageId)
+  if (!image || !text) return
+  const prompt = image.prompt ? `${image.prompt}\n\n${text}` : text
+  const updated = await api.updateImage(state.workspaceId, imageId, { prompt })
+  upsert(state.images, updated)
+  return updated
+}
+
+/** 把文本追加到镜头提示词，只保存不触发重新生成（连线传值） */
+export async function fillShotPrompt(taskId, text) {
+  const task = state.tasks.find((item) => item.id === taskId)
+  if (!task || !text) return
+  const prompt = task.prompt ? `${task.prompt}\n\n${text}` : text
+  const node = await api.savePrompt(taskId, {
+    prompt,
+    regenerate: false,
+    model: task.modelKey || task.model || task.provider,
+    ratio: task.ratio || '16:9',
+    duration: task.duration || 5,
+    resolution: task.resolution || '720P'
+  })
+  upsert(state.tasks, node)
+  return node
 }
 
 // ------------------------------------------------------------------ WebSocket
@@ -212,7 +280,7 @@ export async function updateShotSettings(taskId, patch) {
   const node = await api.savePrompt(taskId, {
     prompt: task.prompt,
     regenerate: false,
-    model: task.model || task.provider,
+    model: task.modelKey || task.model || task.provider,
     ratio: task.ratio || '16:9',
     duration: task.duration || 5,
     resolution: task.resolution || '720P',
@@ -237,6 +305,7 @@ export async function cancelTask(taskId) {
 export async function removeTask(taskId) {
   await api.removeTask(taskId)
   state.tasks = state.tasks.filter((t) => t.id !== taskId)
+  pruneLinks(`shot-${taskId}`)
   if (state.selectedTaskId === taskId) state.selectedTaskId = null
   toast('镜头已删除')
 }
@@ -314,6 +383,7 @@ export async function removeImage(imageId) {
   await api.removeImage(state.workspaceId, imageId)
   state.images = state.images.filter((i) => i.id !== imageId)
   state.edges = state.edges.filter((e) => e.imageId !== imageId)
+  pruneLinks(`image-${imageId}`)
 }
 
 export async function moveImage(imageId, x, y) {
@@ -343,11 +413,12 @@ export async function updateCanvasNode(nodeId, payload) {
 export async function removeCanvasNode(nodeId) {
   await api.removeCanvasNode(state.workspaceId, nodeId)
   state.canvasNodes = state.canvasNodes.filter((n) => n.id !== nodeId)
+  pruneLinks(`node-${nodeId}`)
   if (state.selectedNodeId === nodeId) state.selectedNodeId = null
 }
 
-export async function generateScript(nodeId, prompt) {
-  const node = await api.generateScript(state.workspaceId, nodeId, prompt)
+export async function generateScript(nodeId, prompt, model) {
+  const node = await api.generateScript(state.workspaceId, nodeId, prompt, model)
   upsert(state.canvasNodes, node)
   return node
 }
@@ -365,8 +436,8 @@ export async function createImageNode(payload) {
   return image
 }
 
-export async function generateAiImage(imageId, prompt) {
-  const image = await api.generateImage(state.workspaceId, imageId, prompt)
+export async function generateAiImage(imageId, prompt, model, referenceUrl, settings) {
+  const image = await api.generateImage(state.workspaceId, imageId, prompt, model, referenceUrl, settings)
   upsert(state.images, image)
   return image
 }

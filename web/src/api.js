@@ -51,13 +51,18 @@ export const api = {
   createCanvasNode: (workspaceId, body) => http.post(`/canvas/${workspaceId}/nodes`, body),
   updateCanvasNode: (workspaceId, nodeId, body) => http.put(`/canvas/${workspaceId}/nodes/${nodeId}`, body),
   removeCanvasNode: (workspaceId, nodeId) => http.delete(`/canvas/${workspaceId}/nodes/${nodeId}`),
-  generateScript: (workspaceId, nodeId, prompt) =>
-    http.post(`/canvas/${workspaceId}/nodes/${nodeId}/script`, { prompt }),
+  generateScript: (workspaceId, nodeId, prompt, model) =>
+    http.post(`/canvas/${workspaceId}/nodes/${nodeId}/script`, { prompt, model }),
   createAiImage: (workspaceId, body) => http.post(`/canvas/${workspaceId}/images/ai`, body),
-  optimizePrompt: (workspaceId, prompt) =>
-    http.post(`/canvas/${workspaceId}/ai/prompt/optimize`, { prompt }),
-  generateImage: (workspaceId, imageId, prompt) =>
-    http.post(`/canvas/${workspaceId}/images/${imageId}/generate`, { prompt }),
+  optimizePrompt: (workspaceId, prompt, model) =>
+    http.post(`/canvas/${workspaceId}/ai/prompt/optimize`, { prompt, model }),
+  generateImage: (workspaceId, imageId, prompt, model, referenceUrl, settings = {}) =>
+    http.post(`/canvas/${workspaceId}/images/${imageId}/generate`, {
+      prompt,
+      model,
+      referenceUrl,
+      ...settings
+    }),
   upload: (workspaceId, file, x, y) => {
     const form = new FormData()
     form.append('file', file)

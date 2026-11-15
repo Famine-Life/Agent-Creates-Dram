@@ -13,6 +13,11 @@ server:
 spring:
   application:
     name: aigc-video-server
+  servlet:
+    multipart:
+      # 默认仅 1MB，粘贴截图常超过；与 AssetService 的单图 50MB 上限保持一致
+      max-file-size: 50MB
+      max-request-size: 50MB
   datasource:
     # 默认使用 H2 文件库，开箱即跑；生产用 --spring.profiles.active=mysql
     url: jdbc:h2:file:./data/aigc;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
@@ -81,20 +86,6 @@ aigc:
     # 多实例部署置 true：画布事件走 Redis Pub/Sub，跨实例推送；
     # 同时启用任务调度的分布式锁，避免多个实例重复扫描任务表
     redis-enabled: ${AIGC_REDIS_ENABLED:false}
-  provider:
-    # mock = 无需任何密钥即可跑通全链路；seedance = 火山方舟即梦
-    default-name: ${AIGC_PROVIDER:seedance}
-    mock:
-      # 演示成片（Mock 不产生真实视频，成功后直接给这个地址）
-      video-url: https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
-      seconds: 8
-    seedance:
-      base-url: https://ark.cn-beijing.volces.com/api/v3
-      api-key: ${ARK_API_KEY:}
-      model: ${ARK_MODEL:doubao-seedance-2-0-260128}
-      ratio: "16:9"
-      duration: 5
-      watermark: false
   storage:
     # local = 本地磁盘 + /files；minio = MinIO；cos = 腾讯云 COS；oss = 阿里云 OSS
     type: ${AIGC_STORAGE_TYPE:local}
@@ -127,12 +118,106 @@ aigc:
       # 可选：CDN / 自定义域名，配置后优先用于拼接访问地址
       public-url: ${OSS_PUBLIC_URL:}
   poll-timeout-seconds: 900
-  # AI 生成：分镜脚本（LLM）与图片；api-key 为空时走 mock
+  # 多平台 AI：平台管地址与密钥，模型声明能力与协议；引用格式 provider/model
+  # 未配置 api-key 的平台不会出现在 /api/meta 与前端下拉中
   ai:
-    base-url: ${ARK_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
-    api-key: ${ARK_API_KEY:}
-    script-model: ${ARK_SCRIPT_MODEL:doubao-seed-1-6-250615}
-    image-model: ${ARK_IMAGE_MODEL:doubao-seedream-3-0-t2i-250415}
+    default-provider: ${AIGC_AI_PROVIDER:ark}
+    defaults:
+      text: ${AIGC_TEXT_MODEL:ark/doubao-seed-evolving}
+      image: ${AIGC_IMAGE_MODEL:ark/doubao-seedream-4-0-20260415}
+      video: ${AIGC_VIDEO_MODEL:ark/doubao-seedance-2-0-260128}
+    providers:
+      ark:
+        label: 火山方舟
+        base-url: ${ARK_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+        api-key: ${ARK_API_KEY:}
+        protocols:
+          text: openai-compatible
+          image: ark-image
+          video: ark-video
+        text-models:
+          - id: doubao-seed-evolving
+            label: Doubao Seed Evolving
+          - id: doubao-seed-2-1-pro-260915
+            label: Doubao Seed 2.1 Pro
+          - id: doubao-seed-2-1-lite-260915
+            label: Doubao Seed 2.1 Lite
+          - id: deepseek-v4-1-flash-261017
+            label: DeepSeek V4.1 Flash
+          - id: deepseek-v4-1-flash-economy-261017
+            label: DeepSeek V4.1 Flash Economy
+          - id: glm-5-3-flash-260828
+            label: GLM-5.3 Flash
+        image-models:
+          - id: doubao-seedream-5-5-261028
+            label: Seedream 5.5
+          - id: doubao-seedream-4-0-20260415
+            label: Seedream 4.0
+        video-models:
+          - id: doubao-seedance-2-0-260128
+            label: Seedance 2.0
+            ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
+            resolutions: ["480P", "720P", "1080P", "4K"]
+            durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+            default-ratio: "16:9"
+            default-duration: 5
+            watermark: false
+          - id: doubao-seedance-2-0-fast-260128
+            label: Seedance 2.0 Fast
+            ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
+            resolutions: ["480P", "720P", "1080P", "4K"]
+            durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+            default-ratio: "16:9"
+            default-duration: 5
+            watermark: false
+      # 示例：OpenAI，配置 OPENAI_API_KEY 后自动启用，无需改代码
+      openai:
+        label: OpenAI
+        base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+        api-key: ${OPENAI_API_KEY:}
+        protocols:
+          text: openai-compatible
+          image: openai-image
+        text-models:
+          - id: gpt-4.1
+            label: GPT-4.1
+        image-models:
+          - id: gpt-image-1
+            label: GPT Image 1
+      # 示例：阿里云百炼（DashScope）兼容模式，配置 DASHSCOPE_API_KEY 后启用
+      dashscope:
+        label: 阿里云百炼
+        base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${DASHSCOPE_API_KEY:}
+        protocols:
+          text: openai-compatible
+        text-models:
+          - id: qwen-plus
+            label: Qwen Plus
+      # 演示平台：无需密钥，始终可用；未配置任何密钥时作为默认兜底
+      mock:
+        label: Mock 演示
+        api-key: mock
+        protocols:
+          text: mock
+          image: mock
+          video: mock-video
+        text-models:
+          - id: mock-text
+            label: Mock 文本
+        image-models:
+          - id: mock-image
+            label: Mock 图片
+        video-models:
+          - id: mock-video
+            label: Mock 视频
+            ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
+            resolutions: ["480P", "720P"]
+            durations: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+            default-ratio: "16:9"
+            default-duration: 5
+        video-url: https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
+        video-seconds: 8
 
 logging:
   level:

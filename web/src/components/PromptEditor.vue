@@ -22,7 +22,9 @@ const props = defineProps({
   duration: { type: [Number, String], default: 5 },
   durationOptions: { type: Array, default: () => [] },
   resolution: { type: String, default: '720P' },
-  resolutionOptions: { type: Array, default: () => [] }
+  resolutionOptions: { type: Array, default: () => [] },
+  count: { type: [Number, String], default: 1 },
+  countOptions: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits([
@@ -31,9 +33,11 @@ const emit = defineEmits([
   'unlink',
   'upload',
   'update:modelValue',
+  'update:prompt',
   'update:ratio',
   'update:duration',
-  'update:resolution'
+  'update:resolution',
+  'update:count'
 ])
 
 const draft = ref(props.prompt || '')
@@ -53,6 +57,9 @@ watch(
     if (!focused.value) draft.value = value || ''
   }
 )
+
+// 同步编辑中的文本，父组件点「重新生成」时可直接取用，避免用旧的已保存提示词
+watch(draft, (value) => emit('update:prompt', value))
 
 const availableImages = computed(() =>
   (props.allImages || []).filter((image) => image && (image.url || image.status === 'RUNNING'))
@@ -131,6 +138,22 @@ const modelLabel = computed(() => {
   return option?.label || props.modelValue || props.model
 })
 
+/** 按平台分组，同一平台的模型收进一个 optgroup */
+const modelGroups = computed(() => {
+  const groups = []
+  const index = new Map()
+  for (const option of props.modelOptions || []) {
+    const key = option.provider || ''
+    if (!index.has(key)) {
+      const group = { key, label: option.providerLabel || key || '模型', options: [] }
+      index.set(key, group)
+      groups.push(group)
+    }
+    index.get(key).options.push(option)
+  }
+  return groups
+})
+
 const durationMin = computed(() => Number(props.durationOptions[0] ?? 4))
 const durationMax = computed(() => Number(props.durationOptions[props.durationOptions.length - 1] ?? 15))
 
@@ -190,6 +213,14 @@ function ratioStyle(item) {
     ? { width: `${base}px`, height: `${Math.round((base * h) / w)}px` }
     : { width: `${Math.round((base * w) / h)}px`, height: `${base}px` }
 }
+
+/** 设置按钮摘要：视频显示时长，图片显示生成数量 */
+const settingsSummary = computed(() => {
+  const parts = [`${props.ratio} · ${props.resolution}`]
+  if (props.durationOptions.length) parts.push(`${props.duration}s`)
+  else if (props.countOptions.length) parts.push(`${props.count} 张`)
+  return parts.join(' · ')
+})
 </script>
 
 <template>
@@ -257,23 +288,27 @@ function ratioStyle(item) {
     </div>
 
     <div class="np-foot">
-      <template v-if="showSettings && modelOptions.length">
-        <select
-          class="np-select np-select-model"
-          :value="modelValue"
-          title="选择模型"
-          @change="emit('update:modelValue', $event.target.value)"
-        >
-          <option v-for="option in modelOptions" :key="option.value" :value="option.value">
+      <select
+        v-if="modelOptions.length"
+        class="np-select np-select-model"
+        :value="modelValue"
+        :title="modelLabel"
+        @change="emit('update:modelValue', $event.target.value)"
+      >
+        <optgroup v-for="group in modelGroups" :key="group.key" :label="group.label">
+          <option v-for="option in group.options" :key="option.value" :value="option.value">
             {{ option.label }}
           </option>
-        </select>
+        </optgroup>
+      </select>
+      <span v-else-if="model" class="np-model" :title="modelLabel">{{ modelLabel }}</span>
+      <template v-if="showSettings">
         <button
           class="np-chip np-chip-btn"
           :class="{ active: settingsOpen }"
-          title="比例 · 清晰度 · 时长"
+          title="比例 · 清晰度 · 时长 / 数量"
           @click.stop="settingsOpen = !settingsOpen"
-        >{{ ratio }} · {{ resolution }} · {{ duration }}s</button>
+        >{{ settingsSummary }}</button>
         <button
           class="np-ai"
           :class="{ busy: optimizing }"
@@ -285,10 +320,8 @@ function ratioStyle(item) {
           <span v-else>✦</span>
         </button>
       </template>
-      <span v-else-if="model" class="np-model" :title="modelLabel">{{ modelLabel }}</span>
       <template v-if="!showSettings">
         <span v-for="chip in chips" :key="chip" class="np-chip">{{ chip }}</span>
-        <span class="np-count">{{ draft.length }}</span>
       </template>
       <button v-if="showSend" class="np-send" :disabled="busy || !draft.trim()" :title="submitLabel" @click="submit">
         <span v-if="busy" class="np-spinner" />
@@ -312,12 +345,15 @@ function ratioStyle(item) {
             :class="{ active: item === ratio }"
             @click="emit('update:ratio', item)"
           >
-            <span class="np-ratio-box"><i :style="ratioStyle(item)" /></span>
+            <span class="np-ratio-box">
+              <i v-if="item !== '智能'" :style="ratioStyle(item)" />
+              <b v-else class="np-ratio-auto">✦</b>
+            </span>
             <span>{{ item }}</span>
           </button>
         </div>
       </div>
-      <div class="np-set">
+      <div v-if="resolutionOptions.length" class="np-set">
         <div class="np-set-title">清晰度</div>
         <div class="np-res-grid">
           <button
@@ -329,7 +365,19 @@ function ratioStyle(item) {
           >{{ item }}</button>
         </div>
       </div>
-      <div class="np-set">
+      <div v-if="countOptions.length" class="np-set">
+        <div class="np-set-title">数量 <em>{{ count }} 张</em></div>
+        <div class="np-count-grid">
+          <button
+            v-for="item in countOptions"
+            :key="item"
+            class="np-res-btn"
+            :class="{ active: item === count }"
+            @click="emit('update:count', item)"
+          >{{ item }}</button>
+        </div>
+      </div>
+      <div v-if="durationOptions.length" class="np-set">
         <div class="np-set-title">视频时长 <em>{{ durationDraft }}s</em></div>
         <input
           class="np-range nopan nodrag"

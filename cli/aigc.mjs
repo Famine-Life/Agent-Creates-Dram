@@ -29,7 +29,7 @@ const HELP = `AIGC 画布工作台 CLI
                 [--type video|ai|upload] [--workspace 1] [--json]
   push        推送单个镜头
                 --prompt <提示词> [--title <标题>] [--group <分组>] [--index <序号>]
-                [--images <图片ID,逗号分隔>] [--model mock|seedance]
+                [--images <图片ID,逗号分隔>] [--model <平台/模型，如 ark/doubao-seedance-2-0-260128>]
                 [--ratio 16:9] [--resolution 720P] [--duration 5]
   storyboard  批量推送分镜         --file <shots.json> [--group <分组>]
   upload      上传图片并创建画布节点 --file <图片路径> [--x <坐标>] [--y <坐标>]

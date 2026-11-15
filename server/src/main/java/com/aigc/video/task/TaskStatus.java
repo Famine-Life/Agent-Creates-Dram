@@ -1,8 +1,9 @@
 package com.aigc.video.task;
 
-/** 任务状态机：RECEIVED → QUEUED → SUBMITTED → RUNNING → SUCCEEDED / FAILED / TIMEOUT / CANCELED */
+/** 任务状态机：IDLE(草稿) → QUEUED → SUBMITTED → RUNNING → SUCCEEDED / FAILED / TIMEOUT / CANCELED */
 public enum TaskStatus {
 
+    IDLE,
     RECEIVED,
     QUEUED,
     SUBMITTED,

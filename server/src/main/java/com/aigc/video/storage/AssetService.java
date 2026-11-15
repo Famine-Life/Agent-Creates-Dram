@@ -16,7 +16,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AssetService {
 
-    private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
 
     private final AssetStorage storage;
 
@@ -44,7 +44,7 @@ public class AssetService {
             throw new IllegalArgumentException("上传内容为空");
         }
         if (bytes.length > MAX_IMAGE_BYTES) {
-            throw new IllegalArgumentException("图片不能超过 10MB");
+            throw new IllegalArgumentException("图片不能超过 50MB");
         }
         String mime = contentType == null ? "" : contentType.toLowerCase();
         if (!mime.startsWith("image/")) {

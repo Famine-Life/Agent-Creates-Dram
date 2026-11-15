@@ -16,8 +16,8 @@
 - 外部 AI 客户端通过 **MCP** 推送提示词，或人在画布上右键手动创建节点；
 - 一条提示词 = 一个视频节点，异步生成，进度实时回填；
 - 图片节点作为参考图，通过连线与镜头节点形成**多对多**引用，提示词里用 `@图片1` 引用；
-- 内置 AI 能力：脚本节点生成分镜、图片节点文生图、提示词一键优化（Ark，未配置密钥时 mock）；
-- 默认使用 `seedance`（火山方舟 Seedance 2.0）；设置 `AIGC_PROVIDER=mock` 可切换为 8 秒演示出片，无需密钥即可跑通全链路。
+- 内置 AI 能力：脚本节点生成分镜、图片节点文生图、提示词一键优化；
+- 模型统一用 `provider/model` 引用（如 `ark/doubao-seedance-2-0-260128`、`openai/gpt-4.1`）。平台只声明地址、密钥与协议，新增阿里云百炼 / OpenAI 等平台优先改配置即可；未配置 `api-key` 的平台自动隐藏，全部未配置时回落到 mock（8 秒演示出片，无需密钥）。
 
 设计目标：**默认单机单实例、无 Redis / 无 MQ / 无 Docker 也能完整运行**；需要水平扩容时，通过配置开启 Redis Pub/Sub 广播，并保留 MySQL、MinIO、COS、OSS 的切换能力。
 
@@ -83,14 +83,21 @@
 | `api.dto` | `ShotRequest`、`StoryboardRequest`、`TaskNode`、`ImageNode`、`EdgeView`、`CanvasState`、`CanvasNodeView`、`SnapshotRequest` | 前后端 / MCP 契约 |
 | `api.mcp` | `McpCanvasTools` | `@Tool` 方法：`push_shot`、`push_storyboard`、`get_canvas_state` |
 | `task` | `TaskService`、`TaskDispatcher`、`TaskStatus`、`DispatchLock` | 业务编排、调度轮询、状态机、快照乐观锁、多实例调度锁 |
-| `ai` | `AiService`、`AiProperties` | 脚本生成、文生图、提示词优化（Ark / mock） |
-| `provider` | `VideoProvider`、`MockVideoProvider`、`SeedanceVideoProvider`、`ProviderRegistry`、`SubmitCommand/SubmitResult/PollResult` | 供应商 SPI 与注册表；提交带 ratio / resolution / duration |
+| `ai` | `AiService`、`AiProperties`、`ModelCatalog`、`ModelRef` | 模型目录（provider/model 解析、按能力分组、未启用平台过滤）；文本 / 图片协议调用（mock 兜底） |
+| `provider` | `VideoProvider`、`ArkVideoProvider`、`MockVideoProvider`、`ProviderRegistry`、`VideoContext`、`SubmitCommand/SubmitResult/PollResult` | 视频协议 SPI 与注册表；适配器通过 `VideoContext` 接收平台地址、密钥与真实模型 ID |
 | `storage` | `AssetStorage`、`LocalAssetStorage`、`MinioAssetStorage`、`AssetService` | 上传落盘、远端产物转存 |
 | `realtime` | `CanvasWebSocketHandler`、`CanvasSocketRegistry`、`CanvasEvent`、`CanvasEventRelay`、`RedisCanvasEventRelay`、`RedisCanvasSubscriber` | WebSocket 会话管理；可选 Redis Pub/Sub 跨实例广播 |
 | `mapper` | 各 `*Mapper`（MyBatis-Plus） | 数据访问 |
 | `domain` | `Workspace`、`Canvas`、`GenerationTask`、`PromptRecord`、`CanvasImage`、`CanvasNode`、`TaskImageRef` | 表实体 |
 | `config` | `SecurityConfig`、`SecurityProperties`、`McpAuthenticationFilter`、`SessionConfig`、`WebSocketConfig`、`WebConfig`、`McpToolConfig` | Session/CSRF、MCP Token、多实例 Session、同源与跨域限制、WS 注册、`/files` 静态映射、MCP 工具注册 |
 | `common` | `BadRequestException`、`NotFoundException`、`ConflictException` | 业务异常 |
+
+#### 多平台模型接入
+
+- 配置分层：`aigc.ai.providers.<平台>` 只声明 `base-url / api-key / protocols`，模型清单声明能力（文本 / 图片 / 视频）与参数范围。
+- 统一引用：`provider/model`；任务表 `provider` 存平台标识、`model` 存真实模型 ID，存量 `seedance` / `seedance-fast` 自动映射到方舟模型。
+- 协议适配器：文本 `openai-compatible`（方舟、OpenAI、百炼兼容模式通用）、图片 `ark-image` / `openai-image`、视频 `ark-video` / `mock-video`；新平台优先复用协议，只有私有协议才需要新增适配器。
+- 可见性：`api-key` 为空的平台不会出现在 `/api/meta` 与前端下拉中；同一平台可同时提供多种能力，同一模型也可分别出现在不同能力清单里。
 
 ### 4.2 核心链路
 
@@ -137,7 +144,7 @@ TaskDispatcher.tick（默认 800ms）
 - 终止态重试走 `retry`：`resetForRegenerate` 显式把 `provider_task_id`、`video_url`、`error_msg`、`next_poll_at` 等置空后回到队列。
 - 「编辑提示词并重新生成」保持 **id / 分组 / 镜号 / 画布坐标** 不变，只重置生成相关字段。
 - 参数保存（`regenerate=false`）只更新 `prompt / model / ratio / resolution / duration`，不改变任务状态、不消耗生成次数。
-- 模型与清晰度联动校验在 `TaskService.normalize*` 完成：`mock` 仅支持 480P/720P，`seedance` 支持 480P/720P/1080P/4K，非法值回退 720P。
+- 模型与参数联动校验在 `ModelCatalog` / `TaskService.normalize*` 完成：比例、清晰度、时长按所选模型配置的 `ratios / resolutions / durations` 校验，非法值回退模型默认值（未配置时 16:9 / 720P / 5s）。
 
 ### 4.4 调度、幂等与一致性
 
@@ -161,7 +168,7 @@ TaskDispatcher.tick（默认 800ms）
 | `canvas_image` | `url`、`object_key`、`x`、`y`、`width`、`height`、`prompt`、`status`、`error_msg`、`provider`、`source` | 画布图片节点（`source` 区分 `UPLOAD` 上传 / `AI` 生成） |
 | `task_image_ref` | `task_id`、`image_id`、`sort_index`、`UNIQUE(task_id,image_id)` | 图片→镜头引用，一行 = 画布一条连线 |
 
-生成参数默认值：`model` 取供应商默认，`ratio=16:9`，`resolution=720P`，`duration=5`。
+生成参数默认值：`model` 取 `aigc.ai.defaults.video`（不可用时回退首个可用模型），`ratio=16:9`，`resolution=720P`，`duration=5`；实际支持范围由所选模型决定。
 
 关系：
 
@@ -264,13 +271,16 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `aigc.security.mcp-token` | `${MCP_API_TOKEN:}` | MCP 独立 Token，必填且至少 32 字符 |
 | `aigc.security.cookie-secure` | `${AIGC_COOKIE_SECURE:false}` | HTTPS 公网必须设为 true |
 | `aigc.security.allowed-origins` | `${AIGC_ALLOWED_ORIGINS:}` | 额外 REST / WS 来源，逗号分隔；同源留空 |
-| `aigc.provider.default-name` | `${AIGC_PROVIDER:seedance}` | `mock` / `seedance`，默认 Seedance 2.0 |
-| `aigc.provider.mock.seconds` | `8` | mock 出片耗时 |
-| `aigc.provider.seedance.api-key` | `${ARK_API_KEY:}` | 火山方舟密钥，通过环境变量或 Git 忽略的 `application-local.yml` 提供 |
-| `aigc.provider.seedance.model` | `${ARK_MODEL:doubao-seedance-2-0-260128}` | Seedance 2.0 模型 ID |
-| `aigc.provider.seedance.ratio` | `16:9` | 默认视频比例 |
-| `aigc.provider.seedance.duration` | `5` | 默认时长（秒） |
-| `aigc.provider.seedance.watermark` | `false` | 是否添加水印 |
+| `aigc.ai.default-provider` | `${AIGC_AI_PROVIDER:ark}` | 裸模型 ID 的兜底平台 |
+| `aigc.ai.defaults.text` | `${AIGC_TEXT_MODEL:ark/doubao-seed-evolving}` | 默认文本模型（`provider/model`） |
+| `aigc.ai.defaults.image` | `${AIGC_IMAGE_MODEL:ark/doubao-seedream-4-0-20260415}` | 默认图片模型 |
+| `aigc.ai.defaults.video` | `${AIGC_VIDEO_MODEL:ark/doubao-seedance-2-0-260128}` | 默认视频模型 |
+| `aigc.ai.providers.<平台>.base-url` | Ark / OpenAI / DashScope / mock | 平台 API 根地址 |
+| `aigc.ai.providers.<平台>.api-key` | `${ARK_API_KEY:}` 等 | 为空视为未启用，该平台模型不下发到前端 |
+| `aigc.ai.providers.<平台>.protocols` | — | 能力协议：`text` / `image` / `video` |
+| `aigc.ai.providers.<平台>.text-models/image-models/video-models` | — | 模型清单；视频模型可配 `ratios / resolutions / durations / default-ratio / default-duration / watermark` |
+| `aigc.ai.providers.mock.video-url` | 演示 mp4 地址 | mock 出片地址 |
+| `aigc.ai.providers.mock.video-seconds` | `8` | mock 出片耗时 |
 | `aigc.storage.type` | `local` | `local` / `minio` / `cos` / `oss` |
 | `aigc.storage.signed-url-ttl-seconds` | `${AIGC_SIGNED_URL_TTL_SECONDS:3600}` | 私有对象 GET 预签名 URL 有效期 |
 | `aigc.storage.cos.*` | — | 腾讯云 COS：endpoint、secret-id、secret-key、bucket、region、public-url |
@@ -283,10 +293,10 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `spring.data.redis.password` | `${REDIS_PASSWORD:}` | Redis 密码，无密码留空 |
 | `spring.data.redis.database` | `${REDIS_DATABASE:0}` | Redis 库号 |
 | `spring.data.redis.timeout/connect-timeout` | `800ms` | 快速失败并回退本地广播 |
-| `aigc.ai.base-url` | `${ARK_BASE_URL:...}` | Ark API 地址 |
-| `aigc.ai.api-key` | `${ARK_API_KEY:}` | 为空时脚本 / 图片 / 优化走 mock |
-| `aigc.ai.script-model` | `doubao-seed-1-6-250615` | 分镜脚本模型 |
-| `aigc.ai.image-model` | `doubao-seedream-3-0-t2i-250415` | 文生图模型 |
+| `aigc.ai.providers.ark.text-models` | 6 个豆包 / DeepSeek / GLM 模型 ID | 脚本节点模型下拉选项，请求模型需在清单内 |
+| `aigc.ai.providers.ark.image-models` | Seedream 5.5 / 4.0 | AI 图片节点模型下拉选项 |
+| `aigc.ai.providers.ark.video-models` | Seedance 2.0 / 2.0 Fast | 视频模型及各自的比例、清晰度、时长范围 |
+| `aigc.ai.providers.openai.*` / `dashscope.*` | — | 示例平台；填入 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY` 后自动启用 |
 | `spring.ai.mcp.server.sse-endpoint` | `/sse` | MCP SSE 端点 |
 | `spring.ai.mcp.server.sse-message-endpoint` | `/mcp/message` | MCP 消息端点 |
 
@@ -407,6 +417,7 @@ web/src
 
 - **视频区**：默认 `controls` 隐藏，悬停出现中央播放按钮；点击视频只内联播放，不再弹窗；右上角 `⤢` 才打开 `PreviewDialog`。
 - **提示词编辑器**：位于镜头节点下方，宽 320、整体 `aspect-ratio: 16/9`；工具栏（上传 / 画布参考 / @图片）+ 文本域 + 底部（模型 select、参数汇总按钮、`✦` 优化、发送）。
+- **模型下拉**：镜头节点选择视频模型；脚本节点选择文本模型（`/nodes/{id}/script` 的 `model`）；AI 图片节点选择图片模型（`/images/{id}/generate` 的 `model`）。未选择时使用 `aigc.ai.script-model` / `aigc.ai.image-model`，服务端按 `text-models` / `image-models` 白名单校验。
 - **参数面板**：点击汇总按钮展开，比例网格、清晰度按钮组、时长滑块；滑块与面板容器带 `nodrag`，避免被 Vue Flow 节点拖拽抢事件。
 - **时长滑块**：拖动时只改本地值，`change` 时调用 `updateShotSettings` 保存，避免接口回填造成“拖不动”。
 - **全屏编辑**：`Teleport` 到 body，1040×82vh，`Esc` / 遮罩 / `⤡` 关闭。
@@ -463,8 +474,8 @@ $env:AIGC_ADMIN_PASSWORD='<替换为你的强密码>'
 $env:MCP_API_TOKEN='<替换为至少32字符的随机Token>'
 $env:ARK_API_KEY='<替换为你的火山方舟密钥>'
 # 也可改为在 application-local.yml 手动配置密钥，并在启动参数中使用 --spring.profiles.active=local
-# 可选：不调用真实视频接口时改用 mock
-# $env:AIGC_PROVIDER='mock'
+# 可选：不配置任何平台密钥时自动使用 mock；也可显式指定默认模型
+# $env:AIGC_VIDEO_MODEL='mock/mock-video'
 mvn -DskipTests package
 java -jar target/aigc-video-server-0.1.0.jar
 
@@ -516,7 +527,7 @@ MinIO 模式需设置 `aigc.storage.type=minio` 并配置 endpoint / access-key 
 
 1. 调度已支持 Redis 分布式锁、网页 Session 可选择存 Redis；MCP 的 SSE 会话仍绑定单实例，多实例需网关会话粘滞。
 2. H2 仅适合本地/演示。
-3. `seedance`、AI 脚本 / 图片 / 优化都需要 Ark API Key（环境变量或 local 配置）；脚本 / 图片 / 优化未配置时回退 mock，视频任务会明确失败，演示时可设置 `AIGC_PROVIDER=mock`。
+3. 真实模型需要对应平台密钥（环境变量或 local 配置）；未配置的平台会被隐藏，全部未配置时自动回退 `mock`。新增平台若使用私有协议，需要补充对应的文本 / 图片 / 视频适配器。
 4. MCP 仅 SSE（受 Spring AI 1.0.0 限制）。
 5. 画布快照已做乐观锁；但同一标签页内并发保存仍按最后响应为准，极端情况下会触发一次 409 重载。
 6. 导演台 / 智能剪辑 / 音频节点仅为菜单占位，无实际能力。

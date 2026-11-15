@@ -13,9 +13,11 @@ public record ShotRequest(
         String model,
         String ratio,
         Integer duration,
-        String resolution
+        String resolution,
+        /** true 时只创建草稿节点，不立即进入生成队列 */
+        Boolean draft
 ) {
     public static ShotRequest of(String prompt) {
-        return new ShotRequest(prompt, null, null, null, null, null, null, null, null, null);
+        return new ShotRequest(prompt, null, null, null, null, null, null, null, null, null, null);
     }
 }

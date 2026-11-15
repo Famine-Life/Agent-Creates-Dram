@@ -26,7 +26,7 @@ public class GenerationTask {
 
     private String prompt;
 
-    /** 生成模型（与供应商对应：mock / seedance） */
+    /** 真实模型 ID，如 doubao-seedance-2-0-260128 */
     private String model;
 
     /** 画面比例，如 16:9 */
@@ -38,6 +38,7 @@ public class GenerationTask {
     /** 清晰度（480P / 720P / 1080P / 4K，随模型能力变化） */
     private String resolution;
 
+    /** 平台标识，如 ark / openai / mock；存量数据可能是 seedance / seedance-fast */
     private String provider;
 
     private String providerTaskId;

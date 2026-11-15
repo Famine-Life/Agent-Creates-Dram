@@ -1,12 +1,12 @@
 package com.aigc.video.task;
 
 import com.aigc.video.ai.AiService;
+import com.aigc.video.ai.ModelCatalog;
 import com.aigc.video.api.dto.CanvasNodeRequest;
 import com.aigc.video.api.dto.CanvasNodeView;
 import com.aigc.video.api.dto.ImageNode;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.NotFoundException;
-import com.aigc.video.config.AiProperties;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.CanvasNode;
@@ -51,7 +51,7 @@ public class CanvasNodeService {
     private final WorkspaceMapper workspaceMapper;
     private final CanvasSocketRegistry socketRegistry;
     private final AiService aiService;
-    private final AiProperties aiProperties;
+    private final ModelCatalog modelCatalog;
     private final ObjectMapper objectMapper;
     private final AssetService assetService;
 
@@ -146,18 +146,20 @@ public class CanvasNodeService {
     }
 
     /** 让 AI 根据剧情描述生成分镜脚本，结果以 JSON 数组写入 content */
-    public CanvasNodeView generateScript(Long workspaceId, Long nodeId, String prompt) {
+    public CanvasNodeView generateScript(Long workspaceId, Long nodeId, String prompt, String model) {
         CanvasNode node = requireNode(workspaceId, nodeId);
         String text = prompt == null || prompt.isBlank() ? node.getPrompt() : prompt.trim();
         if (text == null || text.isBlank()) {
             throw new BadRequestException("请先描述剧情片段或故事");
         }
+        // 先解析模型，非法模型直接返回 400，不进入异步线程
+        ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.TEXT, model);
         updateGenerationState(nodeId, STATUS_RUNNING, text, null, null);
         broadcastNode(workspaceId, nodeId);
 
         CompletableFuture.runAsync(() -> {
             try {
-                AiService.ScriptResult result = aiService.generateScript(text);
+                AiService.ScriptResult result = aiService.generateScript(text, resolved.key());
                 String content = objectMapper.writeValueAsString(result.shots());
                 updateGenerationState(nodeId, STATUS_SUCCEEDED, text, content, null);
                 nodeMapper.update(null, Wrappers.<CanvasNode>lambdaUpdate()
@@ -204,41 +206,107 @@ public class CanvasNodeService {
     }
 
     /** 触发 AI 图片生成，立即返回 RUNNING 状态，完成后通过 WebSocket 推送结果 */
-    public ImageNode generateImage(Long workspaceId, Long imageId, String prompt) {
+    public ImageNode generateImage(Long workspaceId, Long imageId, String prompt, String model,
+                                   String referenceUrl, String ratio, String resolution, Integer count) {
         CanvasImage image = requireImage(workspaceId, imageId);
         String text = prompt == null || prompt.isBlank() ? image.getPrompt() : prompt.trim();
         if (text == null || text.isBlank()) {
             throw new BadRequestException("请先填写图片提示词");
         }
+        ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
+        int quantity = count == null ? 1 : Math.max(1, Math.min(9, count));
+        String size = imageSize(ratio, resolution);
         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                 .eq(CanvasImage::getId, imageId)
                 .set(CanvasImage::getPrompt, text)
                 .set(CanvasImage::getStatus, STATUS_RUNNING)
                 .set(CanvasImage::getErrorMsg, null)
                 .set(CanvasImage::getSource, ImageNode.SOURCE_AI)
-                .set(CanvasImage::getProvider, aiProperties.mockEnabled() ? "mock" : "ark"));
+                .set(CanvasImage::getProvider, resolved.providerKey()));
         broadcastImage(workspaceId, imageId);
 
         CompletableFuture.runAsync(() -> {
-            try {
-                String url = aiService.generateImage(text);
-                imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
-                        .eq(CanvasImage::getId, imageId)
-                        .set(CanvasImage::getUrl, url)
-                        .set(CanvasImage::getStatus, STATUS_SUCCEEDED)
-                        .set(CanvasImage::getErrorMsg, null));
-                log.info("[AI] 图片生成完成 imageId={} url={}", imageId, url);
-            } catch (Exception e) {
-                log.warn("[AI] 图片生成失败 imageId={}：{}", imageId, e.getMessage());
-                imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
-                        .eq(CanvasImage::getId, imageId)
-                        .set(CanvasImage::getStatus, STATUS_FAILED)
-                        .set(CanvasImage::getErrorMsg, shorten(rootMessage(e))));
+            for (int index = 0; index < quantity; index++) {
+                try {
+                    String url = aiService.generateImage(text, resolved.key(), referenceUrl, size);
+                    if (index == 0) {
+                        imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
+                                .eq(CanvasImage::getId, imageId)
+                                .set(CanvasImage::getUrl, url)
+                                .set(CanvasImage::getStatus, STATUS_SUCCEEDED)
+                                .set(CanvasImage::getErrorMsg, null));
+                        broadcastImage(workspaceId, imageId);
+                    } else {
+                        createExtraImage(workspaceId, image, text, url, resolved.providerKey(), index);
+                    }
+                    log.info("[AI] 图片生成完成 imageId={} index={} url={}", imageId, index + 1, url);
+                } catch (Exception e) {
+                    log.warn("[AI] 图片生成失败 imageId={} index={}：{}", imageId, index + 1, e.getMessage());
+                    if (index == 0) {
+                        imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
+                                .eq(CanvasImage::getId, imageId)
+                                .set(CanvasImage::getStatus, STATUS_FAILED)
+                                .set(CanvasImage::getErrorMsg, shorten(rootMessage(e))));
+                        broadcastImage(workspaceId, imageId);
+                        return;
+                    }
+                }
             }
-            broadcastImage(workspaceId, imageId);
         }, executor);
 
         return toImageNode(requireImage(workspaceId, imageId));
+    }
+
+    /** 多张生成时，把第 2 张及之后的图片作为新节点放到原图右侧 */
+    private void createExtraImage(Long workspaceId, CanvasImage origin, String prompt, String url,
+                                  String provider, int index) {
+        CanvasImage extra = new CanvasImage();
+        extra.setWorkspaceId(workspaceId);
+        extra.setCanvasId(origin.getCanvasId());
+        extra.setName((origin.getName() == null ? "AI 图片" : origin.getName()) + " " + (index + 1));
+        extra.setUrl(url);
+        extra.setPrompt(prompt);
+        extra.setStatus(STATUS_SUCCEEDED);
+        extra.setProvider(provider);
+        extra.setSource(ImageNode.SOURCE_AI);
+        extra.setX(origin.getX() == null ? 320.0 + index * 340 : origin.getX() + index * 340);
+        extra.setY(origin.getY() == null ? 160.0 : origin.getY());
+        extra.setCreatedAt(LocalDateTime.now());
+        imageMapper.insert(extra);
+        broadcastImage(workspaceId, extra.getId());
+    }
+
+    /** 按「比例 + 清晰度」换算成平台可接受的像素尺寸（1K 以 1280×720 为基准） */
+    private static String imageSize(String ratio, String resolution) {
+        double scale = switch (resolution == null ? "" : resolution) {
+            case "2K" -> 2.0;
+            case "1.5K" -> 1.5;
+            default -> 1.0;
+        };
+        double rw = 16;
+        double rh = 9;
+        if (ratio != null && ratio.contains(":")) {
+            String[] parts = ratio.split(":");
+            try {
+                rw = Double.parseDouble(parts[0].trim());
+                rh = Double.parseDouble(parts[1].trim());
+            } catch (NumberFormatException ignored) {
+                rw = 16;
+                rh = 9;
+            }
+        }
+        if (rw <= 0 || rh <= 0) {
+            rw = 16;
+            rh = 9;
+        }
+        double area = 1280.0 * 720.0 * scale * scale;
+        double width = Math.sqrt(area * rw / rh);
+        double height = width * rh / rw;
+        return roundTo8(width) + "x" + roundTo8(height);
+    }
+
+    private static long roundTo8(double value) {
+        return Math.max(64, Math.round(value / 8) * 8);
     }
 
     // ---------------------------------------------------------------- 内部实现

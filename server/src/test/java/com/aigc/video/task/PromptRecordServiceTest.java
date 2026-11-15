@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:prompt-record-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1",
-        "aigc.provider.mock.seconds=3600"
+        "aigc.ai.providers.mock.video-seconds=3600"
 })
 class PromptRecordServiceTest {
 
@@ -28,7 +28,7 @@ class PromptRecordServiceTest {
     @Test
     void recordsCreateIdempotentRetryAndPromptUpdate() {
         ShotRequest request = new ShotRequest("测试提示词", "测试镜头", "测试分组", 1,
-                null, null, "mock", "16:9", 5, "720P");
+                null, null, "mock", "16:9", 5, "720P", null);
 
         TaskNode created = taskService.createShot(1L, request);
         TaskNode idempotent = taskService.createShot(1L, request);

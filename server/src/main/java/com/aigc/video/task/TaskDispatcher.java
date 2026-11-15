@@ -1,5 +1,6 @@
 package com.aigc.video.task;
 
+import com.aigc.video.ai.ModelCatalog;
 import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.domain.GenerationTask;
 import com.aigc.video.mapper.GenerationTaskMapper;
@@ -7,6 +8,7 @@ import com.aigc.video.provider.PollResult;
 import com.aigc.video.provider.ProviderRegistry;
 import com.aigc.video.provider.SubmitCommand;
 import com.aigc.video.provider.SubmitResult;
+import com.aigc.video.provider.VideoContext;
 import com.aigc.video.provider.VideoProvider;
 import com.aigc.video.storage.AssetService;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -35,6 +37,7 @@ public class TaskDispatcher {
     private static final int POLL_BATCH = 10;
 
     private final GenerationTaskMapper taskMapper;
+    private final ModelCatalog modelCatalog;
     private final ProviderRegistry providerRegistry;
     private final AssetService assetService;
     private final TaskService taskService;
@@ -90,19 +93,23 @@ public class TaskDispatcher {
         }
         try {
             TaskNode node = taskService.node(task.getId());
-            VideoProvider provider = providerRegistry.get(task.getProvider());
+            ModelCatalog.ResolvedModel model = modelCatalog.resolveVideoTask(task.getProvider(), task.getModel());
+            VideoProvider provider = providerRegistry.get(model.protocol());
+            VideoContext context = context(model);
             List<String> referenceImages = node.imageUrls().stream()
                     .map(assetService::providerImageUrl)
                     .toList();
-            SubmitResult result = provider.submit(
-                    new SubmitCommand(node.prompt(), node.title(), referenceImages, node.ratio(), node.duration(), node.resolution()));
+            SubmitResult result = provider.submit(new SubmitCommand(node.prompt(), node.title(), referenceImages,
+                    node.ratio(), node.duration(), node.resolution(), context));
+            // provider 存平台标识、model 存真实模型 ID，便于后续按平台路由与存量兼容
             taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                     .eq(GenerationTask::getId, task.getId())
-                    .set(GenerationTask::getProvider, provider.name())
+                    .set(GenerationTask::getProvider, model.providerKey())
+                    .set(GenerationTask::getModel, model.modelId())
                     .set(GenerationTask::getProviderTaskId, result.providerTaskId())
                     .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
-            log.info("任务已提交 id={} provider={} providerTaskId={}",
-                    task.getId(), provider.name(), result.providerTaskId());
+            log.info("任务已提交 id={} model={} protocol={} providerTaskId={}",
+                    task.getId(), model.key(), model.protocol(), result.providerTaskId());
             taskService.broadcastTask("node.progress", task.getId());
         } catch (Exception e) {
             log.warn("任务提交失败 id={}：{}", task.getId(), e.getMessage());
@@ -141,7 +148,8 @@ public class TaskDispatcher {
 
         PollResult result;
         try {
-            result = providerRegistry.get(task.getProvider()).poll(task.getProviderTaskId());
+            ModelCatalog.ResolvedModel model = modelCatalog.resolveVideoTask(task.getProvider(), task.getModel());
+            result = providerRegistry.get(model.protocol()).poll(task.getProviderTaskId(), context(model));
         } catch (Exception e) {
             log.warn("轮询失败 id={}：{}", task.getId(), e.getMessage());
             int pollCount = (task.getPollCount() == null ? 0 : task.getPollCount()) + 1;
@@ -212,6 +220,11 @@ public class TaskDispatcher {
     private int backoff(int pollCount) {
         int index = Math.min(Math.max(pollCount - 1, 0), BACKOFF_SECONDS.length - 1);
         return BACKOFF_SECONDS[index];
+    }
+
+    private VideoContext context(ModelCatalog.ResolvedModel model) {
+        return new VideoContext(model.providerKey(), model.baseUrl(), model.apiKey(),
+                model.modelId(), model.watermark());
     }
 
     private String rootMessage(Throwable e) {

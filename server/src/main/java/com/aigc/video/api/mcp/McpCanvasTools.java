@@ -37,7 +37,7 @@ public class McpCanvasTools {
             @ToolParam(required = false, description = "参考图公网 URL 列表，按顺序对应 @图片1、@图片2") List<String> imageUrls,
             @ToolParam(required = false, description = "已上传到系统的图片 ID 列表") List<Long> imageIds,
             @ToolParam(required = false, description = "工作空间 ID，默认 1") Long workspaceId) {
-        ShotRequest request = new ShotRequest(prompt, title, groupId, shotIndex, imageUrls, imageIds, null, null, null, null);
+        ShotRequest request = new ShotRequest(prompt, title, groupId, shotIndex, imageUrls, imageIds, null, null, null, null, null);
         TaskNode node = taskService.createShot(defaultWorkspace(workspaceId), request);
         return toJson(node);
     }

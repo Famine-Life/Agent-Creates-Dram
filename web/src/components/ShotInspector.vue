@@ -75,7 +75,7 @@ function copyPrompt() {
           <div><dt>分组</dt><dd>{{ task.groupId }}</dd></div>
           <div><dt>镜号</dt><dd>#{{ task.shotIndex }}</dd></div>
           <div><dt>供应商</dt><dd>{{ task.provider || '-' }}</dd></div>
-          <div><dt>模型</dt><dd>{{ task.model || '-' }}</dd></div>
+          <div><dt>模型</dt><dd>{{ task.modelKey || task.model || '-' }}</dd></div>
           <div><dt>比例</dt><dd>{{ task.ratio || '16:9' }}</dd></div>
           <div><dt>清晰度</dt><dd>{{ task.resolution || '720P' }}</dd></div>
           <div><dt>时长</dt><dd>{{ task.duration ? task.duration + 's' : '-' }}</dd></div>

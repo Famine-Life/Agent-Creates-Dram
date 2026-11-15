@@ -26,7 +26,7 @@ node cli/aigc.mjs login
 | --- | --- |
 | 画布状态 | `node cli/aigc.mjs canvas --json` |
 | 素材列表 | `node cli/aigc.mjs assets --type video\|ai\|upload --json` |
-| 推送单个镜头 | `node cli/aigc.mjs push --prompt "..." [--title "..."] [--group "A组"] [--index 1] [--images 1,2] [--model mock\|seedance] [--ratio 16:9] [--resolution 720P] [--duration 5] --json` |
+| 推送单个镜头 | `node cli/aigc.mjs push --prompt "..." [--title "..."] [--group "A组"] [--index 1] [--images 1,2] [--model ark/doubao-seedance-2-0-260128] [--ratio 16:9] [--resolution 720P] [--duration 5] --json` |
 | 批量推送分镜 | `node cli/aigc.mjs storyboard --file shots.json --group "A组" --json` |
 | 上传图片 | `node cli/aigc.mjs upload --file ./ref.png [--x 120] [--y 80] --json` |
 | 删除镜头 | `node cli/aigc.mjs rm --id <任务ID> --json` |

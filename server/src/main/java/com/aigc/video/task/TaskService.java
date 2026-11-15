@@ -1,5 +1,6 @@
 package com.aigc.video.task;
 
+import com.aigc.video.ai.ModelCatalog;
 import com.aigc.video.api.dto.CanvasState;
 import com.aigc.video.api.dto.EdgeRequest;
 import com.aigc.video.api.dto.EdgeView;
@@ -13,7 +14,6 @@ import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.ConflictException;
 import com.aigc.video.common.NotFoundException;
-import com.aigc.video.config.ProviderProperties;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.GenerationTask;
@@ -26,6 +26,8 @@ import com.aigc.video.mapper.GenerationTaskMapper;
 import com.aigc.video.mapper.PromptRecordMapper;
 import com.aigc.video.mapper.TaskImageRefMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
+import com.aigc.video.provider.ProviderRegistry;
+import com.aigc.video.provider.VideoContext;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
 import com.aigc.video.storage.AssetService;
@@ -71,7 +73,8 @@ public class TaskService {
     private final CanvasMapper canvasMapper;
     private final WorkspaceMapper workspaceMapper;
     private final CanvasSocketRegistry socketRegistry;
-    private final ProviderProperties providerProperties;
+    private final ModelCatalog modelCatalog;
+    private final ProviderRegistry providerRegistry;
     private final ObjectMapper objectMapper;
     private final CanvasNodeService canvasNodeService;
     private final AssetService assetService;
@@ -109,10 +112,12 @@ public class TaskService {
 
     @Transactional
     public TaskNode createShot(Long workspaceId, ShotRequest request) {
-        if (request == null || request.prompt() == null || request.prompt().isBlank()) {
-            throw new BadRequestException("提示词不能为空");
+        if (request == null) {
+            throw new BadRequestException("请求不能为空");
         }
-        if (request.prompt().length() > 2000) {
+        boolean draft = Boolean.TRUE.equals(request.draft())
+                || request.prompt() == null || request.prompt().isBlank();
+        if (!draft && request.prompt().length() > 2000) {
             throw new BadRequestException("提示词不能超过 2000 字");
         }
         Canvas canvas = requireCanvas(workspaceId);
@@ -120,14 +125,16 @@ public class TaskService {
         int shotIndex = request.shotIndex() != null && request.shotIndex() > 0
                 ? request.shotIndex()
                 : nextShotIndex(workspaceId, groupId);
-        String idem = idemKey(workspaceId, groupId, shotIndex, request.prompt());
-
-        GenerationTask existing = findByIdem(idem);
-        if (existing != null) {
-            log.info("幂等命中，复用任务 id={}", existing.getId());
-            attachImages(existing, resolveImages(workspaceId, canvas.getId(), request));
-            recordPrompt(workspaceId, existing.getId(), request.prompt());
-            return node(existing.getId());
+        // 草稿节点不参与幂等：空提示词可能被多次创建，后续由用户填写后再生成
+        if (!draft) {
+            String idem = idemKey(workspaceId, groupId, shotIndex, request.prompt());
+            GenerationTask existing = findByIdem(idem);
+            if (existing != null) {
+                log.info("幂等命中，复用任务 id={}", existing.getId());
+                attachImages(existing, resolveImages(workspaceId, canvas.getId(), request));
+                recordPrompt(workspaceId, existing.getId(), request.prompt());
+                return node(existing.getId());
+            }
         }
 
         GenerationTask task = new GenerationTask();
@@ -136,23 +143,28 @@ public class TaskService {
         task.setGroupId(groupId);
         task.setShotIndex(shotIndex);
         task.setTitle(defaultTitle(request.title(), shotIndex));
-        task.setPrompt(request.prompt().trim());
-        String model = normalizeModel(request.model());
-        task.setModel(model);
-        task.setRatio(normalizeRatio(request.ratio()));
-        task.setDuration(normalizeDuration(request.duration()));
-        task.setResolution(normalizeResolution(request.resolution(), model));
-        task.setProvider(model);
-        task.setStatus(TaskStatus.QUEUED.name());
+        task.setPrompt(request.prompt() == null ? "" : request.prompt().trim());
+        ModelCatalog.ResolvedModel video = modelCatalog.resolve(ModelCatalog.Capability.VIDEO, request.model());
+        task.setModel(video.modelId());
+        task.setProvider(video.providerKey());
+        task.setRatio(normalizeRatio(request.ratio(), video));
+        task.setDuration(normalizeDuration(request.duration(), video));
+        task.setResolution(normalizeResolution(request.resolution(), video));
+        // 草稿节点不进入调度队列，等用户填写提示词后由 updatePrompt 触发 resetForRegenerate
+        task.setStatus(draft ? TaskStatus.IDLE.name() : TaskStatus.QUEUED.name());
         task.setProgress(0);
         task.setPollCount(0);
-        task.setIdemKey(idem);
+        if (!draft) {
+            task.setIdemKey(idemKey(workspaceId, groupId, shotIndex, request.prompt()));
+        }
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.insert(task);
 
         attachImages(task, resolveImages(workspaceId, canvas.getId(), request));
-        recordPrompt(workspaceId, task.getId(), request.prompt());
+        if (!draft) {
+            recordPrompt(workspaceId, task.getId(), request.prompt());
+        }
 
         TaskNode node = node(task.getId());
         socketRegistry.broadcast(workspaceId, CanvasEvent.of("node.created", node));
@@ -180,7 +192,9 @@ public class TaskService {
                     shot.model(),
                     shot.ratio(),
                     shot.duration(),
-                    shot.resolution());
+                    shot.resolution(),
+                    // 脚本「添加到画布」只落草稿节点，由用户确认后再生成
+                    Boolean.TRUE);
             result.add(createShot(workspaceId, merged));
         }
         return result;
@@ -196,26 +210,25 @@ public class TaskService {
             throw new BadRequestException("提示词不能超过 2000 字");
         }
         LocalDateTime now = LocalDateTime.now();
-        String currentModel = task.getModel() == null || task.getModel().isBlank()
-                ? task.getProvider() : task.getModel();
-        String model = request.model() == null || request.model().isBlank()
-                ? normalizeModel(currentModel) : normalizeModel(request.model());
+        String requested = request.model() == null || request.model().isBlank()
+                ? modelCatalog.taskKey(task.getProvider(), task.getModel()) : request.model();
+        ModelCatalog.ResolvedModel video = modelCatalog.resolve(ModelCatalog.Capability.VIDEO, requested);
         LambdaUpdateWrapper<GenerationTask> update = Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
                 .set(GenerationTask::getPrompt, request.prompt().trim())
-                .set(GenerationTask::getModel, model)
-                .set(GenerationTask::getProvider, model)
+                .set(GenerationTask::getModel, video.modelId())
+                .set(GenerationTask::getProvider, video.providerKey())
                 .set(GenerationTask::getUpdatedAt, now);
         if (request.ratio() != null && !request.ratio().isBlank()) {
-            update.set(GenerationTask::getRatio, normalizeRatio(request.ratio()));
+            update.set(GenerationTask::getRatio, normalizeRatio(request.ratio(), video));
         }
         if (request.duration() != null) {
-            update.set(GenerationTask::getDuration, normalizeDuration(request.duration()));
+            update.set(GenerationTask::getDuration, normalizeDuration(request.duration(), video));
         }
         // 清晰度与模型能力绑定：显式传值时按新模型校验，未传时沿用旧值并按新模型兜底
         update.set(GenerationTask::getResolution,
                 normalizeResolution(request.resolution() == null || request.resolution().isBlank()
-                        ? task.getResolution() : request.resolution(), model));
+                        ? task.getResolution() : request.resolution(), video));
         taskMapper.update(null, update);
         recordPrompt(task.getWorkspaceId(), taskId, request.prompt());
         if (request.regenerate() == null || request.regenerate()) {
@@ -248,6 +261,7 @@ public class TaskService {
         if (!TaskStatus.isActive(task.getStatus())) {
             throw new BadRequestException("当前状态不可取消：" + task.getStatus());
         }
+        cancelProviderTask(task);
         taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
                 .set(GenerationTask::getStatus, TaskStatus.CANCELED.name())
@@ -255,6 +269,22 @@ public class TaskService {
                 .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
         broadcastTask("node.updated", taskId);
         return node(taskId);
+    }
+
+    /** 尽力取消供应商侧任务；失败只记录日志，本地状态仍按已取消处理 */
+    private void cancelProviderTask(GenerationTask task) {
+        String providerTaskId = task.getProviderTaskId();
+        if (providerTaskId == null || providerTaskId.isBlank()) {
+            return;
+        }
+        try {
+            ModelCatalog.ResolvedModel model = modelCatalog.resolveVideoTask(task.getProvider(), task.getModel());
+            providerRegistry.get(model.protocol()).cancel(providerTaskId,
+                    new VideoContext(model.providerKey(), model.baseUrl(), model.apiKey(),
+                            model.modelId(), model.watermark()));
+        } catch (Exception e) {
+            log.warn("供应商取消失败 id={} providerTaskId={}：{}", task.getId(), providerTaskId, e.getMessage());
+        }
     }
 
     @Transactional
@@ -368,6 +398,9 @@ public class TaskService {
         }
         if (request.height() != null) {
             update.set(CanvasImage::getHeight, request.height());
+        }
+        if (request.prompt() != null) {
+            update.set(CanvasImage::getPrompt, request.prompt());
         }
         imageMapper.update(null, update);
 
@@ -606,6 +639,7 @@ public class TaskService {
                     task.getTitle(),
                     task.getPrompt(),
                     task.getModel(),
+                    modelCatalog.taskKey(task.getProvider(), task.getModel()),
                     task.getRatio(),
                     task.getDuration(),
                     task.getResolution(),
@@ -716,40 +750,49 @@ public class TaskService {
         return groupId == null || groupId.isBlank() ? DEFAULT_GROUP : groupId.trim();
     }
 
-    private String normalizeModel(String model) {
-        if (model != null && !model.isBlank()) {
-            String value = model.trim().toLowerCase();
-            if ("mock".equals(value) || "seedance".equals(value)) {
-                return value;
-            }
+    /** 比例按模型能力白名单校验，非法值回退模型默认或首个支持项 */
+    private String normalizeRatio(String ratio, ModelCatalog.ResolvedModel model) {
+        List<String> allowed = model.ratios().isEmpty()
+                ? List.of("16:9", "9:16", "1:1", "4:3", "3:4", "21:9") : model.ratios();
+        String value = ratio == null ? "" : ratio.trim();
+        if (allowed.contains(value)) {
+            return value;
         }
-        String fallback = providerProperties.getDefaultName();
-        return fallback == null || fallback.isBlank() ? "mock" : fallback;
+        String fallback = model.defaultRatio();
+        if (fallback != null && allowed.contains(fallback)) {
+            return fallback;
+        }
+        return allowed.get(0);
     }
 
-    private String normalizeRatio(String ratio) {
-        return ratio == null || ratio.isBlank() ? providerProperties.getSeedance().getRatio() : ratio.trim();
-    }
-
-    private Integer normalizeDuration(Integer duration) {
-        if (duration == null || duration < 1) {
-            return providerProperties.getSeedance().getDuration();
+    /** 时长限制在模型支持区间内，未配置时沿用 5 秒 */
+    private Integer normalizeDuration(Integer duration, ModelCatalog.ResolvedModel model) {
+        List<Integer> allowed = model.durations();
+        if (allowed.isEmpty()) {
+            return duration == null || duration < 1
+                    ? (model.defaultDuration() == null ? 5 : model.defaultDuration()) : duration;
         }
-        return duration;
+        int min = allowed.stream().min(Integer::compareTo).orElse(1);
+        int max = allowed.stream().max(Integer::compareTo).orElse(min);
+        int value = duration == null || duration < 1
+                ? (model.defaultDuration() == null ? min : model.defaultDuration()) : duration;
+        if (allowed.contains(value)) {
+            return value;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 
     /** 每个模型支持的清晰度不同，取不到时回退 720P */
-    private String normalizeResolution(String resolution, String model) {
-        List<String> allowed = "seedance".equals(model)
-                ? List.of("480P", "720P", "1080P", "4K")
-                : List.of("480P", "720P");
+    private String normalizeResolution(String resolution, ModelCatalog.ResolvedModel model) {
+        List<String> allowed = model.resolutions().isEmpty()
+                ? List.of("480P", "720P") : model.resolutions();
         if (resolution != null && !resolution.isBlank()) {
             String value = resolution.trim().toUpperCase();
             if (allowed.contains(value)) {
                 return value;
             }
         }
-        return "720P";
+        return allowed.contains("720P") ? "720P" : allowed.get(0);
     }
 
     private String defaultTitle(String title, int shotIndex) {

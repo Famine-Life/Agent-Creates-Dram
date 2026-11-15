@@ -7,6 +7,7 @@ import com.aigc.video.api.dto.CanvasState;
 import com.aigc.video.api.dto.EdgeRequest;
 import com.aigc.video.api.dto.EdgeView;
 import com.aigc.video.api.dto.GenerateRequest;
+import com.aigc.video.api.dto.ImageGenerateRequest;
 import com.aigc.video.api.dto.ImageNode;
 import com.aigc.video.api.dto.ImageRequest;
 import com.aigc.video.api.dto.OrderRequest;
@@ -43,7 +44,9 @@ public class CanvasController {
     @PostMapping("/ai/prompt/optimize")
     public Map<String, String> optimizePrompt(@PathVariable Long workspaceId,
                                               @RequestBody Map<String, String> request) {
-        return Map.of("prompt", aiService.optimizePrompt(request == null ? null : request.get("prompt")));
+        String prompt = request == null ? null : request.get("prompt");
+        String model = request == null ? null : request.get("model");
+        return Map.of("prompt", aiService.optimizePrompt(prompt, model));
     }
 
     @GetMapping
@@ -94,8 +97,14 @@ public class CanvasController {
     @PostMapping("/images/{imageId}/generate")
     public ImageNode generateImage(@PathVariable Long workspaceId,
                                    @PathVariable Long imageId,
-                                   @RequestBody(required = false) GenerateRequest request) {
-        return canvasNodeService.generateImage(workspaceId, imageId, request == null ? null : request.prompt());
+                                   @RequestBody(required = false) ImageGenerateRequest request) {
+        return canvasNodeService.generateImage(workspaceId, imageId,
+                request == null ? null : request.prompt(),
+                request == null ? null : request.model(),
+                request == null ? null : request.referenceUrl(),
+                request == null ? null : request.ratio(),
+                request == null ? null : request.resolution(),
+                request == null ? null : request.count());
     }
 
     // ---------------------------------------------------------------- 文本 / 脚本节点
@@ -125,7 +134,9 @@ public class CanvasController {
     public CanvasNodeView generateScript(@PathVariable Long workspaceId,
                                          @PathVariable Long nodeId,
                                          @RequestBody(required = false) GenerateRequest request) {
-        return canvasNodeService.generateScript(workspaceId, nodeId, request == null ? null : request.prompt());
+        return canvasNodeService.generateScript(workspaceId, nodeId,
+                request == null ? null : request.prompt(),
+                request == null ? null : request.model());
     }
 
     @PutMapping("/images/{imageId}")

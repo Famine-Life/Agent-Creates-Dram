@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { Handle, Position } from '@vue-flow/core'
 import { state, updateCanvasNode, removeCanvasNode, toast } from '../store/canvas'
 
 const props = defineProps({
@@ -64,5 +65,6 @@ async function onDelete(e) {
       @blur="save"
       @pointerdown.stop
     />
+    <Handle type="source" :position="Position.Right" class="text-port" title="拖到脚本 / AI 图片 / 镜头，写入提示词" />
   </div>
 </template>

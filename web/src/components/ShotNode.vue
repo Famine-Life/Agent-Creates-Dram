@@ -5,6 +5,7 @@ import {
   state,
   statusOf,
   retryTask,
+  cancelTask,
   removeTask,
   savePrompt,
   updateShotSettings,
@@ -20,12 +21,8 @@ const props = defineProps({
   selected: { type: Boolean, default: false }
 })
 
-const MODEL_OPTIONS = [
-  { value: 'mock', label: 'Mock 视频', resolutions: ['480P', '720P'] },
-  { value: 'seedance', label: 'Seedance 2.0', resolutions: ['480P', '720P', '1080P', '4K'] }
-]
-const RATIO_OPTIONS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']
-const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+const DEFAULT_RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']
+const DEFAULT_DURATIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 const saving = ref(false)
 const videoEl = ref(null)
@@ -34,15 +31,33 @@ const hovering = ref(false)
 const task = computed(() => props.data.task)
 const status = computed(() => statusOf(task.value))
 const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTED', 'RUNNING'].includes(task.value.status))
+const isDraft = computed(() => task.value.status === 'IDLE')
 const ready = computed(() => task.value.status === 'SUCCEEDED' && !!task.value.videoUrl)
+const editorVisible = computed(() => props.selected || state.selectedTaskId === task.value.id)
 const refCount = computed(() => task.value.imageIds?.length || 0)
 const progress = computed(() => Math.max(0, Math.min(100, task.value.progress || 0)))
-const model = computed(() => task.value.model || task.value.provider || 'mock')
+/** 视频模型由后端 /api/meta 按平台下发，节点不再硬编码 */
+const videoModels = computed(() => state.meta.videoModels || [])
+const model = computed(() => task.value.modelKey || task.value.model || '')
+const modelOption = computed(() => videoModels.value.find((item) => item.value === model.value))
+const modelLabel = computed(() => modelOption.value?.label || task.value.model || model.value || '-')
+const stageText = computed(() => {
+  if (task.value.status === 'QUEUED' || task.value.status === 'RECEIVED') {
+    return `使用 ${modelLabel.value} 模型排队中`
+  }
+  return `使用 ${modelLabel.value} 模型生成中`
+})
 const ratio = computed(() => task.value.ratio || '16:9')
 const duration = computed(() => task.value.duration || 5)
 const resolution = computed(() => task.value.resolution || '720P')
-const resolutionOptions = computed(
-  () => MODEL_OPTIONS.find((item) => item.value === model.value)?.resolutions || ['480P', '720P']
+const ratioOptions = computed(() =>
+  modelOption.value?.ratios?.length ? modelOption.value.ratios : DEFAULT_RATIOS
+)
+const durationOptions = computed(() =>
+  modelOption.value?.durations?.length ? modelOption.value.durations : DEFAULT_DURATIONS
+)
+const resolutionOptions = computed(() =>
+  modelOption.value?.resolutions?.length ? modelOption.value.resolutions : ['480P', '720P']
 )
 
 /** 按连线顺序排列的参考图，顺序即提示词里的 @图片n */
@@ -116,7 +131,7 @@ async function saveSettings(patch) {
 /** 切换模型时，若当前清晰度不被新模型支持，自动回退到 720P */
 function onModelChange(value) {
   const patch = { model: value }
-  const options = MODEL_OPTIONS.find((item) => item.value === value)?.resolutions || []
+  const options = videoModels.value.find((item) => item.value === value)?.resolutions || []
   if (!options.includes(resolution.value)) {
     patch.resolution = options.includes('720P') ? '720P' : options[0]
   }
@@ -149,11 +164,19 @@ async function onUpload(file) {
     toast(`上传失败：${e.message}`)
   }
 }
+
+async function onCancel() {
+  try {
+    await cancelTask(task.value.id)
+  } catch (e) {
+    toast(`取消失败：${e.message}`)
+  }
+}
 </script>
 
 <template>
   <div class="shot-node-wrap" @click="select">
-    <div class="shot-node" :class="[`tone-${status.tone}`, { selected }]">
+    <div class="shot-node" :class="[`tone-${status.tone}`, { selected: editorVisible }]">
       <Handle type="target" :position="Position.Left" class="shot-port" />
 
       <header class="shot-head">
@@ -185,7 +208,11 @@ async function onUpload(file) {
           <div v-if="active" class="ring" :style="{ '--value': progress }">
             <span>{{ progress }}%</span>
           </div>
-          <template v-if="task.status === 'FAILED' || task.status === 'TIMEOUT'">
+          <template v-if="isDraft">
+            <div class="err-title">待编辑</div>
+            <div class="err-msg">在下方填写提示词后点击「生成」</div>
+          </template>
+          <template v-else-if="task.status === 'FAILED' || task.status === 'TIMEOUT'">
             <div class="err-title">生成失败</div>
             <div class="err-msg">{{ task.errorMsg || '请稍后重试' }}</div>
           </template>
@@ -193,7 +220,13 @@ async function onUpload(file) {
             <div class="err-title">{{ status.text }}</div>
             <div class="err-msg">点击「重新生成」再试一次</div>
           </template>
-          <div v-else class="stage">{{ task.status === 'QUEUED' || task.status === 'RECEIVED' ? '等待调度' : '正在渲染画面' }}</div>
+          <div v-else class="stage">{{ stageText }}</div>
+          <button
+            v-if="active"
+            class="cancel-btn"
+            title="取消当前生成任务"
+            @click.stop="onCancel"
+          >取消任务</button>
         </div>
 
         <div v-if="ready || task.status === 'FAILED' || task.status === 'TIMEOUT'" class="media-actions">
@@ -214,17 +247,17 @@ async function onUpload(file) {
     </div>
 
     <PromptEditor
-      v-if="selected"
+      v-if="editorVisible"
       :prompt="task.prompt"
       :images="linkedImages"
       :all-images="state.images"
       :model="model"
       :model-value="model"
-      :model-options="MODEL_OPTIONS"
+      :model-options="videoModels"
       :ratio="ratio"
-      :ratio-options="RATIO_OPTIONS"
+      :ratio-options="ratioOptions"
       :duration="duration"
-      :duration-options="DURATION_OPTIONS"
+      :duration-options="durationOptions"
       :resolution="resolution"
       :resolution-options="resolutionOptions"
       :show-settings="true"

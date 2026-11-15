@@ -1,6 +1,5 @@
 package com.aigc.video.ai;
 
-import com.aigc.video.config.AiProperties;
 import com.aigc.video.storage.AssetService;
 import com.aigc.video.storage.StoredAsset;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,16 +9,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * AI 能力网关：分镜脚本（LLM）与图片生成。
- * 未配置 ARK_API_KEY 时使用 mock，保证本地无密钥也能体验完整链路。
+ * 通过 {@link ModelCatalog} 按 provider/model 解析平台与协议，未配置密钥时回退 mock。
  */
 @Slf4j
 @Service
@@ -39,11 +40,12 @@ public class AiService {
             只输出优化后的提示词正文，不要解释、不要 Markdown、不要标题、不要分点。
             """;
 
-    private final AiProperties properties;
+    private final ModelCatalog modelCatalog;
     private final AssetService assetService;
     private final ObjectMapper objectMapper;
 
-    private volatile RestClient client;
+    /** 按 base-url 复用 RestClient，不同平台互不影响 */
+    private final Map<String, RestClient> clients = new ConcurrentHashMap<>();
 
     public record ScriptShot(String title, String prompt) {
     }
@@ -51,31 +53,20 @@ public class AiService {
     public record ScriptResult(String title, List<ScriptShot> shots) {
     }
 
-    public boolean mockEnabled() {
-        return properties.mockEnabled();
-    }
-
-    /** 生成分镜脚本 */
-    public ScriptResult generateScript(String prompt) {
-        if (properties.mockEnabled()) {
+    /** 生成分镜脚本，model 为 provider/model 或裸模型 ID，为空时使用默认文本模型 */
+    public ScriptResult generateScript(String prompt, String model) {
+        ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.TEXT, model);
+        if (resolved.mock()) {
             return mockScript(prompt);
         }
+        requireProtocol(resolved, "openai-compatible", "文本");
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getScriptModel());
+        body.put("model", resolved.modelId());
         body.put("temperature", 0.7);
         body.put("messages", List.of(
                 Map.of("role", "system", "content", SCRIPT_SYSTEM_PROMPT),
                 Map.of("role", "user", "content", prompt)));
-        JsonNode response = client().post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + properties.getApiKey())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
-        if (response == null) {
-            throw new IllegalStateException("AI 脚本生成无响应");
-        }
+        JsonNode response = postChat(resolved, body);
         String content = response.path("choices").path(0).path("message").path("content").asText("");
         if (content.isBlank()) {
             throw new IllegalStateException("AI 脚本生成返回为空：" + response.path("error").path("message").asText(""));
@@ -83,31 +74,24 @@ public class AiService {
         return parseScript(content);
     }
 
-    /** 一键优化视频提示词 */
-    public String optimizePrompt(String prompt) {
+    /** 一键优化视频提示词，model 为 provider/model 或裸模型 ID，为空时使用默认文本模型 */
+    public String optimizePrompt(String prompt, String model) {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("提示词不能为空");
         }
         String text = prompt.trim();
-        if (properties.mockEnabled()) {
+        ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.TEXT, model);
+        if (resolved.mock()) {
             return mockOptimize(text);
         }
+        requireProtocol(resolved, "openai-compatible", "文本");
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getScriptModel());
+        body.put("model", resolved.modelId());
         body.put("temperature", 0.8);
         body.put("messages", List.of(
                 Map.of("role", "system", "content", OPTIMIZE_SYSTEM_PROMPT),
                 Map.of("role", "user", "content", text)));
-        JsonNode response = client().post()
-                .uri("/chat/completions")
-                .header("Authorization", "Bearer " + properties.getApiKey())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
-        if (response == null) {
-            throw new IllegalStateException("AI 提示词优化无响应");
-        }
+        JsonNode response = postChatWithRetry(resolved, body, 2);
         String content = response.path("choices").path(0).path("message").path("content").asText("").trim();
         if (content.isBlank()) {
             throw new IllegalStateException("AI 提示词优化返回为空："
@@ -116,20 +100,34 @@ public class AiService {
         return content;
     }
 
-    /** 生成图片，返回可直接展示的地址 */
-    public String generateImage(String prompt) {
-        if (properties.mockEnabled()) {
+    /** 生成图片，返回可直接展示的地址；referenceUrl 非空时以该图作为参考做图生图 */
+    public String generateImage(String prompt, String model, String referenceUrl, String size) {
+        ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
+        if (resolved.mock()) {
             return storeMockImage(prompt);
         }
+        String targetSize = size == null || size.isBlank() ? "1280x720" : size;
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getImageModel());
+        body.put("model", resolved.modelId());
         body.put("prompt", prompt);
-        body.put("size", "1024x576");
-        body.put("response_format", "url");
-        body.put("watermark", false);
-        JsonNode response = client().post()
+        switch (resolved.protocol()) {
+            case "ark-image" -> {
+                body.put("size", targetSize);
+                body.put("response_format", "url");
+                body.put("watermark", false);
+                if (referenceUrl != null && !referenceUrl.isBlank()) {
+                    body.put("image", assetService.providerImageUrl(referenceUrl));
+                }
+            }
+            case "openai-image" -> {
+                body.put("n", 1);
+                body.put("size", targetSize);
+            }
+            default -> throw new IllegalArgumentException("不支持的图片协议：" + resolved.protocol());
+        }
+        JsonNode response = client(resolved).post()
                 .uri("/images/generations")
-                .header("Authorization", "Bearer " + properties.getApiKey())
+                .header("Authorization", "Bearer " + apiKey(resolved))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
@@ -149,6 +147,67 @@ public class AiService {
         StoredAsset stored = assetService.storeImage("ai-image.png", "image/png",
                 java.util.Base64.getDecoder().decode(base64));
         return stored.url();
+    }
+
+    // ---------------------------------------------------------------- 协议调用
+
+    private JsonNode postChat(ModelCatalog.ResolvedModel model, Map<String, Object> body) {
+        JsonNode response = client(model).post()
+                .uri("/chat/completions")
+                .header("Authorization", "Bearer " + apiKey(model))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+        if (response == null) {
+            throw new IllegalStateException("AI 文本生成无响应");
+        }
+        return response;
+    }
+
+    /** 供应商突发限流（429）时短暂退避重试，避免用户点一次优化就直接报错 */
+    private JsonNode postChatWithRetry(ModelCatalog.ResolvedModel model, Map<String, Object> body, int retries) {
+        long delay = 1500L;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return postChat(model, body);
+            } catch (RestClientResponseException e) {
+                if (e.getStatusCode().value() != 429) {
+                    throw e;
+                }
+                if (attempt >= retries) {
+                    throw new IllegalStateException("AI 请求过于频繁，请稍后再试", e);
+                }
+                try {
+                    Thread.sleep(delay);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("AI 请求被中断", interrupted);
+                }
+                delay *= 2;
+            }
+        }
+    }
+
+    private void requireProtocol(ModelCatalog.ResolvedModel model, String expected, String label) {
+        if (!expected.equals(model.protocol())) {
+            throw new IllegalArgumentException("不支持的" + label + "协议：" + model.protocol());
+        }
+    }
+
+    private String apiKey(ModelCatalog.ResolvedModel model) {
+        if (model.apiKey() == null || model.apiKey().isBlank()) {
+            throw new IllegalStateException("模型 " + model.key() + " 未配置 api-key");
+        }
+        return model.apiKey();
+    }
+
+    private RestClient client(ModelCatalog.ResolvedModel model) {
+        if (model.baseUrl() == null || model.baseUrl().isBlank()) {
+            throw new IllegalStateException("模型 " + model.key() + " 未配置 base-url");
+        }
+        String baseUrl = model.baseUrl().trim();
+        return clients.computeIfAbsent(baseUrl, url -> RestClient.builder().baseUrl(url).build());
     }
 
     // ---------------------------------------------------------------- mock
@@ -190,7 +249,7 @@ public class AiService {
                     .append(escapeXml(line)).append("</text>");
             y += 58;
         }
-        svg.append("<text x=\"60\" y=\"520\" fill=\"#8d939e\" font-size=\"20\" font-family=\"sans-serif\">配置 ARK_API_KEY 后将调用真实图片模型</text>");
+        svg.append("<text x=\"60\" y=\"520\" fill=\"#8d939e\" font-size=\"20\" font-family=\"sans-serif\">配置平台 API Key 后将调用真实图片模型</text>");
         svg.append("</svg>");
         StoredAsset stored = assetService.storeImage("ai-image.svg", "image/svg+xml",
                 svg.toString().getBytes(StandardCharsets.UTF_8));
@@ -248,18 +307,5 @@ public class AiService {
             log.warn("AI 分镜 JSON 解析失败：{}，原始内容={}", e.getMessage(), raw);
             throw new IllegalStateException("AI 返回内容无法解析为分镜脚本");
         }
-    }
-
-    private RestClient client() {
-        RestClient local = client;
-        if (local == null) {
-            synchronized (this) {
-                if (client == null) {
-                    client = RestClient.builder().baseUrl(properties.getBaseUrl()).build();
-                }
-                local = client;
-            }
-        }
-        return local;
     }
 }

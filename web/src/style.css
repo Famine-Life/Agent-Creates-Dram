@@ -747,6 +747,22 @@ h2 {
   color: var(--danger);
 }
 
+.cancel-btn {
+  margin-top: 2px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cancel-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .err-msg {
   font-size: 11px;
   color: var(--muted);
@@ -1689,6 +1705,14 @@ h2 {
   width: 320px;
 }
 
+.image-gen-wrap {
+  width: 260px;
+}
+
+.script-node-wrap {
+  width: 300px;
+}
+
 .shot-hint {
   margin-left: auto;
   font-size: 10px;
@@ -1767,7 +1791,9 @@ h2 {
   font-size: 13px;
 }
 
-.shot-node-wrap > .node-prompt {
+.shot-node-wrap > .node-prompt,
+.image-gen-wrap > .node-prompt,
+.script-node-wrap > .node-prompt {
   margin-top: 8px;
   aspect-ratio: 16 / 9;
 }
@@ -1973,11 +1999,6 @@ h2 {
   font-size: 10px;
 }
 
-.np-count {
-  color: var(--muted);
-  font-size: 10px;
-}
-
 .np-select {
   max-width: 56px;
   min-width: 0;
@@ -2001,7 +2022,7 @@ h2 {
 }
 
 .np-select-model {
-  max-width: 84px;
+  max-width: 110px;
 }
 
 .np-res {
@@ -2099,9 +2120,9 @@ h2 {
 
 .np-ratio:hover,
 .np-ratio.active {
-  border-color: #fff;
-  background: var(--raised);
-  color: #fff;
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--text);
 }
 
 .np-res-grid {
@@ -2123,9 +2144,21 @@ h2 {
 
 .np-res-btn:hover,
 .np-res-btn.active {
-  border-color: #fff;
-  background: var(--raised);
-  color: #fff;
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--text);
+}
+
+.np-count-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+
+.np-ratio-auto {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .np-range {
@@ -2402,7 +2435,7 @@ h2 {
 /* ------------------------------------------------------------------ AI 图片节点 */
 
 .image-gen-node {
-  width: 260px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -2417,21 +2450,18 @@ h2 {
 }
 
 .image-gen-node .node-media {
-  border-bottom: 1px solid var(--border);
+  border-radius: 0 0 13px 13px;
 }
 
-.image-gen-node .node-prompt {
-  margin: 8px;
-  width: auto;
-  border: none;
-  padding: 0;
-  background: transparent;
+/* 图片比例选项更多，收窄一些让 9 个选项排成 5 + 4 */
+.image-gen-wrap .np-ratio {
+  width: 40px;
 }
 
 /* ------------------------------------------------------------------ 脚本节点 */
 
 .script-node {
-  width: 300px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -2721,4 +2751,151 @@ h2 {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ 节点连线与分镜编辑 */
+
+.node-tool {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-tool:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+/* 文本节点 overflow:hidden，锚点放到节点内部避免被裁掉 */
+.text-port {
+  right: 6px;
+}
+
+.script-shot-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.script-shot-title,
+.script-shot-prompt {
+  display: block;
+  width: 100%;
+  padding: 1px 3px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.script-shot-title {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.script-shot-prompt {
+  margin-top: 2px;
+  min-height: 34px;
+  resize: vertical;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.script-shot-title:hover,
+.script-shot-prompt:hover {
+  border-color: var(--border);
+}
+
+.script-shot-title:focus,
+.script-shot-prompt:focus {
+  border-color: var(--brand);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.media-actions.always {
+  opacity: 1;
+}
+
+.media-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+
+.image-preview img {
+  max-width: 92vw;
+  max-height: 86vh;
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.image-preview-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.link-picker {
+  gap: 8px;
+}
+
+.link-pick {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.link-pick:hover {
+  border-color: rgba(124, 107, 255, 0.55);
+  background: var(--raised);
+}
+
+.link-pick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.link-pick-text strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.link-pick-text span {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
 }

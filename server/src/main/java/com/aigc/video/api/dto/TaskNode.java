@@ -11,7 +11,10 @@ public record TaskNode(
         Integer shotIndex,
         String title,
         String prompt,
+        /** 真实模型 ID */
         String model,
+        /** 前端使用的 provider/model 复合标识 */
+        String modelKey,
         String ratio,
         Integer duration,
         String resolution,

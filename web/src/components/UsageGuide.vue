@@ -220,7 +220,7 @@ function copy(text) {
             <pre>{{ cliExamples }}</pre>
           </div>
           <p class="muted">
-            <code>push</code> 还支持模型与生成参数：<code>--model mock|seedance</code>、<code>--ratio 16:9</code>、
+            <code>push</code> 还支持模型与生成参数：<code>--model mock|seedance|seedance-fast</code>、<code>--ratio 16:9</code>、
             <code>--resolution 720P</code>、<code>--duration 5</code>；需要原始响应时追加 <code>--json</code>。
           </p>
         </section>

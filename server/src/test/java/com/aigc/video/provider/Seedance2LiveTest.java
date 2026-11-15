@@ -1,6 +1,7 @@
 package com.aigc.video.provider;
 
-import com.aigc.video.config.ProviderProperties;
+import com.aigc.video.ai.ModelCatalog;
+import com.aigc.video.config.AiProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,16 +24,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class Seedance2LiveTest {
 
     @Autowired
-    private SeedanceVideoProvider provider;
+    private ArkVideoProvider provider;
+
+    @Autowired
+    private ModelCatalog modelCatalog;
+
+    @Autowired
+    private AiProperties properties;
 
     @SpringBootConfiguration
-    @EnableConfigurationProperties(ProviderProperties.class)
-    @Import(SeedanceVideoProvider.class)
+    @EnableConfigurationProperties(AiProperties.class)
+    @Import({ArkVideoProvider.class, ModelCatalog.class})
     static class Config {
     }
 
     @Test
     void submitAndPollSeedance2() {
+        ModelCatalog.ResolvedModel model = modelCatalog.resolve(ModelCatalog.Capability.VIDEO,
+                properties.getDefaults().getVideo());
+        VideoContext context = new VideoContext(model.providerKey(), model.baseUrl(), model.apiKey(),
+                model.modelId(), model.watermark());
 
         SubmitResult submitted = provider.submit(new SubmitCommand(
                 "一只白色猫咪在窗边伸懒腰，柔和日光，固定镜头",
@@ -40,11 +51,12 @@ class Seedance2LiveTest {
                 List.of(),
                 "16:9",
                 4,
-                "480P"));
+                "480P",
+                context));
         assertNotNull(submitted.providerTaskId());
         assertFalse(submitted.providerTaskId().isBlank());
 
-        PollResult polled = provider.poll(submitted.providerTaskId());
+        PollResult polled = provider.poll(submitted.providerTaskId(), context);
         assertNotNull(polled);
         assertNotEquals("FAILED", polled.status(), polled.error());
     }
