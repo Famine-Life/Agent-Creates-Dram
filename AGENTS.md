@@ -80,7 +80,10 @@ node cli/aigc.mjs storyboard --file <shots.json> --group "<分组>" --json
 
 ```sh
 node cli/aigc.mjs upload --file <图片路径> --json
+node cli/aigc.mjs upload-url --image-url <图片URL> --name "<节点名称>" --workspace <画布ID> --json
 ```
+
+`upload` 会把本地图片传到当前服务；`upload-url` 会下载 Agent 提供的 HTTP/HTTPS 图片 URL，再上传到服务端素材存储。两者都会在画布创建图片节点；`--workspace <画布ID>` 指定目标画布，省略时默认画布 1。`create-image --url` 只保存外部 URL，不会导入图片文件。
 
 删除镜头或图片节点：
 

@@ -28,6 +28,8 @@ const saving = ref(false)
 const videoEl = ref(null)
 const started = ref(false)
 const hovering = ref(false)
+const captureMenuOpen = ref(false)
+const capturingFrame = ref(false)
 const task = computed(() => props.data.task)
 const status = computed(() => statusOf(task.value))
 const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(task.value.status))
@@ -157,6 +159,58 @@ async function onLinkImage(image) {
   }
 }
 
+function seekVideo(time) {
+  const video = videoEl.value
+  if (!video || Math.abs(video.currentTime - time) < 0.02) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      video.removeEventListener('seeked', onSeeked)
+      reject(new Error('视频定位超时'))
+    }, 8000)
+    function onSeeked() {
+      clearTimeout(timeout)
+      resolve()
+    }
+    video.addEventListener('seeked', onSeeked, { once: true })
+    video.currentTime = time
+  })
+}
+
+async function captureFrame(kind) {
+  const video = videoEl.value
+  if (!video || !video.videoWidth || capturingFrame.value) return
+  capturingFrame.value = true
+  captureMenuOpen.value = false
+  const originalTime = video.currentTime
+  const wasPlaying = !video.paused
+  try {
+    video.pause()
+    if (kind === 'first') await seekVideo(0.05)
+    if (kind === 'last') await seekVideo(Math.max(0, video.duration - 0.08))
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error('截图编码失败')), 'image/png')
+    })
+    const label = { current: '当前帧', first: '首帧', last: '尾帧' }[kind]
+    const baseName = (task.value.title || `镜头${task.value.id}`).replace(/[\\/:*?"<>|]/g, '_')
+    const file = new File([blob], `${baseName}-${label}.png`, { type: 'image/png' })
+    await uploadImageFile(file)
+    toast(`${label}已保存为图片节点`)
+  } catch (error) {
+    toast(`截取失败：${error.message || '视频无法读取当前帧'}`)
+  } finally {
+    try {
+      await seekVideo(originalTime)
+      if (wasPlaying) await video.play()
+    } catch { /* 即使恢复播放失败也保留截图结果 */ }
+    capturingFrame.value = false
+  }
+}
+
 async function onUnlinkImage(image) {
   if (!image.edgeId) return
   try {
@@ -242,6 +296,14 @@ async function onCancel() {
         <div v-if="ready || task.status === 'FAILED' || task.status === 'TIMEOUT' || task.status === 'SUBMIT_UNKNOWN'" class="media-actions">
           <button v-if="ready" class="media-btn" title="预览" @click="openPreview">⤢</button>
           <a v-if="ready" class="media-btn" :href="task.videoUrl" target="_blank" rel="noreferrer" title="下载" @click.stop>↓</a>
+          <div v-if="ready" class="frame-capture-wrap" @click.stop>
+            <button class="media-btn" :disabled="capturingFrame" title="截图：当前帧、首帧或尾帧" @click="captureMenuOpen = !captureMenuOpen">◎</button>
+            <div v-if="captureMenuOpen" class="frame-capture-menu">
+              <button :disabled="capturingFrame" @click="captureFrame('current')">截取当前帧</button>
+              <button :disabled="capturingFrame" @click="captureFrame('first')">截取首帧</button>
+              <button :disabled="capturingFrame" @click="captureFrame('last')">截取尾帧</button>
+            </div>
+          </div>
           <button
             v-else
             class="media-btn"

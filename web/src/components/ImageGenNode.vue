@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { state, removeImage, generateAiImage, toast } from '../store/canvas'
 import PromptEditor from './PromptEditor.vue'
+import ImageToolsDialog from './ImageToolsDialog.vue'
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -11,6 +12,7 @@ const props = defineProps({
 
 const saving = ref(false)
 const previewing = ref(false)
+const toolsOpen = ref(false)
 const image = computed(() => props.data.image)
 /** 编辑框中的实时文本；图生图直接用这里的最新提示词，未编辑时即已保存的提示词 */
 const draftPrompt = ref(image.value.prompt || '')
@@ -134,6 +136,7 @@ async function onDelete(e) {
         <div v-if="ready" class="media-actions always">
           <button class="media-btn" title="放大预览" @click.stop="previewing = true">⤢</button>
           <a class="media-btn" :href="image.url" :download="downloadName" title="下载原图" @click.stop>↓</a>
+          <button class="media-btn" title="裁剪或九宫格切分" @click.stop="toolsOpen = true">✂</button>
           <button
             class="media-btn"
             title="以当前图为参考重新生成（图生图）"
@@ -180,5 +183,6 @@ async function onDelete(e) {
         <span class="image-preview-hint">点击任意位置关闭</span>
       </div>
     </Teleport>
+    <ImageToolsDialog v-if="toolsOpen && ready" :image="image" @close="toolsOpen = false" />
   </div>
 </template>

@@ -46,7 +46,8 @@ const HELP = `AIGC 画布工作台 CLI
   set-image-model 切换图片节点模型但不生成 --id <图片ID> --model <平台/模型> [--workspace 1] [--json]
   prompt-records 查看提示词历史      [--workspace 1] [--json]
   optimize-prompt 优化提示词         --prompt <文本> [--model <模型>] [--workspace 1] [--json]
-  upload      上传图片并创建画布节点 --file <图片路径> [--x <坐标>] [--y <坐标>]
+  upload      上传本地图片并创建图片节点 --file <图片路径> [--workspace 1] [--x <坐标>] [--y <坐标>] [--json]
+  upload-url  下载图片 URL 并上传到画布素材 --image-url <图片URL> [--name <名称>] [--workspace 1] [--x <坐标>] [--y <坐标>] [--json]
   snapshot    保存画布快照           --file <snapshot.json> [--version <版本>] [--workspace 1] [--json]
   order       保存镜头顺序           --file <items.json> [--workspace 1] [--json]
   create-image 创建图片节点          [--name <名称>] [--url <地址>] [--prompt <文本>] [--x <坐标>] [--y <坐标>]
@@ -689,23 +690,78 @@ function mimeOf(name) {
   return 'image/jpeg'
 }
 
-function buildMultipart(filePath, fields) {
+function buildMultipartBuffer(fileBuffer, fileName, fields, mimeType = mimeOf(fileName)) {
   const boundary = `----aigc${Date.now().toString(16)}`
   const parts = []
   for (const [name, value] of Object.entries(fields)) {
     if (value == null) continue
     parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
   }
-  const fileName = path.basename(filePath)
   parts.push(
     Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-        `Content-Type: ${mimeOf(fileName)}\r\n\r\n`
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName.replace(/["\r\n]/g, '_')}"\r\n` +
+        `Content-Type: ${mimeType}\r\n\r\n`
     )
   )
-  parts.push(fs.readFileSync(filePath))
+  parts.push(fileBuffer)
   parts.push(Buffer.from(`\r\n--${boundary}--\r\n`))
   return { body: Buffer.concat(parts), type: `multipart/form-data; boundary=${boundary}` }
+}
+
+function buildMultipart(filePath, fields) {
+  const fileName = path.basename(filePath)
+  return buildMultipartBuffer(fs.readFileSync(filePath), fileName, fields)
+}
+
+function downloadImage(imageUrl, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    let url
+    try {
+      url = new URL(imageUrl)
+    } catch {
+      reject(new Error('图片 URL 格式不正确'))
+      return
+    }
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      reject(new Error('图片 URL 仅支持 HTTP / HTTPS'))
+      return
+    }
+    const lib = url.protocol === 'https:' ? https : http
+    const req = lib.get(url, { headers: { Accept: 'image/*', 'User-Agent': 'AIGC-Canvas-CLI' } }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume()
+        if (redirects >= 5) {
+          reject(new Error('图片 URL 重定向次数过多'))
+          return
+        }
+        downloadImage(new URL(res.headers.location, url).toString(), redirects + 1).then(resolve, reject)
+        return
+      }
+      if (res.statusCode !== 200) {
+        res.resume()
+        reject(new Error(`下载图片失败：HTTP ${res.statusCode}`))
+        return
+      }
+      const limit = 50 * 1024 * 1024
+      const chunks = []
+      let size = 0
+      res.on('data', (chunk) => {
+        size += chunk.length
+        if (size > limit) {
+          req.destroy(new Error('图片超过 50 MB，无法通过 CLI 上传'))
+          return
+        }
+        chunks.push(chunk)
+      })
+      res.on('end', () => resolve({
+        buffer: Buffer.concat(chunks),
+        contentType: String(res.headers['content-type'] || '').split(';')[0].toLowerCase(),
+        url
+      }))
+    })
+    req.setTimeout(30000, () => req.destroy(new Error('下载图片超时（30 秒）')))
+    req.on('error', reject)
+  })
 }
 
 async function upload(opts) {
@@ -722,6 +778,31 @@ async function upload(opts) {
   const result = await api('POST', `/api/uploads${query}`, { multipart })
   if (opts.json) return printJson(result)
   console.log(`已上传 #${result.id}：${result.name} → ${result.url}`)
+}
+
+async function uploadUrl(opts) {
+  if (!opts['image-url']) fail('请提供 --image-url 图片URL')
+  const workspaceId = Number(opts.workspace || 1)
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) fail('--workspace 必须是正整数画布ID')
+  const downloaded = await downloadImage(String(opts['image-url']))
+  if (!downloaded.buffer.length) fail('下载的图片内容为空')
+  if (downloaded.contentType && !downloaded.contentType.startsWith('image/')) {
+    fail(`URL 返回的不是图片（Content-Type: ${downloaded.contentType}）`)
+  }
+  let fileName = String(opts.name || path.basename(downloaded.url.pathname) || 'agent-image.png')
+  try { fileName = decodeURIComponent(fileName) } catch { /* 保留原始文件名 */ }
+  if (!path.extname(fileName)) {
+    const ext = { 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' }[downloaded.contentType] || '.jpg'
+    fileName += ext
+  }
+  const mimeType = downloaded.contentType.startsWith('image/') ? downloaded.contentType : mimeOf(fileName)
+  const multipart = buildMultipartBuffer(downloaded.buffer, fileName, {}, mimeType)
+  let query = `?workspaceId=${workspaceId}`
+  if (opts.x != null) query += `&x=${Number(opts.x)}`
+  if (opts.y != null) query += `&y=${Number(opts.y)}`
+  const result = await api('POST', `/api/uploads${query}`, { multipart })
+  if (opts.json) return printJson(result)
+  console.log(`已从 URL 上传 #${result.id}：${result.name} → ${result.url}`)
 }
 
 async function removeTask(opts) {
@@ -824,6 +905,8 @@ async function main() {
       return optimizePrompt(opts)
     case 'upload':
       return upload(opts)
+    case 'upload-url':
+      return uploadUrl(opts)
     case 'snapshot':
       return saveSnapshot(opts)
     case 'order':

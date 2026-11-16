@@ -1,7 +1,8 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { state, removeImage, toast } from '../store/canvas'
+import ImageToolsDialog from './ImageToolsDialog.vue'
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -9,6 +10,7 @@ const props = defineProps({
 })
 
 const image = computed(() => props.data.image)
+const toolsOpen = ref(false)
 
 function select() {
   state.selectedImageId = image.value.id
@@ -32,9 +34,14 @@ async function onDelete(e) {
   <div class="image-node" :class="{ selected }" @click="select">
     <div class="image-media">
       <img :src="image.url" :alt="image.name" draggable="false" />
+      <div class="image-tool-actions" @click.stop>
+        <button title="裁剪图片" @click="toolsOpen = true">✂</button>
+        <button title="九宫格切分" @click="toolsOpen = true">▦</button>
+      </div>
       <button class="image-del" title="删除图片" @click="onDelete">×</button>
     </div>
     <div class="image-foot" :title="image.name">{{ image.name }}</div>
     <Handle type="source" :position="Position.Right" class="image-port" />
   </div>
+  <ImageToolsDialog v-if="toolsOpen" :image="image" @close="toolsOpen = false" />
 </template>

@@ -63,7 +63,10 @@ node cli/aigc.mjs assets --type ai --json
 node cli/aigc.mjs assets --type upload --json
 
 # 上传图片并创建画布节点
-node cli/aigc.mjs upload --file ./ref.png --x 120 --y 80 --json
+node cli/aigc.mjs upload --file ./ref.png --workspace 2 --x 120 --y 80 --json
+
+# 把 Agent 生成的图片 URL 下载到服务端素材存储并创建节点
+node cli/aigc.mjs upload-url --image-url "https://example.com/generated-image.png" --name "AI生成图" --workspace 2 --json
 
 # 将已有图片节点连接到镜头（视频）节点
 node cli/aigc.mjs link-image --task-id 12 --image-id 34 --json
@@ -292,7 +295,8 @@ function copy(text) {
               <tr><td><code>generate-image</code></td><td>选择图片模型并提交生成</td><td>--id、--prompt、--model、--ratio、--resolution</td></tr>
               <tr><td><code>generate-script</code></td><td>选择文本模型并生成脚本</td><td>--id、--model、可选 --prompt</td></tr>
               <tr><td><code>storyboard</code></td><td>批量推送分镜</td><td>--file、--group</td></tr>
-              <tr><td><code>upload</code></td><td>上传图片并建节点</td><td>--file、--x、--y</td></tr>
+              <tr><td><code>upload</code></td><td>上传本地图片并创建画布图片节点</td><td>--file、--workspace、--x、--y、--json</td></tr>
+              <tr><td><code>upload-url</code></td><td>下载图片 URL 并上传到服务端素材存储，创建图片节点</td><td>--image-url、--name、--workspace、--x、--y、--json</td></tr>
               <tr><td><code>link-image</code></td><td>关联已有图片节点与镜头（视频）节点</td><td>--task-id、--image-id</td></tr>
               <tr><td><code>unlink-image</code></td><td>解除图片与镜头之间的连线</td><td>--id 连线ID</td></tr>
               <tr><td><code>rm / rm-image</code></td><td>删除镜头 / 图片节点</td><td>--id</td></tr>
@@ -319,6 +323,8 @@ function copy(text) {
           </p>
           <p class="muted">
             分镜文件支持 JSON 镜头数组，或 <code>{ "shots": [...] }</code> 格式；镜头可填写提示词、标题、分组、序号、参考图片 ID/URL、模型和生成参数。
+            Agent 生成了可访问的图片 URL 时，使用 <code>upload-url --image-url &lt;图片URL&gt;</code>：CLI 会下载图片并上传到画布服务的素材存储，再创建图片节点（单张最大 50 MB，支持 HTTP/HTTPS 和有限重定向）。
+            这与 <code>create-image --url &lt;地址&gt;</code> 不同：后者只在节点里保存外部图片地址，不会把文件导入服务端。
             已有节点可用 <code>link-image --task-id &lt;镜头任务ID&gt; --image-id &lt;图片ID&gt; --json</code> 建立图片到镜头的连线；
             <code>--task-id</code> 是镜头任务 ID，<code>--image-id</code> 是图片节点 ID。也可在推送时通过 <code>push --images &lt;图片ID,...&gt;</code> 一并关联。
             若需移除连线，先从画布 JSON 中确认连线 ID，再用 <code>unlink-image --id &lt;连线ID&gt; --json</code>。
