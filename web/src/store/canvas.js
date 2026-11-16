@@ -44,7 +44,7 @@ export const state = reactive({
   edges: [],
   /** 文本 / 脚本节点到下游节点的连线，随画布快照保存 */
   links: [],
-  /** AI 图片生成参数（比例 / 清晰度 / 数量），随画布快照保存 */
+  /** AI 图片生成参数（模型 / 比例 / 清晰度 / 数量），随画布快照保存 */
   imageSettings: {},
   snapshot: null,
   version: 0,

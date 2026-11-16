@@ -16,6 +16,17 @@
 
 ## 命令
 
+画布管理：
+
+```sh
+node cli/aigc.mjs workspaces --json
+node cli/aigc.mjs new-workspace --json
+node cli/aigc.mjs copy-workspace --id <画布ID> --json
+node cli/aigc.mjs delete-workspace --id <画布ID> --json
+```
+
+删除画布会删除其全部内容，系统至少保留一个画布。复制画布会创建一张包含原画布内容的新画布。
+
 查询画布：
 
 ```sh
@@ -29,6 +40,27 @@ node cli/aigc.mjs assets --type video --json
 node cli/aigc.mjs assets --type ai --json
 node cli/aigc.mjs assets --type upload --json
 ```
+
+选择或切换节点模型：
+
+```sh
+# 查看当前可用模型与默认项；可用 --type video|image|text 筛选
+node cli/aigc.mjs models --json
+
+# 只切换已有镜头模型并保存，不触发重新生成
+node cli/aigc.mjs set-video-model --id <任务ID> --model <平台/模型ID> --json
+
+# 保存图片节点模型，不触发生成
+node cli/aigc.mjs set-image-model --workspace <画布ID> --id <图片ID> --model <平台/模型ID> --json
+
+# 生成 AI 图片时也可临时指定不同模型
+node cli/aigc.mjs generate-image --id <图片ID> --prompt "<提示词>" --model <平台/模型ID> --json
+
+# 生成脚本时选择文本模型
+node cli/aigc.mjs generate-script --id <脚本节点ID> --model <平台/模型ID> --json
+```
+
+从 `models` 输出中选择模型 ID，并原样传给 `--model`，无需手工查配置。`set-image-model` 会把图片模型选择保存到当前画布快照，后续在界面生成时也会使用该模型；命令本身不会提交生成。修改镜头提示词时，`edit-prompt` 会按用户意图更新模型和提示词并重新提交生成；若只切换镜头模型，使用 `set-video-model`。
 
 推送单个镜头：
 
@@ -65,5 +97,5 @@ node cli/aigc.mjs rm-image --id <图片ID> --json
 
 ## 删除与汇报
 
-- 除非用户明确要求删除指定项目，否则不得执行 `rm` 或 `rm-image`。用户明确授权删除后，先用画布状态核对 ID 与对象类型，再执行对应命令。
+- 除非用户明确要求删除指定画布、镜头或图片，否则不得执行 `delete-workspace`、`rm` 或 `rm-image`。用户明确授权删除后，先用画布列表或画布状态核对 ID 与对象类型，再执行对应命令。
 - 汇报任务结果时，只提供任务 ID、标题、状态和失败原因（如有）；不要粘贴完整 JSON、会话内容、Cookie、Token 或其他凭据。

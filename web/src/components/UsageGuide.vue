@@ -42,6 +42,15 @@ node cli/aigc.mjs login --username admin --password '你的密码' --url http://
 const cliExamples = `# 查看画布与镜头状态
 node cli/aigc.mjs canvas --json
 
+# 列出、新建、复制画布
+node cli/aigc.mjs workspaces --json
+node cli/aigc.mjs new-workspace --json
+node cli/aigc.mjs copy-workspace --id 1 --json
+
+# 查看模型目录（按类型筛选）
+node cli/aigc.mjs models --type video
+node cli/aigc.mjs models --type image --json
+
 # 推送单个镜头
 node cli/aigc.mjs push --prompt "海边日落，少女奔跑，电影感" --title "海边奔跑" --group "A组" --json
 
@@ -59,10 +68,23 @@ node cli/aigc.mjs upload --file ./ref.png --x 120 --y 80 --json
 # 将已有图片节点连接到镜头（视频）节点
 node cli/aigc.mjs link-image --task-id 12 --image-id 34 --json
 
+# 切换已有镜头的视频模型，不立即重新生成
+node cli/aigc.mjs set-video-model --id 12 --model ark/doubao-seedance-2-0-260128 --json
+
+# 保存图片节点模型，但不提交生成
+node cli/aigc.mjs set-image-model --workspace 2 --id 386 --model ark/doubao-seedream-5-5-261028 --json
+
+# 为已有 AI 图片节点选择模型并提交生成
+node cli/aigc.mjs generate-image --id 34 --prompt "云层上的未来城市" --model ark/seedream-4-0 --json
+
+# 生成脚本节点时选择文本模型
+node cli/aigc.mjs generate-script --id 56 --model ark/doubao-seed-1-6-flash --json
+
 # 按连线 ID 解除图片与镜头的关联
 node cli/aigc.mjs unlink-image --id 56 --json
 
 # 用户明确要求删除时才执行
+node cli/aigc.mjs delete-workspace --id 2 --json
 node cli/aigc.mjs rm --id 12 --json
 node cli/aigc.mjs rm-image --id 34 --json`
 
@@ -257,9 +279,18 @@ function copy(text) {
             <tbody>
               <tr><td><code>login</code></td><td>登录并保存会话</td><td>--username、--password、--url</td></tr>
               <tr><td><code>logout</code></td><td>退出并清除本地会话</td><td>—</td></tr>
+              <tr><td><code>workspaces</code></td><td>列出所有画布及版本</td><td>--json</td></tr>
+              <tr><td><code>new-workspace</code></td><td>新建空白画布</td><td>--json</td></tr>
+              <tr><td><code>copy-workspace</code></td><td>复制指定画布及其内容</td><td>--id 画布ID、--json</td></tr>
+              <tr><td><code>delete-workspace</code></td><td>删除画布及其全部内容（至少保留一个画布）</td><td>--id 画布ID、--json</td></tr>
+              <tr><td><code>models</code></td><td>查看可用模型和默认模型</td><td>--type video|image|text、--json</td></tr>
               <tr><td><code>canvas</code></td><td>画布统计与镜头列表</td><td>--workspace、--json</td></tr>
               <tr><td><code>assets</code></td><td>查看素材；每次查询一种类型</td><td>--type video 或 ai 或 upload、--json</td></tr>
               <tr><td><code>push</code></td><td>推送单个镜头</td><td>--prompt、--title、--group、--index、--images</td></tr>
+              <tr><td><code>set-video-model</code></td><td>切换镜头模型，不重新生成</td><td>--id、--model、可选 --workspace</td></tr>
+              <tr><td><code>set-image-model</code></td><td>保存图片节点模型，不提交生成</td><td>--id、--model、--workspace</td></tr>
+              <tr><td><code>generate-image</code></td><td>选择图片模型并提交生成</td><td>--id、--prompt、--model、--ratio、--resolution</td></tr>
+              <tr><td><code>generate-script</code></td><td>选择文本模型并生成脚本</td><td>--id、--model、可选 --prompt</td></tr>
               <tr><td><code>storyboard</code></td><td>批量推送分镜</td><td>--file、--group</td></tr>
               <tr><td><code>upload</code></td><td>上传图片并建节点</td><td>--file、--x、--y</td></tr>
               <tr><td><code>link-image</code></td><td>关联已有图片节点与镜头（视频）节点</td><td>--task-id、--image-id</td></tr>
@@ -278,12 +309,22 @@ function copy(text) {
             <code>--resolution 720P</code>、<code>--duration 5</code>；需要原始响应时追加 <code>--json</code>。
           </p>
           <p class="muted">
+            镜头节点可用 <code>set-video-model</code> 仅切换模型并保存，不会重新生成；若要改提示词并重新提交，可用
+            <code>edit-prompt --id &lt;任务ID&gt; --prompt "..." --model &lt;平台/模型ID&gt; --json</code>。
+            AI 图片节点可通过 <code>set-image-model --workspace &lt;画布ID&gt; --id &lt;图片ID&gt; --model &lt;平台/模型ID&gt;</code> 保存模型选择而不生成；界面也会记住此选择。
+            之后生成时会使用节点已保存的模型，也可通过 <code>generate-image --model</code> 临时指定其他模型。
+            脚本节点可在 <code>generate-script</code> 时传入 <code>--model</code>。无需手动翻配置：运行
+            <code>node cli/aigc.mjs models</code> 可查看视频、图片、文本模型和默认项；使用
+            <code>models --type video|image|text</code> 筛选，输出中的模型 ID 可直接传给相应命令。
+          </p>
+          <p class="muted">
             分镜文件支持 JSON 镜头数组，或 <code>{ "shots": [...] }</code> 格式；镜头可填写提示词、标题、分组、序号、参考图片 ID/URL、模型和生成参数。
             已有节点可用 <code>link-image --task-id &lt;镜头任务ID&gt; --image-id &lt;图片ID&gt; --json</code> 建立图片到镜头的连线；
             <code>--task-id</code> 是镜头任务 ID，<code>--image-id</code> 是图片节点 ID。也可在推送时通过 <code>push --images &lt;图片ID,...&gt;</code> 一并关联。
             若需移除连线，先从画布 JSON 中确认连线 ID，再用 <code>unlink-image --id &lt;连线ID&gt; --json</code>。
             推送后记下任务 ID，每隔 5–10 秒运行 <code>canvas --json</code> 查询，直到任务完成或失败；不要仅凭创建成功就报告生成完成。
-            除非用户明确要求删除指定镜头或图片，否则不要执行 <code>rm</code> / <code>rm-image</code>。
+            画布复制会复制画布内容并创建新画布；画布删除会移除该画布及其内容，系统至少保留一个画布。
+            除非用户明确要求删除指定画布、镜头或图片，否则不要执行 <code>delete-workspace</code>、<code>rm</code> 或 <code>rm-image</code>。
             汇报只列任务 ID、标题、状态和失败原因，不要粘贴完整 JSON。
           </p>
         </section>

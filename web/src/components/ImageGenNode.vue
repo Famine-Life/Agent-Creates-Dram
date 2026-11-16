@@ -11,7 +11,6 @@ const props = defineProps({
 
 const saving = ref(false)
 const previewing = ref(false)
-const model = ref('')
 const image = computed(() => props.data.image)
 /** 编辑框中的实时文本；图生图直接用这里的最新提示词，未编辑时即已保存的提示词 */
 const draftPrompt = ref(image.value.prompt || '')
@@ -20,7 +19,6 @@ const queued = computed(() => image.value.status === 'QUEUED')
 const failed = computed(() => image.value.status === 'FAILED')
 const ready = computed(() => image.value.status === 'SUCCEEDED' && !!image.value.url)
 const modelOptions = computed(() => state.meta.imageModels || [])
-const activeModel = computed(() => model.value || state.meta.defaults?.image || '')
 const editorVisible = computed(
   () => props.selected || state.selectedImageId === image.value.id
 )
@@ -32,6 +30,7 @@ const COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 const settings = computed(
   () => state.imageSettings[image.value.id] || { ratio: '16:9', resolution: '1K', count: 1 }
 )
+const activeModel = computed(() => settings.value.model || state.meta.defaults?.image || '')
 
 function setSetting(key, value) {
   state.imageSettings = {
@@ -167,7 +166,7 @@ async function onDelete(e) {
       :show-refs="false"
       submit-label="生成图片"
       placeholder="描述你想要的画面，例如：雨夜霓虹街头，电影感，浅景深…"
-      @update:model-value="model = $event"
+      @update:model-value="setSetting('model', $event)"
       @update:prompt="draftPrompt = $event"
       @update:ratio="setSetting('ratio', $event)"
       @update:resolution="setSetting('resolution', $event)"

@@ -27,6 +27,9 @@ const HELP = `AIGC 画布工作台 CLI
   canvas      查看画布统计与镜头列表    [--workspace 1] [--json]
   workspaces  列出画布                 [--json]
   new-workspace 新建空白画布           [--json]
+  copy-workspace 复制画布               --id <画布ID> [--json]
+  delete-workspace 删除画布             --id <画布ID> [--json]
+  models      查看当前可用模型           [--type video|image|text] [--json]
   assets      查看素材（视频 / 生成图片 / 上传图片）
                 [--type video|ai|upload] [--workspace 1] [--json]
   push        推送单个镜头
@@ -39,6 +42,8 @@ const HELP = `AIGC 画布工作台 CLI
   cancel      取消生成任务           --id <任务ID> [--json]
   edit-prompt 编辑提示词与生成参数   --id <任务ID> [--prompt <文本>] [--model <平台/模型>]
                 [--ratio 16:9] [--duration 5] [--resolution 720P] [--regenerate] [--json]
+  set-video-model 切换镜头模型但不重新生成 --id <任务ID> --model <平台/模型> [--workspace 1] [--json]
+  set-image-model 切换图片节点模型但不生成 --id <图片ID> --model <平台/模型> [--workspace 1] [--json]
   prompt-records 查看提示词历史      [--workspace 1] [--json]
   optimize-prompt 优化提示词         --prompt <文本> [--model <模型>] [--workspace 1] [--json]
   upload      上传图片并创建画布节点 --file <图片路径> [--x <坐标>] [--y <坐标>]
@@ -316,6 +321,49 @@ async function createWorkspace(opts) {
   console.log(`已创建画布 #${workspace.id}：${workspace.name}`)
 }
 
+async function copyWorkspace(opts) {
+  if (!opts.id) fail('请提供 --id 画布ID')
+  const id = Number(opts.id)
+  if (!Number.isInteger(id) || id <= 0) fail('--id 必须是正整数画布ID')
+  const workspace = await api('POST', `/api/workspaces/${id}/copy`)
+  if (opts.json) return printJson(workspace)
+  console.log(`已复制画布 #${id} → #${workspace.id}：${workspace.name}`)
+}
+
+async function deleteWorkspace(opts) {
+  if (!opts.id) fail('请提供 --id 画布ID')
+  const id = Number(opts.id)
+  if (!Number.isInteger(id) || id <= 0) fail('--id 必须是正整数画布ID')
+  const result = await api('DELETE', `/api/workspaces/${id}`)
+  if (opts.json) return printJson({ ...result, workspaceId: id })
+  console.log(`已删除画布 #${id}`)
+}
+
+async function models(opts) {
+  const types = {
+    video: { label: '视频模型', key: 'videoModels' },
+    image: { label: '图片模型', key: 'imageModels' },
+    text: { label: '文本模型', key: 'textModels' }
+  }
+  if (opts.type && !types[opts.type]) fail('--type 仅支持 video / image / text')
+  const meta = await api('GET', '/api/meta')
+  const selected = opts.type ? [opts.type] : Object.keys(types)
+  const result = Object.fromEntries(selected.map((type) => [type, {
+    label: types[type].label,
+    default: meta.defaults?.[type] || null,
+    models: meta[types[type].key] || []
+  }]))
+  if (opts.json) return printJson(opts.type ? result[opts.type] : result)
+  for (const type of selected) {
+    const catalog = result[type]
+    console.log(`${catalog.label}${catalog.default ? `（默认：${catalog.default}）` : ''}`)
+    for (const model of catalog.models) {
+      const marker = model.value === catalog.default ? ' [默认]' : ''
+      console.log(`  ${model.label} · ${model.value}${marker}`)
+    }
+  }
+}
+
 function optionalNumber(opts, key) {
   if (opts[key] == null) return undefined
   const value = Number(opts[key])
@@ -350,6 +398,77 @@ async function editPrompt(opts) {
   const node = await api('PUT', `/api/tasks/${Number(opts.id)}/prompt`, { body })
   if (opts.json) return printJson(node)
   console.log(`已更新镜头 #${node.id}（${node.status}）：${node.title || ''}`)
+}
+
+async function setVideoModel(opts) {
+  if (!opts.id) fail('请提供 --id 镜头任务ID')
+  if (!opts.model) fail('请提供 --model 平台/模型ID')
+  const taskId = Number(opts.id)
+  if (!Number.isInteger(taskId) || taskId <= 0) fail('--id 必须是正整数镜头任务ID')
+
+  const workspaceIds = opts.workspace
+    ? [Number(opts.workspace)]
+    : (await api('GET', '/api/workspaces')).map((workspace) => workspace.id)
+  let task
+  for (const workspaceId of workspaceIds) {
+    const canvasData = await api('GET', `/api/canvas/${workspaceId}`)
+    task = (canvasData.tasks || []).find((item) => Number(item.id) === taskId)
+    if (task) break
+  }
+  if (!task) fail(`找不到镜头任务 #${taskId}${opts.workspace ? `（画布 #${opts.workspace}）` : ''}`)
+  if (!task.prompt) fail(`镜头 #${taskId} 没有可复用的提示词；请使用 edit-prompt 提供 --prompt`)
+
+  const node = await api('PUT', `/api/tasks/${taskId}/prompt`, {
+    body: {
+      prompt: task.prompt,
+      model: String(opts.model),
+      ratio: task.ratio,
+      duration: task.duration,
+      resolution: task.resolution,
+      regenerate: false
+    }
+  })
+  if (opts.json) return printJson(node)
+  console.log(`已切换镜头 #${node.id} 模型为 ${node.modelKey || node.model}，未重新生成`)
+}
+
+async function setImageModel(opts) {
+  if (!opts.id) fail('请提供 --id 图片ID')
+  if (!opts.model) fail('请提供 --model 平台/模型ID')
+  const imageId = Number(opts.id)
+  const workspaceId = Number(opts.workspace || 1)
+  if (!Number.isInteger(imageId) || imageId <= 0) fail('--id 必须是正整数图片ID')
+  if (!Number.isInteger(workspaceId) || workspaceId <= 0) fail('--workspace 必须是正整数画布ID')
+
+  const [canvasData, meta] = await Promise.all([
+    api('GET', `/api/canvas/${workspaceId}`),
+    api('GET', '/api/meta')
+  ])
+  const image = (canvasData.images || []).find((item) => Number(item.id) === imageId)
+  if (!image) fail(`画布 #${workspaceId} 中找不到图片 #${imageId}`)
+  const model = (meta.imageModels || []).find((item) => item.value === String(opts.model))
+  if (!model) fail(`当前图片模型目录中找不到：${opts.model}；可运行 node cli/aigc.mjs models --type image`)
+
+  const snapshot = canvasData.snapshot || {}
+  const imageSettings = { ...(snapshot.imageSettings || {}) }
+  imageSettings[imageId] = { ...(imageSettings[imageId] || {}), model: model.value }
+  const updated = await api('PUT', `/api/canvas/${workspaceId}/snapshot`, {
+    body: {
+      snapshot: { ...snapshot, imageSettings },
+      baseVersion: canvasData.version
+    }
+  })
+  const result = {
+    workspaceId,
+    imageId,
+    name: image.name,
+    model: model.value,
+    modelLabel: model.label,
+    generated: false,
+    version: updated.version
+  }
+  if (opts.json) return printJson(result)
+  console.log(`已为图片 #${imageId}《${image.name}》设置 ${model.label}（${model.value}），未提交生成`)
 }
 
 async function promptRecords(opts) {
@@ -676,6 +795,12 @@ async function main() {
       return workspaces(opts)
     case 'new-workspace':
       return createWorkspace(opts)
+    case 'copy-workspace':
+      return copyWorkspace(opts)
+    case 'delete-workspace':
+      return deleteWorkspace(opts)
+    case 'models':
+      return models(opts)
     case 'assets':
       return assets(opts)
     case 'push':
@@ -689,6 +814,10 @@ async function main() {
       return cancelTask(opts)
     case 'edit-prompt':
       return editPrompt(opts)
+    case 'set-video-model':
+      return setVideoModel(opts)
+    case 'set-image-model':
+      return setImageModel(opts)
     case 'prompt-records':
       return promptRecords(opts)
     case 'optimize-prompt':
