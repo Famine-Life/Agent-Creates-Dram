@@ -6,7 +6,8 @@ import {
   retryTask,
   cancelTask,
   removeTask,
-  toast
+  toast,
+  copyText
 } from '../store/canvas'
 
 const emit = defineEmits(['hide'])
@@ -37,8 +38,7 @@ function remove() {
 }
 
 function copyPrompt() {
-  navigator.clipboard?.writeText(task.value.prompt || '')
-  toast('提示词已复制')
+  copyText(task.value.prompt || '', '提示词已复制')
 }
 </script>
 

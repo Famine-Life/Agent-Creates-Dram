@@ -67,6 +67,41 @@ export function toast(message) {
   toastTimer = setTimeout(() => (state.toast = ''), 3600)
 }
 
+/**
+ * 跨上下文可靠复制：优先 Clipboard API（需要安全上下文），
+ * 不可用时回退到 textarea + execCommand('copy')，兼容 HTTP 与旧浏览器。
+ * @param {string} text 要复制的文本
+ * @param {string} [successMsg] 复制成功的提示文案，默认"已复制到剪贴板"
+ */
+export async function copyText(text, successMsg = '已复制到剪贴板') {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      toast(successMsg)
+      return true
+    }
+    // Fallback: 创建隐藏 textarea 执行 execCommand
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    ta.style.pointerEvents = 'none'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    if (ok) {
+      toast(successMsg)
+      return true
+    }
+    throw new Error('execCommand copy returned false')
+  } catch (err) {
+    toast(`复制失败：${err.message || '请手动 Ctrl+C'}`)
+    return false
+  }
+}
+
 export function applyCanvas(canvas) {
   state.snapshot = canvas?.snapshot || null
   state.version = canvas?.version ?? 0

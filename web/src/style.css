@@ -882,7 +882,7 @@ h2 {
   padding: 0 0 2px 3px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: var(--chip);
+  background: rgba(10, 11, 13, 0.68);
   color: #fff;
   font-size: 15px;
   cursor: pointer;
@@ -1091,9 +1091,22 @@ h2 {
   padding: 26px;
   text-align: center;
   border-radius: 16px;
-  background: rgba(17, 19, 23, 0.9);
+  background: var(--panel);
   border: 1px solid var(--border);
   backdrop-filter: blur(6px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+  z-index: 5;
+}
+
+.empty-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0.55;
+}
+
+.empty-close:hover {
+  opacity: 1;
 }
 
 .empty-state h3 {

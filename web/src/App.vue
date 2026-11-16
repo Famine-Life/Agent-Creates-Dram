@@ -82,6 +82,10 @@ const showMcp = ref(false)
 const showAssets = ref(false)
 const showPromptRecords = ref(false)
 const showGuide = ref(false)
+const emptyDismissed = ref(localStorage.getItem('aigc.empty.dismissed') === '1')
+watch(emptyDismissed, (value) => {
+  localStorage.setItem('aigc.empty.dismissed', value ? '1' : '0')
+})
 const fileInput = ref(null)
 const canvasWrap = ref(null)
 const dragging = ref(false)
@@ -1138,9 +1142,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          v-if="!state.loading && !state.tasks.length && !state.images.length && !state.canvasNodes.length"
+          v-if="!state.loading && !state.tasks.length && !state.images.length && !state.canvasNodes.length && !emptyDismissed"
           class="empty-state"
         >
+          <button class="icon-btn empty-close" title="关闭" @click="emptyDismissed = true">×</button>
           <h3>右键画布添加节点，或让 AI 客户端推送提示词</h3>
           <p class="muted">在 WorkBuddy / Trae 中通过 MCP 推送分镜，每条提示词都会在这里长成一个视频节点。</p>
           <div class="row">

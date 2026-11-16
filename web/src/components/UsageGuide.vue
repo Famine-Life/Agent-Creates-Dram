@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { state, toast } from '../store/canvas'
+import { state, copyText } from '../store/canvas'
 
 const emit = defineEmits(['close'])
 
@@ -13,7 +13,7 @@ const mcpConfig = computed(() =>
         'aigc-canvas': {
           type: 'sse',
           url: mcpEndpoint.value,
-          headers: { Authorization: 'Bearer <MCP_API_TOKEN>' }
+          headers: { Authorization: `Bearer ${state.meta.mcpToken || '<MCP_API_TOKEN>'}` }
         }
       }
     },
@@ -22,25 +22,52 @@ const mcpConfig = computed(() =>
   )
 )
 
-const loginExample = `node cli/aigc.mjs login --username admin --password '你的密码'`
+const localCliSetup = `# 在项目根目录运行；先确认 Node.js 16+
+node --version
+node cli/aigc.mjs help
 
-const cliExamples = `# 查看画布与镜头状态
+# 本地画布服务默认 http://localhost:8080
+node cli/aigc.mjs login --username admin --password '你的密码' --url http://localhost:8080
+node cli/aigc.mjs canvas`
+
+const remoteCliSetup = `# 画布服务有公网域名 / IP，且端口可从当前机器访问
+node cli/aigc.mjs login --username admin --password '你的密码' --url https://aigc.example.com
 node cli/aigc.mjs canvas
 
+# 服务只允许 SSH 访问时：先在本机另开终端建立隧道
+ssh -L 18080:127.0.0.1:8080 user@your-server
+# 隧道保持运行，在 Codex 项目终端中连接本地转发端口
+node cli/aigc.mjs login --username admin --password '你的密码' --url http://127.0.0.1:18080`
+
+const cliExamples = `# 查看画布与镜头状态
+node cli/aigc.mjs canvas --json
+
 # 推送单个镜头
-node cli/aigc.mjs push --prompt "海边日落，少女奔跑，电影感" --group "A组"
+node cli/aigc.mjs push --prompt "海边日落，少女奔跑，电影感" --title "海边奔跑" --group "A组" --json
 
 # 批量推送分镜（shots.json 为 JSON 数组）
-node cli/aigc.mjs storyboard --file shots.json --group "B组"
+node cli/aigc.mjs storyboard --file shots.json --group "B组" --json
 
-# 查看素材 / 上传图片 / 删除节点
-node cli/aigc.mjs assets --type video
-node cli/aigc.mjs upload --file ./ref.png --x 120 --y 80
-node cli/aigc.mjs rm --id 12`
+# 分别查询视频、AI 生成图、上传图
+node cli/aigc.mjs assets --type video --json
+node cli/aigc.mjs assets --type ai --json
+node cli/aigc.mjs assets --type upload --json
+
+# 上传图片并创建画布节点
+node cli/aigc.mjs upload --file ./ref.png --x 120 --y 80 --json
+
+# 将已有图片节点连接到镜头（视频）节点
+node cli/aigc.mjs link-image --task-id 12 --image-id 34 --json
+
+# 按连线 ID 解除图片与镜头的关联
+node cli/aigc.mjs unlink-image --id 56 --json
+
+# 用户明确要求删除时才执行
+node cli/aigc.mjs rm --id 12 --json
+node cli/aigc.mjs rm-image --id 34 --json`
 
 function copy(text) {
-  navigator.clipboard?.writeText(text)
-  toast('已复制到剪贴板')
+  copyText(text)
 }
 </script>
 
@@ -182,22 +209,47 @@ function copy(text) {
         <section id="guide-cli">
           <h2>CLI 使用</h2>
           <p class="muted">
-            命令行客户端位于 <code>cli/aigc.mjs</code>，只依赖 Node.js 16+ 内置模块，无需安装依赖，也不需要重新构建。
-            在项目根目录执行。
+            先分清两台机器：<strong>Codex 执行 CLI 的机器</strong>运行 <code>node cli/aigc.mjs</code>，
+            <strong>画布服务机器</strong>运行本项目后端并提供 HTTP(S) 地址。CLI 不需要启动独立服务；
+            <code>--url</code> 填画布服务地址（网页/API 的根地址），不是 SSH 地址，也不要加 <code>/sse</code>。
+            CLI 使用当前登录账号的 Session + CSRF 访问 REST API，MCP Token 不用于 CLI。
           </p>
 
-          <h3>1. 登录并保存会话</h3>
+          <h3>本地：Codex 和画布服务在同一台机器</h3>
+          <ol class="guide-steps">
+            <li>在 Codex 打开的项目终端进入项目根目录（能看到 <code>cli/</code> 文件夹），确认安装了 Node.js 16 或更新版本。</li>
+            <li>服务默认地址 <code>http://localhost:8080</code>。如果后端端口不同，换成实际地址。</li>
+            <li>首次运行登录；之后可以直接执行 <code>canvas</code>、<code>push</code> 等命令。</li>
+          </ol>
           <div class="guide-code">
-            <button class="btn ghost sm" @click="copy(loginExample)">复制</button>
-            <pre>{{ loginExample }}</pre>
+            <button class="btn ghost sm" @click="copy(localCliSetup)">复制</button>
+            <pre>{{ localCliSetup }}</pre>
+          </div>
+
+          <h3>远程：连接服务器上运行的画布服务</h3>
+          <ol class="guide-steps">
+            <li>CLI 默认在 Codex 的项目终端执行，因此项目目录需包含 <code>cli/aigc.mjs</code>；若 Codex 本身运行在服务器，就在服务器项目目录执行相同命令。</li>
+            <li>确保 Codex 所在机器能访问服务端口。公网部署用域名/IP 和 HTTPS；同一内网可用服务器内网 IP。</li>
+            <li>登录命令的 <code>--url</code> 填服务器对外的应用根地址，例如 <code>https://aigc.example.com</code>，不要填浏览器页面路径、<code>/api</code> 或 <code>/sse</code>。</li>
+            <li>如果端口不对公网开放但 SSH 可达，先建立本地端口转发，再把 CLI 指向转发端口。</li>
+          </ol>
+          <div class="guide-code">
+            <button class="btn ghost sm" @click="copy(remoteCliSetup)">复制</button>
+            <pre>{{ remoteCliSetup }}</pre>
           </div>
           <p class="muted">
-            登录态（Cookie、CSRF Token、服务地址）保存在 <code>~/.aigc-cli/session.json</code>，后续命令无需再次登录。
-            服务不是本机 8080 时，追加 <code>--url http://host:8080</code>，或设置环境变量
-            <code>AIGC_BASE_URL</code>。
+            连接成功后，服务地址会保存在本机的 <code>~/.aigc-cli/session.json</code>，后续命令自动复用。
+            需要切换另一台服务时，再执行一次带新 <code>--url</code> 的 <code>login</code>。服务器需允许 CLI 所在机器访问，
+            且 HTTP(S) 反向代理应将请求转发到应用根路径。
           </p>
 
-          <h3>2. 常用命令</h3>
+          <p class="muted">
+            每轮开始操作前，先执行 <code>node cli/aigc.mjs canvas --json</code>，确认服务可访问、登录有效并查看当前画布。
+            所有读取和修改命令都加 <code>--json</code>。若提示未登录或会话失效，请由用户自行运行
+            <code>node cli/aigc.mjs login</code>；不要在对话中索要或粘贴密码。
+          </p>
+
+          <h3>常用命令</h3>
           <table class="guide-table">
             <thead>
               <tr><th>命令</th><th>作用</th><th>主要参数</th></tr>
@@ -206,22 +258,33 @@ function copy(text) {
               <tr><td><code>login</code></td><td>登录并保存会话</td><td>--username、--password、--url</td></tr>
               <tr><td><code>logout</code></td><td>退出并清除本地会话</td><td>—</td></tr>
               <tr><td><code>canvas</code></td><td>画布统计与镜头列表</td><td>--workspace、--json</td></tr>
-              <tr><td><code>assets</code></td><td>查看素材</td><td>--type video|ai|upload、--json</td></tr>
+              <tr><td><code>assets</code></td><td>查看素材；每次查询一种类型</td><td>--type video 或 ai 或 upload、--json</td></tr>
               <tr><td><code>push</code></td><td>推送单个镜头</td><td>--prompt、--title、--group、--index、--images</td></tr>
               <tr><td><code>storyboard</code></td><td>批量推送分镜</td><td>--file、--group</td></tr>
               <tr><td><code>upload</code></td><td>上传图片并建节点</td><td>--file、--x、--y</td></tr>
+              <tr><td><code>link-image</code></td><td>关联已有图片节点与镜头（视频）节点</td><td>--task-id、--image-id</td></tr>
+              <tr><td><code>unlink-image</code></td><td>解除图片与镜头之间的连线</td><td>--id 连线ID</td></tr>
               <tr><td><code>rm / rm-image</code></td><td>删除镜头 / 图片节点</td><td>--id</td></tr>
             </tbody>
           </table>
 
-          <h3>3. 示例</h3>
+          <h3>命令示例</h3>
           <div class="guide-code">
             <button class="btn ghost sm" @click="copy(cliExamples)">复制</button>
             <pre>{{ cliExamples }}</pre>
           </div>
           <p class="muted">
-            <code>push</code> 还支持模型与生成参数：<code>--model mock|seedance|seedance-fast</code>、<code>--ratio 16:9</code>、
+            <code>push</code> 还支持模型与生成参数：<code>--model 平台/模型ID</code>、<code>--ratio 16:9</code>、
             <code>--resolution 720P</code>、<code>--duration 5</code>；需要原始响应时追加 <code>--json</code>。
+          </p>
+          <p class="muted">
+            分镜文件支持 JSON 镜头数组，或 <code>{ "shots": [...] }</code> 格式；镜头可填写提示词、标题、分组、序号、参考图片 ID/URL、模型和生成参数。
+            已有节点可用 <code>link-image --task-id &lt;镜头任务ID&gt; --image-id &lt;图片ID&gt; --json</code> 建立图片到镜头的连线；
+            <code>--task-id</code> 是镜头任务 ID，<code>--image-id</code> 是图片节点 ID。也可在推送时通过 <code>push --images &lt;图片ID,...&gt;</code> 一并关联。
+            若需移除连线，先从画布 JSON 中确认连线 ID，再用 <code>unlink-image --id &lt;连线ID&gt; --json</code>。
+            推送后记下任务 ID，每隔 5–10 秒运行 <code>canvas --json</code> 查询，直到任务完成或失败；不要仅凭创建成功就报告生成完成。
+            除非用户明确要求删除指定镜头或图片，否则不要执行 <code>rm</code> / <code>rm-image</code>。
+            汇报只列任务 ID、标题、状态和失败原因，不要粘贴完整 JSON。
           </p>
         </section>
 
@@ -229,7 +292,7 @@ function copy(text) {
           <h2>常见问题</h2>
           <dl class="guide-faq">
             <dt>CLI 提示「登录已失效」</dt>
-            <dd>重新执行 <code>node cli/aigc.mjs login ...</code>；服务端重启或会话过期都会导致旧 Cookie 失效。</dd>
+            <dd>请用户自行执行 <code>node cli/aigc.mjs login</code>；服务端重启或会话过期都会导致旧会话失效。不要询问或代填密码。</dd>
 
             <dt>CLI 返回 403</dt>
             <dd>通常是 CSRF Token 过期。CLI 会在每次写操作前自动刷新，如仍失败，退出后重新登录。</dd>
@@ -288,7 +351,7 @@ function copy(text) {
 }
 
 .guide-brand span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .guide-logo {
@@ -320,8 +383,8 @@ function copy(text) {
 .guide-nav a {
   color: var(--muted);
   text-decoration: none;
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 13px;
+  padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
 }
@@ -345,20 +408,20 @@ function copy(text) {
 }
 
 .guide-content h2 {
-  font-size: 18px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
+  font-size: 21px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
 
 .guide-content h3 {
-  font-size: 13px;
-  margin: 20px 0 8px;
+  font-size: 16px;
+  margin: 22px 0 10px;
 }
 
 .guide-content p {
-  font-size: 12px;
-  line-height: 1.8;
+  font-size: 14px;
+  line-height: 1.9;
 }
 
 .guide-steps {
@@ -366,9 +429,9 @@ function copy(text) {
   padding-left: 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.75;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.85;
 }
 
 .guide-content code {
@@ -376,7 +439,7 @@ function copy(text) {
   border-radius: 5px;
   background: var(--card);
   border: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .guide-code {
@@ -392,13 +455,13 @@ function copy(text) {
 
 .guide-code pre {
   margin: 0;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--sunken);
   color: var(--text);
-  font-size: 11.5px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.8;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -415,13 +478,13 @@ function copy(text) {
   width: 100%;
   border-collapse: collapse;
   margin: 8px 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .guide-table th,
 .guide-table td {
   text-align: left;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
   line-height: 1.6;
@@ -434,15 +497,15 @@ function copy(text) {
 }
 
 .guide-faq dt {
-  font-size: 13px;
-  margin-top: 14px;
+  font-size: 15px;
+  margin-top: 16px;
 }
 
 .guide-faq dd {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--muted);
-  line-height: 1.75;
+  line-height: 1.85;
 }
 
 @media (max-width: 860px) {

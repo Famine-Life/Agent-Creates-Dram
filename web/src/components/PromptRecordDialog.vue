@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
-import { state, toast } from '../store/canvas'
+import { state, toast, copyText } from '../store/canvas'
 
 const emit = defineEmits(['close'])
 const records = ref([])
@@ -24,9 +24,8 @@ function formatTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
 
-async function copy(prompt) {
-  await navigator.clipboard?.writeText(prompt)
-  toast('提示词已复制')
+function copy(prompt) {
+  copyText(prompt, '提示词已复制')
 }
 
 onMounted(load)

@@ -25,6 +25,8 @@ const HELP = `AIGC 画布工作台 CLI
                 --username <用户名> --password <密码> [--url <服务地址>]
   logout      退出登录并清除本地会话
   canvas      查看画布统计与镜头列表    [--workspace 1] [--json]
+  workspaces  列出画布                 [--json]
+  new-workspace 新建空白画布           [--json]
   assets      查看素材（视频 / 生成图片 / 上传图片）
                 [--type video|ai|upload] [--workspace 1] [--json]
   push        推送单个镜头
@@ -32,7 +34,28 @@ const HELP = `AIGC 画布工作台 CLI
                 [--images <图片ID,逗号分隔>] [--model <平台/模型，如 ark/doubao-seedance-2-0-260128>]
                 [--ratio 16:9] [--resolution 720P] [--duration 5]
   storyboard  批量推送分镜         --file <shots.json> [--group <分组>]
+  generate    提交已有镜头生成/重新生成 --id <任务ID> [--json]
+  retry       重新生成已有镜头       --id <任务ID> [--json]
+  cancel      取消生成任务           --id <任务ID> [--json]
+  edit-prompt 编辑提示词与生成参数   --id <任务ID> [--prompt <文本>] [--model <平台/模型>]
+                [--ratio 16:9] [--duration 5] [--resolution 720P] [--regenerate] [--json]
+  prompt-records 查看提示词历史      [--workspace 1] [--json]
+  optimize-prompt 优化提示词         --prompt <文本> [--model <模型>] [--workspace 1] [--json]
   upload      上传图片并创建画布节点 --file <图片路径> [--x <坐标>] [--y <坐标>]
+  snapshot    保存画布快照           --file <snapshot.json> [--version <版本>] [--workspace 1] [--json]
+  order       保存镜头顺序           --file <items.json> [--workspace 1] [--json]
+  create-image 创建图片节点          [--name <名称>] [--url <地址>] [--prompt <文本>] [--x <坐标>] [--y <坐标>]
+  create-ai-image 创建 AI 图片节点   [--prompt <文本>] [--x <坐标>] [--y <坐标>]
+  generate-image 生成 AI 图片        --id <图片ID> [--prompt <文本>] [--model <模型>] [--reference-url <地址>]
+                [--ratio 1:1] [--resolution 2K] [--count 1] [--json]
+  edit-image  更新图片节点           --id <图片ID> [--name <名称>] [--url <地址>] [--prompt <文本>]
+                [--x <坐标>] [--y <坐标>] [--width <像素>] [--height <像素>]
+  create-node 创建文本/脚本节点      --type text|script [--title <名称>] [--prompt <文本>] [--content <文本>] [--x <坐标>] [--y <坐标>]
+  edit-node   更新文本/脚本节点       --id <节点ID> [--title <名称>] [--prompt <文本>] [--content <文本>]
+  delete-node 删除文本/脚本节点       --id <节点ID>
+  generate-script 生成脚本           --id <节点ID> [--prompt <文本>] [--model <模型>] [--json]
+  link-image 关联图片与镜头           --task-id <任务ID> --image-id <图片ID> [--json]
+  unlink-image 删除图片与镜头关联     --id <连线ID> [--workspace 1] [--json]
   rm          删除镜头             --id <任务ID>
   rm-image    删除图片节点         --id <图片ID>
 
@@ -281,6 +304,210 @@ async function assets(opts) {
   }
 }
 
+async function workspaces(opts) {
+  const list = await api('GET', '/api/workspaces')
+  if (opts.json) return printJson(list)
+  for (const item of list || []) console.log(`#${item.id} ${item.name} · v${item.version ?? 0}`)
+}
+
+async function createWorkspace(opts) {
+  const workspace = await api('POST', '/api/workspaces')
+  if (opts.json) return printJson(workspace)
+  console.log(`已创建画布 #${workspace.id}：${workspace.name}`)
+}
+
+function optionalNumber(opts, key) {
+  if (opts[key] == null) return undefined
+  const value = Number(opts[key])
+  if (!Number.isFinite(value)) fail(`--${key} 必须是数字`)
+  return value
+}
+
+async function retryTask(opts) {
+  if (!opts.id) fail('请提供 --id 任务ID')
+  const node = await api('POST', `/api/tasks/${Number(opts.id)}/retry`)
+  if (opts.json) return printJson(node)
+  console.log(`已提交镜头 #${node.id}（${node.status}）：${node.title || ''}`)
+}
+
+async function cancelTask(opts) {
+  if (!opts.id) fail('请提供 --id 任务ID')
+  const node = await api('POST', `/api/tasks/${Number(opts.id)}/cancel`)
+  if (opts.json) return printJson(node)
+  console.log(`已取消镜头 #${node.id}（${node.status}）：${node.title || ''}`)
+}
+
+async function editPrompt(opts) {
+  if (!opts.id) fail('请提供 --id 任务ID')
+  const body = {}
+  if (opts.prompt != null) body.prompt = String(opts.prompt)
+  if (opts.model != null) body.model = String(opts.model)
+  if (opts.ratio != null) body.ratio = String(opts.ratio)
+  if (opts.duration != null) body.duration = Number(opts.duration)
+  if (opts.resolution != null) body.resolution = String(opts.resolution)
+  if (opts.regenerate) body.regenerate = true
+  if (!Object.keys(body).length) fail('请至少提供 --prompt、--model、--ratio、--duration、--resolution 或 --regenerate')
+  const node = await api('PUT', `/api/tasks/${Number(opts.id)}/prompt`, { body })
+  if (opts.json) return printJson(node)
+  console.log(`已更新镜头 #${node.id}（${node.status}）：${node.title || ''}`)
+}
+
+async function promptRecords(opts) {
+  const workspaceId = Number(opts.workspace || 1)
+  const list = await api('GET', `/api/canvas/${workspaceId}/prompt-records`)
+  if (opts.json) return printJson(list)
+  for (const item of list || []) console.log(JSON.stringify(item))
+}
+
+async function optimizePrompt(opts) {
+  if (!opts.prompt) fail('请提供 --prompt 提示词')
+  const workspaceId = Number(opts.workspace || 1)
+  const result = await api('POST', `/api/canvas/${workspaceId}/ai/prompt/optimize`, {
+    body: { prompt: String(opts.prompt), model: opts.model ? String(opts.model) : undefined }
+  })
+  if (opts.json) return printJson(result)
+  console.log(result.prompt || '')
+}
+
+async function readJsonFile(file, label) {
+  if (!file) fail(`请提供 --file ${label}`)
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(String(file)), 'utf8'))
+  } catch (error) {
+    fail(`读取 ${label} 失败：${error.message}`)
+  }
+}
+
+async function saveSnapshot(opts) {
+  const snapshot = await readJsonFile(opts.file, 'snapshot.json')
+  const workspaceId = Number(opts.workspace || 1)
+  const body = { snapshot, baseVersion: optionalNumber(opts, 'version') }
+  const result = await api('PUT', `/api/canvas/${workspaceId}/snapshot`, { body })
+  if (opts.json) return printJson(result)
+  console.log(`已保存画布快照（v${result.version ?? '?'})`)
+}
+
+async function saveOrder(opts) {
+  const items = await readJsonFile(opts.file, 'items.json')
+  if (!Array.isArray(items)) fail('顺序文件必须是数组，字段为 taskId、groupId、shotIndex')
+  const workspaceId = Number(opts.workspace || 1)
+  const result = await api('PUT', `/api/canvas/${workspaceId}/order`, { body: { items } })
+  if (opts.json) return printJson(result)
+  console.log(`已保存 ${items.length} 个镜头的顺序`)
+}
+
+async function createImage(opts) {
+  const workspaceId = Number(opts.workspace || 1)
+  const body = {
+    name: opts.name ? String(opts.name) : undefined,
+    url: opts.url ? String(opts.url) : undefined,
+    prompt: opts.prompt ? String(opts.prompt) : undefined,
+    x: optionalNumber(opts, 'x'), y: optionalNumber(opts, 'y'),
+    width: optionalNumber(opts, 'width'), height: optionalNumber(opts, 'height')
+  }
+  const image = await api('POST', `/api/canvas/${workspaceId}/images`, { body })
+  if (opts.json) return printJson(image)
+  console.log(`已创建图片节点 #${image.id}：${image.name || ''}`)
+}
+
+async function createAiImage(opts) {
+  const workspaceId = Number(opts.workspace || 1)
+  const image = await api('POST', `/api/canvas/${workspaceId}/images/ai`, {
+    body: { prompt: opts.prompt ? String(opts.prompt) : undefined, x: optionalNumber(opts, 'x'), y: optionalNumber(opts, 'y') }
+  })
+  if (opts.json) return printJson(image)
+  console.log(`已创建 AI 图片节点 #${image.id}：${image.name || ''}`)
+}
+
+async function generateImage(opts) {
+  if (!opts.id) fail('请提供 --id 图片ID')
+  const workspaceId = Number(opts.workspace || 1)
+  const body = {
+    prompt: opts.prompt ? String(opts.prompt) : undefined,
+    model: opts.model ? String(opts.model) : undefined,
+    referenceUrl: opts['reference-url'] ? String(opts['reference-url']) : undefined,
+    ratio: opts.ratio ? String(opts.ratio) : undefined,
+    resolution: opts.resolution ? String(opts.resolution) : undefined,
+    count: optionalNumber(opts, 'count')
+  }
+  const image = await api('POST', `/api/canvas/${workspaceId}/images/${Number(opts.id)}/generate`, { body })
+  if (opts.json) return printJson(image)
+  console.log(`已提交图片生成 #${image.id}（${image.status || ''}）`)
+}
+
+async function editImage(opts) {
+  if (!opts.id) fail('请提供 --id 图片ID')
+  const body = {}
+  for (const key of ['name', 'url', 'prompt']) if (opts[key] != null) body[key] = String(opts[key])
+  for (const key of ['x', 'y', 'width', 'height']) if (opts[key] != null) body[key] = optionalNumber(opts, key)
+  if (!Object.keys(body).length) fail('请至少提供要更新的图片字段')
+  const workspaceId = Number(opts.workspace || 1)
+  const image = await api('PUT', `/api/canvas/${workspaceId}/images/${Number(opts.id)}`, { body })
+  if (opts.json) return printJson(image)
+  console.log(`已更新图片节点 #${image.id}`)
+}
+
+async function createNode(opts) {
+  if (!['text', 'script'].includes(opts.type)) fail('--type 仅支持 text / script')
+  const workspaceId = Number(opts.workspace || 1)
+  const body = {
+    type: String(opts.type), title: opts.title ? String(opts.title) : undefined,
+    prompt: opts.prompt ? String(opts.prompt) : undefined, content: opts.content ? String(opts.content) : undefined,
+    x: optionalNumber(opts, 'x'), y: optionalNumber(opts, 'y'),
+    width: optionalNumber(opts, 'width'), height: optionalNumber(opts, 'height')
+  }
+  const node = await api('POST', `/api/canvas/${workspaceId}/nodes`, { body })
+  if (opts.json) return printJson(node)
+  console.log(`已创建${opts.type}节点 #${node.id}：${node.title || ''}`)
+}
+
+async function editNode(opts) {
+  if (!opts.id) fail('请提供 --id 节点ID')
+  const body = {}
+  for (const key of ['type', 'title', 'prompt', 'content']) if (opts[key] != null) body[key] = String(opts[key])
+  for (const key of ['x', 'y', 'width', 'height']) if (opts[key] != null) body[key] = optionalNumber(opts, key)
+  if (!Object.keys(body).length) fail('请至少提供要更新的节点字段')
+  const workspaceId = Number(opts.workspace || 1)
+  const node = await api('PUT', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}`, { body })
+  if (opts.json) return printJson(node)
+  console.log(`已更新节点 #${node.id}`)
+}
+
+async function removeNode(opts) {
+  if (!opts.id) fail('请提供 --id 节点ID')
+  const workspaceId = Number(opts.workspace || 1)
+  const result = await api('DELETE', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}`)
+  if (opts.json) return printJson(result)
+  console.log(`已删除节点 #${opts.id}`)
+}
+
+async function generateScript(opts) {
+  if (!opts.id) fail('请提供 --id 节点ID')
+  const workspaceId = Number(opts.workspace || 1)
+  const body = { prompt: opts.prompt ? String(opts.prompt) : undefined, model: opts.model ? String(opts.model) : undefined }
+  const node = await api('POST', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}/script`, { body })
+  if (opts.json) return printJson(node)
+  console.log(`已提交脚本生成 #${node.id}（${node.status || ''}）`)
+}
+
+async function linkImage(opts) {
+  if (!opts['task-id'] || !opts['image-id']) fail('请提供 --task-id 和 --image-id')
+  const workspaceId = Number(opts.workspace || 1)
+  const edge = await api('POST', `/api/canvas/${workspaceId}/edges`, {
+    body: { taskId: Number(opts['task-id']), imageId: Number(opts['image-id']) }
+  })
+  if (opts.json) return printJson(edge)
+  console.log(`已关联图片 #${edge.imageId} 与镜头 #${edge.taskId}（连线 #${edge.id}）`)
+}
+
+async function unlinkImage(opts) {
+  if (!opts.id) fail('请提供 --id 连线ID')
+  const workspaceId = Number(opts.workspace || 1)
+  const result = await api('DELETE', `/api/canvas/${workspaceId}/edges/${Number(opts.id)}`)
+  if (opts.json) return printJson(result)
+  console.log(`已删除连线 #${opts.id}`)
+}
+
 async function push(opts) {
   if (!opts.prompt) fail('请提供 --prompt 提示词')
   const body = { prompt: String(opts.prompt) }
@@ -380,14 +607,16 @@ async function upload(opts) {
 
 async function removeTask(opts) {
   if (!opts.id) fail('请提供 --id 任务ID')
-  await api('DELETE', `/api/tasks/${Number(opts.id)}`)
+  const result = await api('DELETE', `/api/tasks/${Number(opts.id)}`)
+  if (opts.json) return printJson(result)
   console.log(`已删除镜头 #${opts.id}`)
 }
 
 async function removeImage(opts) {
   if (!opts.id) fail('请提供 --id 图片ID')
   const workspaceId = Number(opts.workspace || 1)
-  await api('DELETE', `/api/canvas/${workspaceId}/images/${Number(opts.id)}`)
+  const result = await api('DELETE', `/api/canvas/${workspaceId}/images/${Number(opts.id)}`)
+  if (opts.json) return printJson(result)
   console.log(`已删除图片 #${opts.id}`)
 }
 
@@ -443,14 +672,53 @@ async function main() {
     case 'canvas':
     case 'status':
       return canvas(opts)
+    case 'workspaces':
+      return workspaces(opts)
+    case 'new-workspace':
+      return createWorkspace(opts)
     case 'assets':
       return assets(opts)
     case 'push':
       return push(opts)
     case 'storyboard':
       return storyboard(opts)
+    case 'generate':
+    case 'retry':
+      return retryTask(opts)
+    case 'cancel':
+      return cancelTask(opts)
+    case 'edit-prompt':
+      return editPrompt(opts)
+    case 'prompt-records':
+      return promptRecords(opts)
+    case 'optimize-prompt':
+      return optimizePrompt(opts)
     case 'upload':
       return upload(opts)
+    case 'snapshot':
+      return saveSnapshot(opts)
+    case 'order':
+      return saveOrder(opts)
+    case 'create-image':
+      return createImage(opts)
+    case 'create-ai-image':
+      return createAiImage(opts)
+    case 'generate-image':
+      return generateImage(opts)
+    case 'edit-image':
+      return editImage(opts)
+    case 'create-node':
+      return createNode(opts)
+    case 'edit-node':
+      return editNode(opts)
+    case 'delete-node':
+      return removeNode(opts)
+    case 'generate-script':
+      return generateScript(opts)
+    case 'link-image':
+      return linkImage(opts)
+    case 'unlink-image':
+      return unlinkImage(opts)
     case 'rm':
       return removeTask(opts)
     case 'rm-image':

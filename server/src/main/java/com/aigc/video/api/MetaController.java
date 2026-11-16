@@ -1,6 +1,7 @@
 package com.aigc.video.api;
 
 import com.aigc.video.ai.ModelCatalog;
+import com.aigc.video.config.SecurityProperties;
 import com.aigc.video.config.StorageProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ public class MetaController {
 
     private final ModelCatalog modelCatalog;
     private final StorageProperties storageProperties;
+    private final SecurityProperties securityProperties;
 
     @GetMapping
     public Map<String, Object> meta() {
@@ -39,6 +41,7 @@ public class MetaController {
                 .build()
                 .toUriString());
         meta.put("mcpTransport", "sse");
+        meta.put("mcpToken", securityProperties.getMcpToken());
         meta.put("wsPath", "/ws/canvas/{workspaceId}");
         meta.put("aiMock", "mock".equals(providerOf(textDefault)));
 

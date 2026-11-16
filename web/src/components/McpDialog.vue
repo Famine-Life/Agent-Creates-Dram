@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { state, toast } from '../store/canvas'
+import { state, copyText } from '../store/canvas'
 
 const emit = defineEmits(['close'])
 
@@ -14,7 +14,7 @@ const config = computed(() =>
           type: 'sse',
           url: endpoint.value,
           headers: {
-            Authorization: 'Bearer <MCP_API_TOKEN>'
+            Authorization: `Bearer ${state.meta.mcpToken || '<MCP_API_TOKEN>'}`
           }
         }
       }
@@ -31,8 +31,7 @@ const tools = [
 ]
 
 function copy(text) {
-  navigator.clipboard?.writeText(text)
-  toast('已复制到剪贴板')
+  copyText(text)
 }
 </script>
 

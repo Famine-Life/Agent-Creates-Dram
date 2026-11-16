@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { api } from '../api'
-import { state, toast } from '../store/canvas'
+import { state, toast, copyText } from '../store/canvas'
 
 const props = defineProps({
   prompt: { type: String, default: '' },
@@ -200,8 +200,7 @@ function applyOptimized() {
 }
 
 function copyOptimized() {
-  navigator.clipboard?.writeText(optimized.value)
-  toast('优化后的提示词已复制')
+  copyText(optimized.value, '优化后的提示词已复制')
 }
 
 /** 按比例画一个占位小方框 */
