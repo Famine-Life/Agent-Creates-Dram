@@ -36,6 +36,9 @@ export const api = {
   workspaces: () => http.get('/workspaces'),
   /** 新建画布：后端同时创建 workspace 与 canvas，返回新画布信息 */
   createWorkspace: () => http.post('/workspaces'),
+  renameWorkspace: (workspaceId, name) => http.put(`/workspaces/${workspaceId}`, { name }),
+  copyWorkspace: (workspaceId) => http.post(`/workspaces/${workspaceId}/copy`),
+  deleteWorkspace: (workspaceId) => http.delete(`/workspaces/${workspaceId}`),
   canvas: (workspaceId) => http.get(`/canvas/${workspaceId}`),
   promptRecords: (workspaceId) => http.get(`/canvas/${workspaceId}/prompt-records`),
   createShot: (workspaceId, body) => http.post(`/canvas/${workspaceId}/shots`, body),

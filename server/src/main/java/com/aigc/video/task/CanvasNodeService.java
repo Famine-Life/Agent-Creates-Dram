@@ -11,7 +11,6 @@ import com.aigc.video.common.TooManyRequestsException;
 import com.aigc.video.domain.Canvas;
 import com.aigc.video.domain.CanvasImage;
 import com.aigc.video.domain.CanvasNode;
-import com.aigc.video.domain.Workspace;
 import com.aigc.video.mapper.CanvasImageMapper;
 import com.aigc.video.mapper.CanvasMapper;
 import com.aigc.video.mapper.CanvasNodeMapper;
@@ -426,11 +425,7 @@ public class CanvasNodeService {
             return canvas.getId();
         }
         if (workspaceMapper.selectById(workspaceId) == null) {
-            Workspace workspace = new Workspace();
-            workspace.setId(workspaceId);
-            workspace.setName("工作空间 " + workspaceId);
-            workspace.setCreatedAt(LocalDateTime.now());
-            workspaceMapper.insert(workspace);
+            throw new NotFoundException("画布不存在：" + workspaceId);
         }
         Canvas created = new Canvas();
         created.setWorkspaceId(workspaceId);

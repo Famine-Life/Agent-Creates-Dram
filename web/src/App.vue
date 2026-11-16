@@ -22,6 +22,7 @@ import GroupNode from './components/GroupNode.vue'
 import ImageRefEdge from './components/ImageRefEdge.vue'
 import LinkEdge from './components/LinkEdge.vue'
 import CanvasContextMenu from './components/CanvasContextMenu.vue'
+import CanvasMenu from './components/CanvasMenu.vue'
 
 import {
   state,
@@ -99,6 +100,7 @@ const sidebarCollapsed = ref(localStorage.getItem('aigc.sidebar.collapsed') === 
 watch(sidebarCollapsed, (value) => {
   localStorage.setItem('aigc.sidebar.collapsed', value ? '1' : '0')
 })
+const deletingCanvas = ref(false)
 const inspectorHidden = ref(localStorage.getItem('aigc.inspector.hidden') === '1')
 watch(inspectorHidden, (value) => {
   localStorage.setItem('aigc.inspector.hidden', value ? '1' : '0')
@@ -972,13 +974,9 @@ async function openCanvas(workspaceId) {
   }
 }
 
-/** 下拉切换画布：select 的 value 是字符串，这里统一转成数字 ID */
-function onCanvasChange(event) {
-  openCanvas(Number(event.target.value))
-}
-
 /** 新增空白画布并立即切换过去 */
 async function addCanvas() {
+  if (deletingCanvas.value) return
   try {
     const created = await createWorkspace()
     await openCanvas(created.id)
@@ -987,12 +985,126 @@ async function addCanvas() {
   }
 }
 
+async function renameCanvas({ id, name }) {
+  try {
+    await api.renameWorkspace(id, name)
+    await loadWorkspaces()
+    toast(`已重命名为「${name}」`)
+  } catch (e) {
+    toast(`重命名画布失败：${e.message}`)
+  }
+}
+
+/** 复制整张画布并切换到副本 */
+async function copyCanvas(id) {
+  if (deletingCanvas.value) return
+  deletingCanvas.value = true
+  try {
+    const created = await api.copyWorkspace(id)
+    await loadWorkspaces()
+    await openCanvas(created.id)
+    toast(`已复制为「${created.name}」`)
+  } catch (e) {
+    toast(`复制画布失败：${e.message}`)
+  } finally {
+    deletingCanvas.value = false
+  }
+}
+
+/** 新窗口打开画布：通过 ?workspace= 让新标签页定位到指定画布 */
+function openCanvasWindow(id) {
+  window.open(`${window.location.pathname}?workspace=${id}`, '_blank', 'noopener')
+}
+
+/** 删除后刷新列表并切换；ready=false 时 openCanvas 不会再保存已删画布 */
+async function switchDeletedCanvas(deletedId) {
+  const workspaces = await loadWorkspaces()
+  const next = workspaces.find((item) => item.id !== deletedId)
+  if (!next) throw new Error('没有可切换的画布')
+  await openCanvas(next.id)
+}
+
+async function deleteCanvas(targetId) {
+  const workspaceId = Number(targetId) || state.workspaceId
+  if (deletingCanvas.value || !workspaceId || state.workspaces.length <= 1) return
+  const name = state.workspaces.find((item) => item.id === workspaceId)?.name || '当前画布'
+  if (!window.confirm(`确定删除画布「${name}」？\n\n该画布中的全部镜头、图片、节点、连线和提示词记录将永久删除，且无法恢复。`)) return
+
+  // 删除的不是当前画布：当前编辑状态不受影响，只刷新列表
+  if (workspaceId !== state.workspaceId) {
+    try {
+      await api.deleteWorkspace(workspaceId)
+      await loadWorkspaces()
+      toast(`已删除画布「${name}」`)
+    } catch (e) {
+      toast(`删除画布失败：${e.message}`)
+    }
+    return
+  }
+
+  deletingCanvas.value = true
+  clearTimeout(saveTimer)
+  ready = false
+  disconnectRealtime()
+  let deleted = false
+  try {
+    await api.deleteWorkspace(workspaceId)
+    deleted = true
+    await switchDeletedCanvas(workspaceId)
+    toast(`已删除画布「${name}」`)
+  } catch (e) {
+    if (deleted) {
+      window.location.reload()
+      return
+    }
+    ready = true
+    connectRealtime()
+    toast(`删除画布失败：${e.message}`)
+  } finally {
+    deletingCanvas.value = false
+  }
+}
+
+/** 其他标签页删除画布时，仅当前画布需要立即切换 */
+async function onWorkspaceDeleted(event) {
+  const workspaceId = Number(event.detail?.workspaceId)
+  if (!workspaceId || deletingCanvas.value) return
+  if (workspaceId !== state.workspaceId) {
+    loadWorkspaces().catch(() => {})
+    return
+  }
+
+  deletingCanvas.value = true
+  clearTimeout(saveTimer)
+  ready = false
+  disconnectRealtime()
+  try {
+    await switchDeletedCanvas(workspaceId)
+    toast('当前画布已被删除，已切换到其他画布')
+  } catch (e) {
+    window.location.reload()
+  } finally {
+    deletingCanvas.value = false
+  }
+}
+
 async function bootstrap() {
   try {
+    let workspaces = await loadWorkspaces()
+    if (!workspaces.length) workspaces = [await createWorkspace()]
+    // “在新窗口打开”通过 ?workspace= 指定画布，优先于本地记忆
+    const requested = Number(new URLSearchParams(window.location.search).get('workspace'))
+    const target = workspaces.find((item) =>
+      item.id === (Number.isInteger(requested) && requested > 0 ? requested : state.workspaceId)
+    )
+    const selected = target || workspaces[0]
+    if (selected.id !== state.workspaceId) {
+      state.workspaceId = selected.id
+    }
+    localStorage.setItem('aigc.workspace.id', String(selected.id))
     await loadAll()
     syncGraph()
     ready = true
-    loadWorkspaces().catch(() => {})
     connectRealtime()
     onMoveEnd(() => scheduleSave())
     // 等节点测量完成后再自适应视图，避免节点跑到屏幕外
@@ -1007,11 +1119,13 @@ async function bootstrap() {
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('paste', onPaste)
+  window.addEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
   bootstrap()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('paste', onPaste)
+  window.removeEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
   disconnectRealtime()
   clearTimeout(saveTimer)
 })
@@ -1051,20 +1165,20 @@ onBeforeUnmount(() => {
 
     <div class="workspace">
       <div class="sidebar-column" :class="{ collapsed: sidebarCollapsed }">
-        <!-- 画布切换条：下拉选择已有画布，＋ 新建空白画布（折叠时只保留 ＋ 按钮） -->
+        <!-- 画布切换条：点开面板选择画布，面板内 ＋ 新建，行内 “...” 提供重命名 / 复制 / 删除 -->
         <div class="canvas-bar">
-          <select
-            v-if="!sidebarCollapsed"
-            class="canvas-select"
-            :value="state.workspaceId"
-            title="切换画布"
-            @change="onCanvasChange"
-          >
-            <option v-for="item in state.workspaces" :key="item.id" :value="item.id">
-              {{ item.name }}
-            </option>
-          </select>
-          <button class="icon-btn canvas-add" title="新增画布" @click="addCanvas">＋</button>
+          <CanvasMenu
+            :workspaces="state.workspaces"
+            :current-id="state.workspaceId"
+            :collapsed="sidebarCollapsed"
+            :busy="deletingCanvas"
+            @select="openCanvas"
+            @create="addCanvas"
+            @rename="renameCanvas"
+            @copy="copyCanvas"
+            @open-window="openCanvasWindow"
+            @delete="deleteCanvas"
+          />
         </div>
         <Sidebar
           :collapsed="sidebarCollapsed"

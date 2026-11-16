@@ -258,28 +258,248 @@ h2 {
   justify-content: center;
 }
 
-.canvas-select {
+/* 画布切换按钮：显示当前画布名称，点开选择面板 */
+.canvas-trigger {
   flex: 1;
   min-width: 0;
   height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 0 8px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
   font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.canvas-trigger:hover:not(:disabled),
+.canvas-trigger.open {
+  border-color: var(--border-hover);
+}
+
+.canvas-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.canvas-trigger.compact {
+  width: 30px;
+  flex: 0 0 30px;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.canvas-trigger-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-trigger-caret {
+  flex: 0 0 auto;
+  color: var(--text);
+  opacity: 0.62;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.canvas-trigger:hover .canvas-trigger-caret,
+.canvas-trigger.open .canvas-trigger-caret {
+  opacity: 0.9;
+}
+
+.canvas-trigger.open .canvas-trigger-caret {
+  transform: rotate(180deg);
+}
+
+/* 画布面板：标题行 + 画布列表 */
+.canvas-pop {
+  position: fixed;
+  z-index: 90;
+  width: 208px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--field);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.canvas-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.canvas-pop-add {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.canvas-pop-add:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.canvas-pop-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.canvas-pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.canvas-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.canvas-row:hover,
+.canvas-row.expanded {
+  background: var(--raised);
+}
+
+.canvas-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 当前画布显示勾选；悬停时让位给 “…” 按钮 */
+.canvas-row-check {
+  display: none;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.canvas-row.active .canvas-row-check {
+  display: block;
+}
+
+.canvas-row-more {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.canvas-row:hover .canvas-row-more,
+.canvas-row.expanded .canvas-row-more {
+  opacity: 1;
+}
+
+/* 当前画布默认只显示勾选，悬停或展开时再露出 “…” */
+.canvas-row.active .canvas-row-more {
+  display: none;
+}
+
+.canvas-row.active:hover .canvas-row-more,
+.canvas-row.active.expanded .canvas-row-more {
+  display: grid;
+}
+
+.canvas-row:hover .canvas-row-check,
+.canvas-row.expanded .canvas-row-check {
+  display: none;
+}
+
+.canvas-row-more:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.canvas-rename {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--brand);
+  background: var(--sunken);
+  color: var(--text);
+  font-size: 12.5px;
   outline: none;
 }
 
-.canvas-select:focus {
-  border-color: var(--brand);
+/* “…” 展开的操作菜单，浮在面板右侧 */
+.canvas-row-menu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 4px);
+  z-index: 2;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--field);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.55);
 }
 
-/* 新建画布按钮（＋），与下拉框同高 */
-.canvas-add {
-  flex: 0 0 auto;
-  width: 30px;
+.canvas-row-menu-item {
   height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.canvas-row-menu-item:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.canvas-row-menu-item.danger:hover:not(:disabled) {
+  color: var(--danger-text);
+  background: rgba(242, 85, 90, 0.1);
+}
+
+.canvas-row-menu-item:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .head-actions {

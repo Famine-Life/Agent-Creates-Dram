@@ -184,6 +184,13 @@ function handleEvent(type, data) {
       pruneLinks(`node-${data.nodeId}`)
       if (state.selectedNodeId === data.nodeId) state.selectedNodeId = null
       break
+    case 'workspace.deleted':
+      state.workspaces = state.workspaces.filter((item) => item.id !== data.workspaceId)
+      window.dispatchEvent(new CustomEvent('aigc:workspace-deleted', { detail: data }))
+      break
+    case 'workspace.changed':
+      loadWorkspaces().catch(() => {})
+      break
     default:
       break
   }
