@@ -1185,8 +1185,8 @@ h2 {
 /* ------------------------------------------------------------------ 图片节点 */
 
 .image-node {
-  width: 148px;
-  height: 166px;
+  width: var(--node-width, 148px);
+  height: auto;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -1203,15 +1203,17 @@ h2 {
 
 .image-media {
   position: relative;
-  height: 132px;
-  flex: 0 0 132px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--image-ratio, 1);
+  flex: 0 0 auto;
   background: var(--sunken);
 }
 
 .image-media img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
   user-select: none;
 }
@@ -1234,14 +1236,14 @@ h2 {
 .image-tool-actions button {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--chip);
   color: var(--text);
-  font-size: 13px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -1261,12 +1263,14 @@ h2 {
   background: var(--chip);
   color: var(--text);
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0;
+  transition: opacity 0.15s ease;
   font-size: 13px;
   line-height: 1;
 }
 
-.image-node:hover .image-del {
+.image-node:hover .image-del,
+.image-del:focus-visible {
   opacity: 1;
 }
 
@@ -1276,16 +1280,159 @@ h2 {
 }
 
 .image-foot {
-  flex: 1;
+  flex: 0 0 26px;
   display: flex;
+  justify-content: space-between;
+  gap: 4px;
   align-items: center;
-  padding: 0 9px;
-  font-size: 11px;
+  padding: 0 7px;
+  font-size: 10px;
   color: var(--muted);
   border-top: 1px solid var(--border);
   overflow: hidden;
+}
+
+.image-name {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.image-dimensions {
+  flex: 0 0 auto;
+  font-size: 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.replace-image-dialog {
+  width: min(480px, 92vw);
+  max-height: 78vh;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+  cursor: default;
+  box-shadow: 0 24px 80px rgba(13, 18, 38, 0.28);
+}
+
+.replace-image-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.replace-image-dialog > header strong {
+  font-size: 16px;
+}
+
+.replace-image-dialog > header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.replace-image-options,
+.replace-image-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.replace-image-options {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.replace-image-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.replace-image-option:hover {
+  border-color: var(--brand);
+  background: var(--raised);
+  transform: translateY(-1px);
+}
+
+.replace-option-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 10px;
+  background: rgba(108, 92, 231, 0.14);
+  color: var(--brand);
+  font-size: 20px;
+}
+
+.replace-image-option > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.replace-image-option small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.replace-option-arrow {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 22px;
+}
+
+.replace-image-step {
+  justify-content: space-between;
+}
+
+.replace-image-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  max-height: 56vh;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.replace-image-list > button {
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.replace-image-list img {
+  display: block;
+  width: 100%;
+  height: 76px;
+  object-fit: contain;
+}
+
+.replace-image-list span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
 }
 
 /* 分组标签 */

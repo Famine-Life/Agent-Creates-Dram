@@ -388,10 +388,29 @@ public class TaskService {
     @Transactional
     public ImageNode updateImage(Long workspaceId, Long imageId, ImageRequest request) {
         CanvasImage image = requireImage(workspaceId, imageId);
+        CanvasImage sourceImage = request.sourceImageId() == null
+                ? null : requireImage(workspaceId, request.sourceImageId());
         LambdaUpdateWrapper<CanvasImage> update = Wrappers.<CanvasImage>lambdaUpdate()
                 .eq(CanvasImage::getId, image.getId());
-        if (request.name() != null && !request.name().isBlank()) {
+        if (sourceImage != null) {
+            update.set(CanvasImage::getName, sourceImage.getName())
+                    .set(CanvasImage::getUrl, sourceImage.getUrl())
+                    .set(CanvasImage::getObjectKey, sourceImage.getObjectKey())
+                    .set(CanvasImage::getSource, sourceImage.getSource())
+                    .set(CanvasImage::getPrompt, sourceImage.getPrompt())
+                    .set(CanvasImage::getStatus, sourceImage.getStatus());
+        }
+        if (sourceImage == null && request.name() != null && !request.name().isBlank()) {
             update.set(CanvasImage::getName, request.name());
+        }
+        if (sourceImage == null && request.url() != null && !request.url().isBlank()) {
+            update.set(CanvasImage::getUrl, request.url());
+        }
+        if (sourceImage == null && request.objectKey() != null) {
+            update.set(CanvasImage::getObjectKey, request.objectKey());
+        }
+        if (sourceImage == null && request.source() != null && !request.source().isBlank()) {
+            update.set(CanvasImage::getSource, request.source());
         }
         if (request.x() != null) {
             update.set(CanvasImage::getX, request.x());
@@ -407,6 +426,18 @@ public class TaskService {
         }
         if (request.prompt() != null) {
             update.set(CanvasImage::getPrompt, request.prompt());
+        }
+        // MyBatis Plus rejects UPDATE statements with no SET clause. Older clients may
+        // send fields this server version does not understand; leave the node unchanged.
+        if (sourceImage == null
+                && (request.name() == null || request.name().isBlank())
+                && (request.url() == null || request.url().isBlank())
+                && request.objectKey() == null
+                && (request.source() == null || request.source().isBlank())
+                && request.x() == null && request.y() == null
+                && request.width() == null && request.height() == null
+                && request.prompt() == null) {
+            return toImageNode(image);
         }
         imageMapper.update(null, update);
 
@@ -587,7 +618,7 @@ public class TaskService {
                         .last("LIMIT 1"));
                 if (found == null) {
                     ImageNode created = createImage(workspaceId,
-                            new ImageRequest(null, url, null, null, null, null, null, null, null, null));
+                            new ImageRequest(null, url, null, null, null, null, null, null, null, null, null));
                     found = imageMapper.selectById(created.id());
                 }
                 result.add(found.getId());

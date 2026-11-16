@@ -446,6 +446,30 @@ export async function uploadImageFile(file, x, y) {
   return result
 }
 
+export async function replaceImageFromAsset(imageId, asset) {
+  const updated = await api.updateImage(state.workspaceId, imageId, {
+    sourceImageId: asset.id,
+    name: asset.name,
+    url: asset.url,
+    source: asset.source || 'UPLOAD'
+  })
+  upsert(state.images, updated)
+  return updated
+}
+
+export async function replaceImageFromFile(imageId, file) {
+  const uploaded = await uploadImageFile(file)
+  try {
+    const updated = await replaceImageFromAsset(imageId, uploaded)
+    await api.removeImage(state.workspaceId, uploaded.id)
+    state.images = state.images.filter((image) => image.id !== uploaded.id)
+    return updated
+  } catch (error) {
+    await removeImage(uploaded.id)
+    throw error
+  }
+}
+
 export async function createEdge(taskId, imageId) {
   const edge = await api.createEdge(state.workspaceId, { taskId, imageId })
   upsert(state.edges, edge)

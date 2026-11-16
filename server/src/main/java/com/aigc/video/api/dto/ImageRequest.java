@@ -11,6 +11,7 @@ public record ImageRequest(
         Double height,
         String prompt,
         String status,
-        String source
+        String source,
+        Long sourceImageId
 ) {
 }
