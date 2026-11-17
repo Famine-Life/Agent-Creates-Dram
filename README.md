@@ -111,9 +111,15 @@ npm run dev
 
 如果这个项目对你有帮助，欢迎通过以下方式支持作者继续维护和改进项目。
 
-| 微信支付 | 支付宝 |
-| --- | --- |
-| <img src="docs/images/wechat-donate.jpg" alt="微信支付赞助码" width="260"> | <img src="docs/images/alipay-donate.jpg" alt="支付宝赞助码" width="260"> |
+**微信支付**
+
+[![微信支付赞助码](docs/images/wechat-donate-preview.jpg)](docs/images/wechat-donate.jpg)
+
+**支付宝**
+
+[![支付宝赞助码](docs/images/alipay-donate-preview.jpg)](docs/images/alipay-donate.jpg)
+
+
 
 ## 许可证
 
