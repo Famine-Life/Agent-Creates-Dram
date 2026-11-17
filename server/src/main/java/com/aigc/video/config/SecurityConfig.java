@@ -50,7 +50,7 @@ public class SecurityConfig {
         csrfRepository.setCookieCustomizer(cookie -> cookie
                 .path("/")
                 .secure(properties.isCookieSecure())
-                .sameSite("Strict"));
+                .sameSite("Lax"));  // WebSocket 跨请求握手时 Strict 可能丢 Cookie
 
         // 故意不声明为 Filter Bean，避免 Spring Boot 在安全链之外再注册一次。
         McpAuthenticationFilter mcpFilter = new McpAuthenticationFilter(properties, objectMapper);
@@ -60,7 +60,7 @@ public class SecurityConfig {
                         .csrfTokenRepository(csrfRepository)
                         // Axios 直接读取 XSRF-TOKEN Cookie 并回传 X-XSRF-TOKEN，使用对应的原始值校验。
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-                        .ignoringRequestMatchers("/sse", "/mcp/message"))
+                        .ignoringRequestMatchers("/sse", "/mcp/message", "/ws/**"))
                 .formLogin(form -> form
                         .loginProcessingUrl("/api/auth/login")
                         .successHandler((request, response, authentication) ->
@@ -85,9 +85,10 @@ public class SecurityConfig {
                                         Map.of("message", "请求被拒绝，请刷新页面后重试"))))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/", "/index.html", "/assets/**", "/favicon.ico",
-                                "/api/auth/login", "/api/auth/csrf", "/api/auth/session")
+                                "/api/auth/login", "/api/auth/csrf", "/api/auth/session",
+                                "/ws/**")
                         .permitAll()
-                        .requestMatchers("/sse", "/mcp/message").hasAuthority("MCP")
+                        .requestMatchers("/sse", "/mcp/message").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(mcpFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

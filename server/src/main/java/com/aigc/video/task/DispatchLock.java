@@ -1,6 +1,7 @@
 package com.aigc.video.task;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -25,10 +26,14 @@ public class DispatchLock {
     private final StringRedisTemplate redisTemplate;
     private final boolean enabled;
 
-    public DispatchLock(StringRedisTemplate redisTemplate,
+    // StringRedisTemplate 必须是 required=false，Redis auto config 被关掉时不注入
+    public DispatchLock(@Autowired(required = false) StringRedisTemplate redisTemplate,
                         @Value("${aigc.realtime.redis-enabled:false}") boolean enabled) {
         this.redisTemplate = redisTemplate;
-        this.enabled = enabled;
+        this.enabled = enabled && redisTemplate != null;
+        if (!this.enabled) {
+            log.info("Redis 调度锁未启用，按单实例运行");
+        }
     }
 
     /** 获取本轮调度权；返回 null 表示其它实例正在调度，本次直接跳过 */
