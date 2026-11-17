@@ -35,7 +35,7 @@ const status = computed(() => statusOf(task.value))
 const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(task.value.status))
 const isDraft = computed(() => task.value.status === 'IDLE')
 const ready = computed(() => task.value.status === 'SUCCEEDED' && !!task.value.videoUrl)
-const editorVisible = computed(() => props.selected || state.selectedTaskId === task.value.id)
+const editorVisible = computed(() => !state.selectionBoxActive && state.selectedTaskId === task.value.id)
 const refCount = computed(() => task.value.imageIds?.length || 0)
 const progress = computed(() => Math.max(0, Math.min(100, task.value.progress || 0)))
 /** 视频模型由后端 /api/meta 按平台下发，节点不再硬编码 */
