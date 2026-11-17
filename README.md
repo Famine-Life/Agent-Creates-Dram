@@ -107,6 +107,14 @@ npm run dev
 
 [Wonder（`wonder`）](https://github.com/Famine-Life)
 
+## 支持项目
+
+如果这个项目对你有帮助，欢迎通过以下方式支持作者继续维护和改进项目。
+
+| 微信支付 | 支付宝 |
+| --- | --- |
+| <img src="docs/images/wechat-donate.jpg" alt="微信支付赞助码" width="260"> | <img src="docs/images/alipay-donate.jpg" alt="支付宝赞助码" width="260"> |
+
 ## 许可证
 
 本项目使用 MIT 许可证，允许修改和再发布；再发布时请保留版权和许可证声明。详情见 [LICENSE](LICENSE)。
