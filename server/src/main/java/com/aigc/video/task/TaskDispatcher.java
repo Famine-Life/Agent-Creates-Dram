@@ -6,6 +6,7 @@ import com.aigc.video.domain.GenerationTask;
 import com.aigc.video.mapper.GenerationTaskMapper;
 import com.aigc.video.provider.PollResult;
 import com.aigc.video.provider.ProviderRegistry;
+import com.aigc.video.provider.ProviderErrorHintResolver;
 import com.aigc.video.provider.SubmitCommand;
 import com.aigc.video.provider.SubmitResult;
 import com.aigc.video.provider.VideoContext;
@@ -48,6 +49,7 @@ public class TaskDispatcher {
     private final AssetService assetService;
     private final TaskService taskService;
     private final DispatchLock dispatchLock;
+    private final ProviderErrorHintResolver providerErrorHintResolver;
 
     @Value("${aigc.poll-timeout-seconds:900}")
     private long pollTimeoutSeconds;
@@ -365,10 +367,13 @@ public class TaskDispatcher {
     }
 
     private void fail(Long taskId, String message) {
+        GenerationTask task = taskMapper.selectById(taskId);
+        String userMessage = providerErrorHintResolver.resolve(
+                task == null ? null : task.getProvider(), message);
         taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
                 .set(GenerationTask::getStatus, TaskStatus.FAILED.name())
-                .set(GenerationTask::getErrorMsg, shorten(message))
+                .set(GenerationTask::getErrorMsg, shorten(userMessage))
                 .set(GenerationTask::getNextPollAt, null)
                 .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
         taskService.broadcastTask("node.failed", taskId);

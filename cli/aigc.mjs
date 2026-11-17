@@ -41,7 +41,7 @@ const HELP = `AIGC 画布工作台 CLI
   retry       重新生成已有镜头       --id <任务ID> [--json]
   cancel      取消生成任务           --id <任务ID> [--json]
   edit-prompt 编辑提示词与生成参数   --id <任务ID> [--prompt <文本>] [--model <平台/模型>]
-                [--ratio 16:9] [--duration 5] [--resolution 720P] [--regenerate] [--json]
+                [--ratio 16:9] [--duration 5] [--resolution 720P] [--regenerate|--no-regenerate] [--json]
   set-video-model 切换镜头模型但不重新生成 --id <任务ID> --model <平台/模型> [--workspace 1] [--json]
   set-image-model 切换图片节点模型但不生成 --id <图片ID> --model <平台/模型> [--workspace 1] [--json]
   prompt-records 查看提示词历史      [--workspace 1] [--json]
@@ -70,7 +70,7 @@ const HELP = `AIGC 画布工作台 CLI
   --json         输出原始 JSON
 
 示例：
-  node cli/aigc.mjs login --username admin --password admin@888
+  node cli/aigc.mjs login --username admin --password admin@123
   node cli/aigc.mjs push --prompt "海边日落，少女奔跑，电影感" --group "A组"
   node cli/aigc.mjs assets --type video
 `
@@ -394,7 +394,9 @@ async function editPrompt(opts) {
   if (opts.ratio != null) body.ratio = String(opts.ratio)
   if (opts.duration != null) body.duration = Number(opts.duration)
   if (opts.resolution != null) body.resolution = String(opts.resolution)
+  if (opts.regenerate && opts['no-regenerate']) fail('--regenerate 与 --no-regenerate 不能同时使用')
   if (opts.regenerate) body.regenerate = true
+  if (opts['no-regenerate']) body.regenerate = false
   if (!Object.keys(body).length) fail('请至少提供 --prompt、--model、--ratio、--duration、--resolution 或 --regenerate')
   const node = await api('PUT', `/api/tasks/${Number(opts.id)}/prompt`, { body })
   if (opts.json) return printJson(node)

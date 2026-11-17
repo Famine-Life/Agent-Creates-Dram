@@ -1291,7 +1291,7 @@ onBeforeUnmount(() => {
       <div class="brand">
         <span class="logo">◈</span>
         <div>
-          <strong>AIGC 画布工作台</strong>
+          <strong>Agent造剧</strong>
           <span class="muted">{{ currentCanvasName }} · 提示词即镜头</span>
         </div>
       </div>

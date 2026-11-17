@@ -32,6 +32,7 @@ const captureMenuOpen = ref(false)
 const capturingFrame = ref(false)
 const task = computed(() => props.data.task)
 const status = computed(() => statusOf(task.value))
+const errorMessage = computed(() => formatErrorMessage(task.value.errorMsg))
 const active = computed(() => ['RECEIVED', 'QUEUED', 'SUBMITTING', 'SUBMITTED', 'PROVIDER_QUEUED', 'RUNNING'].includes(task.value.status))
 const isDraft = computed(() => task.value.status === 'IDLE')
 const ready = computed(() => task.value.status === 'SUCCEEDED' && !!task.value.videoUrl)
@@ -63,6 +64,34 @@ const durationOptions = computed(() =>
 const resolutionOptions = computed(() =>
   modelOption.value?.resolutions?.length ? modelOption.value.resolutions : ['480P', '720P']
 )
+
+function formatErrorMessage(value) {
+  const raw = String(value || '请稍后重试')
+  const jsonStart = raw.indexOf('{')
+  const jsonEnd = raw.lastIndexOf('}')
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    try {
+      const payload = JSON.parse(raw.slice(jsonStart, jsonEnd + 1))
+      let error = payload.error || payload
+      if (typeof error === 'string') error = JSON.parse(error)
+      const code = error.code || error.Code || ''
+      const message = error.message || error.Message || ''
+      const requestId = error.request_id || error.requestId || error.RequestId ||
+        /(?:ARK\s*)?request\s*id\s*[:=]\s*([a-z0-9-]+)/i.exec(`${message} ${raw}`)?.[1]
+      let readable = message
+      if (code === 'InputImageSensitiveContentDetected.PrivacyInformation') {
+        readable = '参考图片可能包含真人，平台因此拦截了请求。请更换为插画或非真人参考图后重试。'
+      } else if (code.startsWith('InputImageSensitiveContentDetected')) {
+        readable = '参考图片触发了平台安全检查。请更换图片或调整画面内容后重试。'
+      }
+      const cleanMessage = readable ? String(readable).replace(/\s*request\s*id\s*[:=]\s*[a-z0-9-]+\.?/ig, '').trim() : '模型服务请求失败，请调整素材或提示词后重试。'
+      return requestId ? `${cleanMessage} 请求 ID：${requestId}` : cleanMessage
+    } catch {
+      // Fall through to remove any code suffix from older, already-saved task errors.
+    }
+  }
+  return raw.replace(/\s*（错误码：[^）]*）/g, '').replace(/\s*\(error code:\s*[^)]*\)/ig, '').trim()
+}
 
 /** 按连线顺序排列的参考图，顺序即提示词里的 @图片n */
 const linkedImages = computed(() => {
@@ -278,7 +307,7 @@ async function onCancel() {
           </template>
           <template v-else-if="task.status === 'FAILED' || task.status === 'TIMEOUT' || task.status === 'SUBMIT_UNKNOWN'">
             <div class="err-title">{{ task.status === 'SUBMIT_UNKNOWN' ? '提交结果待确认' : '生成失败' }}</div>
-            <div class="err-msg">{{ task.errorMsg || '请稍后重试' }}</div>
+            <div class="err-msg">{{ errorMessage }}</div>
           </template>
           <template v-else-if="!active">
             <div class="err-title">{{ status.text }}</div>

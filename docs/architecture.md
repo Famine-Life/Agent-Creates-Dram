@@ -1,4 +1,4 @@
-# AIGC 视频画布工作台 · 架构设计
+# Agent造剧｜Agent 驱动的视频与漫剧工作台 · 架构设计
 
 > 版本：v0.2 ｜ 更新日期：2026-11-15
 > 关联文档：[产品设计](./product-design.md) ｜ [UI 稿](./ui-mockup.html) ｜ [变更记录](./task-records/)
@@ -11,13 +11,14 @@
 
 ## 1. 定位与范围
 
-把「AI 生成的分镜提示词」直接变成画布上可播放的视频节点：
+以 Agent 自动化创作为核心，通过项目 CLI 将故事与漫剧分镜转成可追踪的视频生成任务，并用画布组织素材和管理结果：
 
-- 外部 AI 客户端通过 **MCP** 推送提示词，或人在画布上右键手动创建节点；
+- **Codex、WorkBuddy 等 Agent 通过 CLI** 创建脚本、图片与分镜任务，批量提交并跟踪任务状态；
+- 也支持外部 AI 客户端通过 **MCP** 推送提示词，或创作者在网页画布上交互式创建节点；
 - 一条提示词 = 一个视频节点，异步生成，进度实时回填；
 - 图片节点作为参考图，通过连线与镜头节点形成**多对多**引用，提示词里用 `@图片1` 引用；
 - 内置 AI 能力：脚本节点生成分镜、图片节点文生图、提示词一键优化；
-- 模型统一用 `provider/model` 引用（如 `ark/doubao-seedance-2-0-260128`、`openai/gpt-4.1`）。平台只声明地址、密钥与协议，新增阿里云百炼 / OpenAI 等平台优先改配置即可；未配置 `api-key` 的平台自动隐藏，全部未配置时回落到 mock（8 秒演示出片，无需密钥）。
+- 模型统一用 `provider/model` 引用（如 `ark/doubao-seedance-2-5-260628`、`openai/gpt-4.1`）。平台只声明地址、密钥与协议，新增阿里云百炼 / OpenAI 等平台优先改配置即可；未配置 `api-key` 的平台自动隐藏，全部未配置时回落到 mock（8 秒演示出片，无需密钥）。
 
 设计目标：**默认单机单实例、无 Redis / 无 MQ / 无 Docker 也能完整运行**；需要水平扩容时，通过配置开启 Redis Pub/Sub 广播，并保留 MySQL、MinIO、COS、OSS 的切换能力。
 
@@ -276,7 +277,7 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `spring.datasource.url` | `jdbc:h2:file:./data/aigc` | 默认 H2 文件库 |
 | `aigc.security.admin-username` | `${AIGC_ADMIN_USERNAME:}` | 管理员用户名，必填，无默认值 |
 | `aigc.security.admin-password` | `${AIGC_ADMIN_PASSWORD:}` | 管理员密码，必填，无默认值 |
-| `aigc.security.mcp-token` | `${MCP_API_TOKEN:}` | MCP 独立 Token，必填且至少 32 字符 |
+| `aigc.security.mcp-token` | `${MCP_API_TOKEN:12345678}` | MCP 独立 Token；开发默认值仅供本地使用，公网部署需设置高强度随机值 |
 | `aigc.security.cookie-secure` | `${AIGC_COOKIE_SECURE:false}` | HTTPS 公网必须设为 true |
 | `aigc.security.allowed-origins` | `${AIGC_ALLOWED_ORIGINS:}` | 额外 REST / WS 来源，逗号分隔；同源留空 |
 | `aigc.ai.default-provider` | `${AIGC_AI_PROVIDER:ark}` | 裸模型 ID 的兜底平台 |
@@ -303,7 +304,7 @@ generation_task n ── n canvas_image   （通过 task_image_ref，多对多�
 | `spring.data.redis.timeout/connect-timeout` | `800ms` | 快速失败并回退本地广播 |
 | `aigc.ai.providers.ark.text-models` | 6 个豆包 / DeepSeek / GLM 模型 ID | 脚本节点模型下拉选项，请求模型需在清单内 |
 | `aigc.ai.providers.ark.image-models` | Seedream 5.5 / 4.0 | AI 图片节点模型下拉选项 |
-| `aigc.ai.providers.ark.video-models` | Seedance 2.0 / 2.0 Fast | 视频模型及各自的比例、清晰度、时长范围 |
+| `aigc.ai.providers.ark.video-models` | Seedance 2.5 / 2.0 / 2.0 Fast | 视频模型及各自的比例、清晰度、时长范围 |
 | `aigc.ai.providers.openai.*` / `dashscope.*` | — | 示例平台；填入 `OPENAI_API_KEY` / `DASHSCOPE_API_KEY` 后自动启用 |
 | `spring.ai.mcp.server.sse-endpoint` | `/sse` | MCP SSE 端点 |
 | `spring.ai.mcp.server.sse-message-endpoint` | `/mcp/message` | MCP 消息端点 |
@@ -479,7 +480,7 @@ web/src
 cd server
 $env:AIGC_ADMIN_USERNAME='admin'
 $env:AIGC_ADMIN_PASSWORD='<替换为你的强密码>'
-$env:MCP_API_TOKEN='<替换为至少32字符的随机Token>'
+$env:MCP_API_TOKEN='<替换为高强度随机Token>'
 $env:ARK_API_KEY='<替换为你的火山方舟密钥>'
 # 也可改为在 application-local.yml 手动配置密钥，并在启动参数中使用 --spring.profiles.active=local
 # 可选：不配置任何平台密钥时自动使用 mock；也可显式指定默认模型

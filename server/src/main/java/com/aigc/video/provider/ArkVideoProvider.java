@@ -29,7 +29,7 @@ public class ArkVideoProvider implements VideoProvider {
         VideoContext context = requireContext(command);
         String apiKey = apiKey(context);
         String model = context.model();
-        boolean seedance2 = model != null && model.contains("seedance-2-0");
+        boolean seedance2 = model != null && model.startsWith("doubao-seedance-2-");
 
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text",
@@ -94,8 +94,9 @@ public class ArkVideoProvider implements VideoProvider {
                 yield PollResult.succeeded(videoUrl, coverUrl);
             }
             case "failed", "cancelled" -> {
-                String message = response.path("error").path("message").asText(status);
-                yield PollResult.failed("视频生成失败：" + message);
+                JsonNode error = response.path("error");
+                String details = error.isMissingNode() || error.isNull() ? status : error.toString();
+                yield PollResult.failed("视频生成失败：" + details);
             }
             case "queued" -> PollResult.queued();
             default -> PollResult.running(60);

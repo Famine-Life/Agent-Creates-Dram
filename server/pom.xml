@@ -15,7 +15,7 @@
     <artifactId>aigc-video-server</artifactId>
     <version>0.1.0</version>
     <name>aigc-video-server</name>
-    <description>AIGC 视频画布工作台（提示词 -> 视频节点）</description>
+    <description>Agent造剧｜Agent 驱动的视频与漫剧工作台</description>
 
     <properties>
         <java.version>17</java.version>

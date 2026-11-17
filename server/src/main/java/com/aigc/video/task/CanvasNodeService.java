@@ -17,6 +17,7 @@ import com.aigc.video.mapper.CanvasNodeMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
+import com.aigc.video.provider.ProviderErrorHintResolver;
 import com.aigc.video.storage.AssetService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -56,6 +57,7 @@ public class CanvasNodeService {
     private final AiService aiService;
     private final ModelCatalog modelCatalog;
     private final ObjectMapper objectMapper;
+    private final ProviderErrorHintResolver providerErrorHintResolver;
     private final AssetService assetService;
 
     private final ExecutorService executor;
@@ -64,6 +66,7 @@ public class CanvasNodeService {
                              CanvasMapper canvasMapper, WorkspaceMapper workspaceMapper,
                              CanvasSocketRegistry socketRegistry, AiService aiService,
                              ModelCatalog modelCatalog, ObjectMapper objectMapper,
+                             ProviderErrorHintResolver providerErrorHintResolver,
                              AssetService assetService,
                              @Value("${aigc.dispatch.image-worker-threads:2}") int workerThreads,
                              @Value("${aigc.dispatch.image-queue-capacity:100}") int queueCapacity) {
@@ -75,6 +78,7 @@ public class CanvasNodeService {
         this.aiService = aiService;
         this.modelCatalog = modelCatalog;
         this.objectMapper = objectMapper;
+        this.providerErrorHintResolver = providerErrorHintResolver;
         this.assetService = assetService;
         int threads = Math.max(1, workerThreads);
         this.executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS,
@@ -193,7 +197,8 @@ public class CanvasNodeService {
                 log.info("[AI] 分镜脚本生成完成 nodeId={} shots={}", nodeId, result.shots().size());
             } catch (Exception e) {
                 log.warn("[AI] 分镜脚本生成失败 nodeId={}：{}", nodeId, e.getMessage());
-                updateGenerationState(nodeId, STATUS_FAILED, text, null, rootMessage(e));
+                updateGenerationState(nodeId, STATUS_FAILED, text, null,
+                        shorten(providerErrorHintResolver.resolve(resolved.providerKey(), rootMessage(e))));
             }
             broadcastNode(workspaceId, nodeId);
         }, executor);
@@ -275,7 +280,8 @@ public class CanvasNodeService {
                         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                                 .eq(CanvasImage::getId, imageId)
                                 .set(CanvasImage::getStatus, STATUS_FAILED)
-                                .set(CanvasImage::getErrorMsg, shorten(rootMessage(e))));
+                                .set(CanvasImage::getErrorMsg,
+                                        shorten(providerErrorHintResolver.resolve(resolved.providerKey(), rootMessage(e)))));
                         broadcastImage(workspaceId, imageId);
                         return;
                     }

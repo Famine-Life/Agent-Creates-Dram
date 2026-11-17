@@ -26,7 +26,7 @@ public class SecurityProperties {
     private String adminPassword;
 
     @NotBlank(message = "必须通过 MCP_API_TOKEN 配置 MCP Token")
-    @Size(min = 32, message = "MCP_API_TOKEN 至少需要 32 个字符")
+    @Size(min = 8, message = "MCP_API_TOKEN 至少需要 8 个字符")
     private String mcpToken;
 
     /** HTTPS 公网部署必须设为 true */

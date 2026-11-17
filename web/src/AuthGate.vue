@@ -70,7 +70,7 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
       <div class="auth-brand">
         <span class="auth-logo">◈</span>
         <div>
-          <h1>AIGC 画布工作台</h1>
+          <h1>Agent造剧</h1>
           <p>私有工作空间</p>
         </div>
       </div>
