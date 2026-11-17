@@ -155,9 +155,12 @@ const patternColor = computed(() => (theme.value === 'light' ? '#dfe4ee' : '#242
 // 正从图片锚点拖出连线时给镜头卡片加高亮，提示整张卡片都可落点
 const linking = computed(() => connectionStartHandle.value?.nodeId?.startsWith('image-'))
 
-// 画布多选：只对镜头节点做批量操作
+// 画布多选：镜头与图片分别显示对应的批量操作
 const selectedShots = computed(() =>
   (getSelectedNodes.value || []).filter((node) => node.type === 'shot')
+)
+const selectedImages = computed(() =>
+  (getSelectedNodes.value || []).filter((node) => node.type === 'image' || node.type === 'imageGen')
 )
 
 async function batchRetry() {
@@ -172,11 +175,151 @@ async function batchCancel() {
   await cancelTasks(ids)
 }
 
+function crc32(bytes) {
+  let crc = 0xffffffff
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function createZipBlob(files) {
+  const encoder = new TextEncoder()
+  const localParts = []
+  const centralParts = []
+  let offset = 0
+  const now = new Date()
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2)
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()
+  const write16 = (view, pos, value) => view.setUint16(pos, value, true)
+  const write32 = (view, pos, value) => view.setUint32(pos, value, true)
+
+  for (const file of files) {
+    const name = encoder.encode(file.name)
+    const data = file.data
+    const crc = crc32(data)
+    const local = new Uint8Array(30 + name.length)
+    const localView = new DataView(local.buffer)
+    write32(localView, 0, 0x04034b50)
+    write16(localView, 4, 20)
+    write16(localView, 6, 0x0800)
+    write16(localView, 8, 0)
+    write16(localView, 10, dosTime)
+    write16(localView, 12, dosDate)
+    write32(localView, 14, crc)
+    write32(localView, 18, data.length)
+    write32(localView, 22, data.length)
+    write16(localView, 26, name.length)
+    local.set(name, 30)
+    localParts.push(local, data)
+
+    const central = new Uint8Array(46 + name.length)
+    const centralView = new DataView(central.buffer)
+    write32(centralView, 0, 0x02014b50)
+    write16(centralView, 4, 20)
+    write16(centralView, 6, 20)
+    write16(centralView, 8, 0x0800)
+    write16(centralView, 10, 0)
+    write16(centralView, 12, dosTime)
+    write16(centralView, 14, dosDate)
+    write32(centralView, 16, crc)
+    write32(centralView, 20, data.length)
+    write32(centralView, 24, data.length)
+    write16(centralView, 28, name.length)
+    write32(centralView, 42, offset)
+    central.set(name, 46)
+    centralParts.push(central)
+    offset += local.length + data.length
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0)
+  const end = new Uint8Array(22)
+  const endView = new DataView(end.buffer)
+  write32(endView, 0, 0x06054b50)
+  write16(endView, 8, files.length)
+  write16(endView, 10, files.length)
+  write32(endView, 12, centralSize)
+  write32(endView, 16, offset)
+  return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' })
+}
+
+async function batchDownloadVideos() {
+  const tasks = selectedShots.value
+    .map((node) => state.tasks.find((task) => task.id === Number(node.id.slice(5))))
+    .filter((task) => task?.videoUrl)
+  if (tasks.length >= 3) {
+    try {
+      const files = await Promise.all(tasks.map(async (task, index) => {
+        const response = await fetch(task.videoUrl)
+        if (!response.ok) throw new Error(`下载《${task.title || task.id}》失败：HTTP ${response.status}`)
+        const filename = (task.title || `shot-${task.id}`).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+        return { name: `${String(index + 1).padStart(2, '0')}-${filename}.mp4`, data: new Uint8Array(await response.arrayBuffer()) }
+      }))
+      const url = URL.createObjectURL(createZipBlob(files))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `视频合集-${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      toast(`打包下载失败：${error.message}`)
+    }
+    return
+  }
+  for (const task of tasks) {
+    const anchor = document.createElement('a')
+    anchor.href = task.videoUrl
+    const filename = (task.title || `shot-${task.id}`).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    anchor.download = `${filename}.mp4`
+    anchor.rel = 'noreferrer'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+  if (!tasks.length) toast('选中的镜头还没有可下载的视频')
+}
+
 async function batchRemove() {
   const ids = selectedShots.value.map((node) => Number(node.id.slice(5)))
   if (!ids.length) return
   await removeTasks(ids)
   removeSelectedElements()
+}
+
+function batchDownloadImages() {
+  const images = selectedImages.value
+    .map((node) => state.images.find((image) => image.id === Number(node.id.slice(6))))
+    .filter((image) => image?.url)
+  for (const image of images) {
+    const anchor = document.createElement('a')
+    anchor.href = image.url
+    anchor.download = image.name || `image-${image.id}`
+    anchor.rel = 'noreferrer'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+}
+
+async function batchRemoveImages() {
+  const images = selectedImages.value
+    .map((node) => state.images.find((image) => image.id === Number(node.id.slice(6))))
+    .filter(Boolean)
+  if (!images.length) return
+  if (!window.confirm(`确定删除选中的 ${images.length} 张图片？相关连线也会一并移除。`)) return
+  let removed = 0
+  for (const image of images) {
+    try {
+      await removeImage(image.id)
+      removed += 1
+    } catch (error) {
+      toast(`删除图片失败：${error.message}`)
+    }
+  }
+  if (removed) toast(`已删除 ${removed} 张图片`)
 }
 
 function clearSelection() {
@@ -715,6 +858,17 @@ function onPaneClick() {
   state.selectedNodeId = null
 }
 
+function onSelectionStart() {
+  state.selectionBoxActive = true
+  state.selectedTaskId = null
+  state.selectedImageId = null
+  state.selectedNodeId = null
+}
+
+function onSelectionEnd() {
+  state.selectionBoxActive = false
+}
+
 function focusTask(taskId) {
   state.selectedTaskId = taskId
   state.selectedImageId = null
@@ -1210,11 +1364,14 @@ onBeforeUnmount(() => {
           :connect-on-click="false"
           :delete-key-code="null"
           :selection-key-code="'Shift'"
+          selection-mode="partial"
           :multi-selection-key-code="['Control', 'Meta']"
           @node-drag-start="onNodeDragStart"
           @node-drag="onNodeDrag"
           @node-drag-stop="onNodeDragStop"
           @node-click="onNodeClick"
+          @selection-start="onSelectionStart"
+          @selection-end="onSelectionEnd"
           @pane-context-menu="onPaneContextMenu"
           @pane-click="onPaneClick"
           @connect="onConnect"
@@ -1246,12 +1403,19 @@ onBeforeUnmount(() => {
           @close="contextMenu = null"
         />
 
-        <div v-if="selectedShots.length" class="selection-bar">
-          <span class="selection-count">已选 {{ selectedShots.length }} 个镜头</span>
+        <div v-if="selectedShots.length || selectedImages.length" class="selection-bar">
+          <span class="selection-count">已选 {{ selectedShots.length + selectedImages.length }} 项<span v-if="selectedShots.length"> · {{ selectedShots.length }} 个镜头</span><span v-if="selectedImages.length"> · {{ selectedImages.length }} 张图片</span></span>
           <span class="selection-hint muted">Shift + 拖拽框选，Ctrl + 点击追加</span>
-          <button class="btn ghost sm" @click="batchRetry">重新生成</button>
-          <button class="btn ghost sm" @click="batchCancel">取消</button>
-          <button class="btn danger sm" @click="batchRemove">删除</button>
+          <template v-if="selectedShots.length">
+            <button class="btn ghost sm" @click="batchRetry">重新生成</button>
+            <button class="btn ghost sm" @click="batchCancel">取消</button>
+            <button class="btn ghost sm" title="1–2 个逐个下载，3 个及以上打包为 ZIP" @click="batchDownloadVideos">下载视频</button>
+            <button class="btn danger sm" @click="batchRemove">删除镜头</button>
+          </template>
+          <template v-if="selectedImages.length">
+            <button class="btn ghost sm" @click="batchDownloadImages">下载图片</button>
+            <button class="btn danger sm" @click="batchRemoveImages">删除图片</button>
+          </template>
           <button class="icon-btn" title="清除选择" @click="clearSelection">×</button>
         </div>
 

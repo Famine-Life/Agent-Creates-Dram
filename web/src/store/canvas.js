@@ -51,6 +51,7 @@ export const state = reactive({
   selectedTaskId: null,
   selectedImageId: null,
   selectedNodeId: null,
+  selectionBoxActive: false,
   inspectorEdit: false,
   previewTask: null,
   keyword: '',
