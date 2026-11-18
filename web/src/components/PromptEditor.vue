@@ -7,6 +7,7 @@ const props = defineProps({
   prompt: { type: String, default: '' },
   images: { type: Array, default: () => [] },
   allImages: { type: Array, default: () => [] },
+  emptyImagesText: { type: String, default: '画布上还没有图片，先上传一张' },
   placeholder: { type: String, default: '描述画面内容、镜头运动、光线氛围…输入 @ 引用图片' },
   model: { type: String, default: '' },
   chips: { type: Array, default: () => [] },
@@ -282,7 +283,7 @@ const settingsSummary = computed(() => {
             <span v-if="linkedIds.has(image.id)" class="np-picker-tag">已引用</span>
           </button>
         </template>
-        <p v-else class="np-picker-empty">画布上还没有图片，先上传一张</p>
+        <p v-else class="np-picker-empty">{{ emptyImagesText }}</p>
       </div>
     </div>
 
