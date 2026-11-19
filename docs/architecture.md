@@ -379,7 +379,8 @@ web/src
     ├── ScriptNode.vue       # 脚本节点（AI 生成分镜）
     ├── TextNode.vue         # 文本节点
     ├── ImageGenNode.vue     # AI 图片节点
-    ├── ImageRefEdge.vue     # 紫色虚线引用边（可悬浮删除）
+    ├── ImageRefEdge.vue     # 紫色虚线引用边（可悬浮删除 / 点击选中）
+    ├── LinkEdge.vue         # 绿色连线（文本 / 脚本 → 下游节点，可点击选中）
     ├── Sidebar.vue          # 分组/镜头列表、搜索、折叠为图标栏
     ├── ShotInspector.vue    # 右侧检查器：只读详情、参数、重试、取消、删除；可收起
     ├── NewShotDialog.vue    # 新建提示词（@ 引用、粘贴/拖入上传）
@@ -449,9 +450,10 @@ web/src
 
 ### 5.8 画布多选与批量操作
 
-- **多选**：`Shift + 拖拽` 框选（Vue Flow `selectionKeyCode`），`Ctrl / ⌘ + 点击` 追加选择（`multiSelectionKeyCode`）；分组节点不可选。
+- **多选**：`Shift + 拖拽` 框选（Vue Flow `selectionKeyCode`），`Ctrl / ⌘ / Shift + 点击` 追加选择（`multiSelectionKeyCode`）；分组节点不可选。
 - **浮动工具条**：选中任意镜头后出现在画布底部，显示「已选 N 个镜头」，提供重新生成 / 取消 / 删除，`×` 清除选择。
 - **批量执行**：分别调用 `retryTasks` / `cancelTasks` / `removeTasks`，内部 `Promise.allSettled` 并发请求并汇总成功/失败数量；删除后同步清理引用边与详情面板选中态。
+- **连线多选删除**：点击连线选中（Vue Flow 内置 `selected`），`Ctrl / ⌘ / Shift + 点击` 追加或取消（`multiSelectionKeyCode` 包含 Shift，边组件同时按 `event.shiftKey` 兜底）；选中的连线高亮加粗并常显删除按钮。`Shift + 拖拽` 框选时，除框内节点外，还会把路径与选框相交的连线一并选中（`onSelectionEnd` 中按 viewport 换算选框坐标，对边路径采样判断相交）。选中连线时，工具条显示「N 条连线」与「删除连线」，`Backspace / Delete` 批量删除（引用边走 `removeEdge`，文本 / 脚本连线走 `removeLink`）。
 - **并发说明**：多选提交只是让多个镜头尽快进入队列；真正并行由调度器保证——每 800ms 最多提交 5 个 `QUEUED` 任务，任务之间互不阻塞（见 4.4）。
 
 ### 5.9 主题切换与画布缩放
@@ -465,7 +467,7 @@ web/src
 
 - **Ctrl / ⌘ + D**：对当前选中的节点直接复制。镜头复制提示词与参数，并复制其全部图片引用连线；图片复制提示词、状态与全部镜头连线；文本 / 脚本复制标题与内容。新节点偏移 `36px` 后自动选中，多选时逐个复制。
 - **Alt + 拖动**：拖拽开始时记录原节点坐标，落点处创建副本（镜头 / 图片 / 文本），副本保留提示词与参数但**不复制连线**；原节点回到起始位置。
-- **Backspace / Delete**：删除所有选中节点（分组节点除外），按类型分别调用 `removeTask` / `removeImage` / `removeCanvasNode`，镜头与图片的引用连线由后端级联清理。
+- **Backspace / Delete**：删除所有选中节点（分组节点除外），按类型分别调用 `removeTask` / `removeImage` / `removeCanvasNode`，镜头与图片的引用连线由后端级联清理；没有选中节点、只选中连线时，批量删除选中的连线。
 - **输入保护**：焦点在 `input` / `textarea` / `contenteditable` 时不触发快捷键；Vue Flow 自带 `deleteKeyCode` 已置为 `null`，删除统一走本逻辑。
 - **复制镜头注意**：后端幂等键包含 `shotIndex`，副本按分组取下一个序号，因此不会命中幂等返回原任务。
 

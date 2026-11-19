@@ -32,6 +32,8 @@ import {
   connectRealtime,
   disconnectRealtime,
   createEdge,
+  removeEdge,
+  removeLink,
   moveImage,
   saveOrder,
   uploadImageFile,
@@ -111,7 +113,7 @@ let snapshotPositions = {}
 let saveTimer = null
 let ready = false
 
-const { setViewport, getViewport, fitView, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, removeSelectedElements } =
+const { setViewport, getViewport, fitView, viewport, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, getSelectedEdges, userSelectionRect, applyEdgeChanges, onSelectionEnd: onSelectionEndHook, removeSelectedElements } =
   useVueFlow()
 
 const groups = computed(() => {
@@ -162,6 +164,50 @@ const selectedShots = computed(() =>
 const selectedImages = computed(() =>
   (getSelectedNodes.value || []).filter((node) => node.type === 'image' || node.type === 'imageGen')
 )
+// 连线多选：点击连线选中，Ctrl / Cmd + 点击追加，Backspace 批量删除
+const selectedEdges = computed(() => getSelectedEdges.value || [])
+
+// Shift + 拖拽框选：把与选框相交的连线一并选中（Vue Flow 默认只选中框内节点及其连线）
+let lastSelectionRect = null
+watch(userSelectionRect, (rect) => {
+  if (rect) lastSelectionRect = { ...rect }
+}, { flush: 'sync' })
+
+function edgesIntersectingRect(rect) {
+  const zoom = viewport.value.zoom || 1
+  const area = {
+    x: (rect.x - viewport.value.x) / zoom,
+    y: (rect.y - viewport.value.y) / zoom,
+    width: rect.width / zoom,
+    height: rect.height / zoom
+  }
+  const ids = []
+  for (const group of document.querySelectorAll('.vue-flow__edge')) {
+    const path = group.querySelector('path.vue-flow__edge-path')
+    if (!path) continue
+    const box = path.getBBox()
+    if (box.x > area.x + area.width || box.x + box.width < area.x || box.y > area.y + area.height || box.y + box.height < area.y) continue
+    const total = path.getTotalLength()
+    if (!total) continue
+    const steps = Math.max(6, Math.ceil(total / 6))
+    for (let i = 0; i <= steps; i += 1) {
+      const point = path.getPointAtLength((total * i) / steps)
+      if (point.x >= area.x && point.x <= area.x + area.width && point.y >= area.y && point.y <= area.y + area.height) {
+        if (group.dataset.id) ids.push(group.dataset.id)
+        break
+      }
+    }
+  }
+  return ids
+}
+
+onSelectionEndHook(() => {
+  const rect = lastSelectionRect
+  lastSelectionRect = null
+  if (!rect || !rect.width || !rect.height) return
+  const ids = edgesIntersectingRect(rect)
+  if (ids.length) applyEdgeChanges(ids.map((id) => ({ id, type: 'select', selected: true })))
+})
 
 async function batchRetry() {
   const ids = selectedShots.value.map((node) => Number(node.id.slice(5)))
@@ -320,6 +366,23 @@ async function batchRemoveImages() {
     }
   }
   if (removed) toast(`已删除 ${removed} 张图片`)
+}
+
+async function batchRemoveEdges() {
+  const list = selectedEdges.value
+  if (!list.length) return
+  let removed = 0
+  for (const edge of list) {
+    try {
+      if (edge.type === 'ref') await removeEdge(edge.data.edgeId)
+      else if (edge.type === 'link') removeLink(edge.data.linkId)
+      else continue
+      removed += 1
+    } catch (error) {
+      toast(`删除连线失败：${error.message}`)
+    }
+  }
+  if (removed) toast(`已删除 ${removed} 条连线`)
 }
 
 function clearSelection() {
@@ -587,7 +650,15 @@ async function deleteNodes(list) {
 function onKeydown(event) {
   if (isTypingTarget(event.target)) return
   const list = selectedActionNodes()
-  if (!list.length) return
+  if (!list.length) {
+    // 只选中连线时，Backspace / Delete 批量删除连线
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      if (!selectedEdges.value.length) return
+      event.preventDefault()
+      batchRemoveEdges()
+    }
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'd') {
     event.preventDefault()
     for (const node of list) {
@@ -1365,7 +1436,7 @@ onBeforeUnmount(() => {
           :delete-key-code="null"
           :selection-key-code="'Shift'"
           selection-mode="partial"
-          :multi-selection-key-code="['Control', 'Meta']"
+          :multi-selection-key-code="['Control', 'Meta', 'Shift']"
           @node-drag-start="onNodeDragStart"
           @node-drag="onNodeDrag"
           @node-drag-stop="onNodeDragStop"
@@ -1403,9 +1474,9 @@ onBeforeUnmount(() => {
           @close="contextMenu = null"
         />
 
-        <div v-if="selectedShots.length || selectedImages.length" class="selection-bar">
-          <span class="selection-count">已选 {{ selectedShots.length + selectedImages.length }} 项<span v-if="selectedShots.length"> · {{ selectedShots.length }} 个镜头</span><span v-if="selectedImages.length"> · {{ selectedImages.length }} 张图片</span></span>
-          <span class="selection-hint muted">Shift + 拖拽框选，Ctrl + 点击追加</span>
+        <div v-if="selectedShots.length || selectedImages.length || selectedEdges.length" class="selection-bar">
+          <span class="selection-count">已选 {{ selectedShots.length + selectedImages.length + selectedEdges.length }} 项<span v-if="selectedShots.length"> · {{ selectedShots.length }} 个镜头</span><span v-if="selectedImages.length"> · {{ selectedImages.length }} 张图片</span><span v-if="selectedEdges.length"> · {{ selectedEdges.length }} 条连线</span></span>
+          <span class="selection-hint muted">Shift + 拖拽框选节点与连线，Ctrl / Shift + 点击多选，Backspace 删除</span>
           <template v-if="selectedShots.length">
             <button class="btn ghost sm" @click="batchRetry">重新生成</button>
             <button class="btn ghost sm" @click="batchCancel">取消</button>
@@ -1415,6 +1486,9 @@ onBeforeUnmount(() => {
           <template v-if="selectedImages.length">
             <button class="btn ghost sm" @click="batchDownloadImages">下载图片</button>
             <button class="btn danger sm" @click="batchRemoveImages">删除图片</button>
+          </template>
+          <template v-if="selectedEdges.length">
+            <button class="btn danger sm" @click="batchRemoveEdges">删除连线</button>
           </template>
           <button class="icon-btn" title="清除选择" @click="clearSelection">×</button>
         </div>

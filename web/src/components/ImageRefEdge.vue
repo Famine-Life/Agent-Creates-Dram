@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@vue-flow/core'
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
 import { removeEdge, toast } from '../store/canvas'
 
 const props = defineProps({
@@ -12,6 +12,7 @@ const props = defineProps({
   sourcePosition: { type: String, required: true },
   targetPosition: { type: String, required: true },
   markerEnd: { type: String, default: '' },
+  selected: { type: Boolean, default: false },
   data: { type: Object, default: () => ({}) }
 })
 
@@ -19,6 +20,14 @@ const props = defineProps({
 defineOptions({ inheritAttrs: false })
 
 const hovered = ref(false)
+const { applyEdgeChanges } = useVueFlow()
+
+// Shift + 点击追加 / 取消连线选择，保留其他已选连线
+function onSelect(event) {
+  if (!event.shiftKey) return
+  event.stopPropagation()
+  applyEdgeChanges([{ id: props.id, type: 'select', selected: !props.selected }])
+}
 
 const path = computed(() =>
   getBezierPath({
@@ -30,6 +39,13 @@ const path = computed(() =>
     targetPosition: props.targetPosition
   })
 )
+
+const stroke = computed(() => {
+  if (props.selected) return '#D6CCFF'
+  return props.hovered ? '#9A8CFF' : '#7C6BFF'
+})
+
+const strokeWidth = computed(() => (props.selected ? 3 : props.hovered ? 2.4 : 1.8))
 
 async function remove() {
   try {
@@ -45,7 +61,7 @@ async function remove() {
     :id="id"
     :path="path[0]"
     :marker-end="markerEnd"
-    :style="{ stroke: hovered ? '#9A8CFF' : '#7C6BFF', strokeWidth: hovered ? 2.4 : 1.8, strokeDasharray: '6 5' }"
+    :style="{ stroke, strokeWidth, strokeDasharray: '6 5' }"
   />
   <path
     :d="path[0]"
@@ -53,12 +69,13 @@ async function remove() {
     stroke="transparent"
     stroke-width="18"
     style="cursor: pointer"
+    @click="onSelect"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   />
   <EdgeLabelRenderer>
     <button
-      v-if="hovered"
+      v-if="hovered || selected"
       class="edge-del"
       title="删除连线"
       :style="{ transform: `translate(-50%, -50%) translate(${path[1]}px, ${path[2]}px)` }"
