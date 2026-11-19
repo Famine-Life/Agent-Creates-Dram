@@ -351,6 +351,7 @@ node cli/aigc.mjs rm --id 12
 ```
 
 - 覆盖 `login / logout / canvas / assets / push / storyboard / upload / rm / rm-image`；
+- `storyboard` 批量创建镜头后自动排版并写入画布快照（`positions` + `baseVersion` 乐观锁，409 冲突重试一次）：同组镜头接在该组当前行末尾排列，**每行最多 N 个（`--columns`，默认 4，1-12），超出自动折行**并回到本组最左侧；新分组放在现有内容下方，参考图跟随所属镜头放在其下方并横向错开；已有坐标（含幂等命中的旧镜头）保持不变，排版保存失败不影响已创建的镜头。布局常量与前端 `App.vue` 一致（镜头 320×220、下方预留 230、列距 28、图片 148×166）。
 - 登录态（Cookie + 最新 CSRF Token + 服务地址）保存在 `~/.aigc-cli/session.json`；
 - 所有写操作自动先请求 `/api/auth/csrf` 再带 `X-XSRF-TOKEN`，登录后 Session 轮换会重新取 Token；
 - 鉴权口径与网页一致（Session），MCP Bearer Token 仍只对 `/sse`、`/mcp/message` 生效；

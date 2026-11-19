@@ -36,7 +36,8 @@ const HELP = `AIGC 画布工作台 CLI
                 --prompt <提示词> [--title <标题>] [--group <分组>] [--index <序号>]
                 [--images <图片ID,逗号分隔>] [--model <平台/模型，如 ark/doubao-seedance-2-0-260128>]
                 [--ratio 16:9] [--resolution 720P] [--duration 5]
-  storyboard  批量推送分镜         --file <shots.json> [--group <分组>]
+  storyboard  批量推送分镜         --file <shots.json> [--group <分组>] [--columns <每行镜头数，默认4>]
+                创建后自动排版（同组每行 N 个、超出折行）并保存画布快照
   generate    提交已有镜头生成/重新生成 --id <任务ID> [--json]
   retry       重新生成已有镜头       --id <任务ID> [--json]
   cancel      取消生成任务           --id <任务ID> [--json]
@@ -653,6 +654,156 @@ async function push(opts) {
   console.log(`已创建镜头 #${node.id}（${node.status}）：${node.title || ''}`)
 }
 
+// ---------------------------------------------------------------- 批量分镜自动排版
+
+// 与前端 App.vue 的布局常量保持一致：镜头卡 320×220，下方为编辑器与参考图预留 230
+const LAYOUT = {
+  shotW: 320, shotH: 220, colGap: 28, rowGap: 230,
+  padX: 72, padY: 96, groupGap: 56,
+  imgW: 148, imgH: 166, imgGap: 16
+}
+
+function layoutPos(value) {
+  if (!value || value.x == null || value.y == null) return null
+  const x = Number(value.x)
+  const y = Number(value.y)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+}
+
+function layoutOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+function layoutFreeSpot(placed, rect, stepX, ignoreTaskId = null) {
+  const candidate = { ...rect }
+  for (let guard = 0; guard < 200; guard += 1) {
+    const hit = placed.some((item) =>
+      (ignoreTaskId == null || item.taskId !== ignoreTaskId) && layoutOverlap(candidate, item))
+    if (!hit) return candidate
+    candidate.x += stepX
+  }
+  return candidate
+}
+
+/** 批量创建镜头后计算新节点坐标并写入画布快照，避免节点堆叠；冲突时重试一次 */
+async function arrangeStoryboardLayout(workspaceId, created, columns = 4) {
+  const shotBlockH = LAYOUT.shotH + LAYOUT.rowGap
+  const perRow = Math.max(1, columns)
+  let assigned = 0
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const data = await api('GET', `/api/canvas/${workspaceId}`)
+    const snapshot = data.snapshot && typeof data.snapshot === 'object' ? { ...data.snapshot } : {}
+    const positions = { ...(snapshot.positions || {}) }
+    const createdIds = new Set(created.map((node) => Number(node.id)))
+    const placed = []
+    assigned = 0
+
+    // 已有节点按已保存的坐标占位，新节点绕开它们
+    for (const task of data.tasks || []) {
+      if (createdIds.has(Number(task.id))) continue
+      const p = layoutPos(positions[`shot-${task.id}`])
+      if (p) placed.push({ ...p, w: LAYOUT.shotW, h: shotBlockH, taskId: Number(task.id), groupId: task.groupId || 'default' })
+    }
+    for (const image of data.images || []) {
+      const p = layoutPos(positions[`image-${image.id}`]) || layoutPos(image)
+      if (p) placed.push({ ...p, w: image.width || LAYOUT.imgW, h: image.height || LAYOUT.imgH })
+    }
+    for (const node of data.nodes || []) {
+      const p = layoutPos(positions[`node-${node.id}`]) || layoutPos(node)
+      if (p) placed.push({ ...p, w: node.width || 260, h: node.height || 180 })
+    }
+
+    const contentBottom = () => placed.reduce((max, item) => Math.max(max, item.y + item.h), 0)
+    const groupRects = (groupId) => placed.filter((item) => item.taskId != null && (item.groupId || 'default') === groupId)
+
+    // 镜头：同组接在最右侧镜头之后，每行最多 perRow 个，超出后折行；新组放到现有内容下方
+    const groupRows = new Map()
+    for (const node of created) {
+      const groupId = node.groupId || 'default'
+      const key = `shot-${node.id}`
+      const existing = layoutPos(positions[key])
+      if (existing) {
+        // 幂等命中的旧镜头保持原坐标，只参与占位
+        placed.push({ ...existing, w: LAYOUT.shotW, h: shotBlockH, taskId: Number(node.id), groupId })
+        continue
+      }
+      let row = groupRows.get(groupId)
+      if (!row) {
+        const rects = groupRects(groupId)
+        if (rects.length) {
+          // 接在该组当前行末尾；若当前行已满则直接折行
+          const rightmost = rects.reduce((a, b) => (a.x + a.w >= b.x + b.w ? a : b))
+          row = {
+            baseX: Math.min(...rects.map((item) => item.x)),
+            y: rightmost.y,
+            nextX: rightmost.x + rightmost.w + LAYOUT.colGap,
+            count: rects.filter((item) => item.y === rightmost.y).length,
+            bottom: Math.max(...rects.map((item) => item.y + item.h))
+          }
+        } else {
+          const startY = placed.length ? contentBottom() + LAYOUT.groupGap : LAYOUT.padY
+          row = { baseX: LAYOUT.padX, y: startY, nextX: LAYOUT.padX, count: 0, bottom: startY }
+        }
+        groupRows.set(groupId, row)
+      }
+
+      if (row.count >= perRow) {
+        // 折行：回到本组最左侧，在组内容下方另起一行
+        row.y = row.bottom + 20
+        row.nextX = row.baseX
+        row.count = 0
+      }
+
+      const rect = layoutFreeSpot(placed, { x: row.nextX, y: row.y, w: LAYOUT.shotW, h: shotBlockH }, LAYOUT.shotW + LAYOUT.colGap)
+      positions[key] = { x: Math.round(rect.x), y: Math.round(rect.y) }
+      placed.push({ ...rect, taskId: Number(node.id), groupId })
+      row.nextX = rect.x + LAYOUT.shotW + LAYOUT.colGap
+      row.count += 1
+      row.bottom = Math.max(row.bottom, rect.y + shotBlockH)
+      assigned += 1
+    }
+
+    // 参考图：跟随所属镜头的实际坐标，放在镜头下方并横向错开
+    for (const node of created) {
+      const shotPos = layoutPos(positions[`shot-${node.id}`])
+      if (!shotPos) continue
+      const linked = (data.edges || []).filter((edge) => Number(edge.taskId) === Number(node.id))
+      let index = 0
+      for (const edge of linked) {
+        const image = (data.images || []).find((item) => Number(item.id) === Number(edge.imageId))
+        if (!image) continue
+        const key = `image-${image.id}`
+        if (layoutPos(positions[key]) || layoutPos(image)) continue
+        const rect = layoutFreeSpot(placed, {
+          x: shotPos.x + index * (LAYOUT.imgW + LAYOUT.imgGap),
+          y: shotPos.y + LAYOUT.shotH + 20,
+          w: image.width || LAYOUT.imgW,
+          h: image.height || LAYOUT.imgH
+        }, LAYOUT.imgW + LAYOUT.imgGap, Number(node.id))
+        positions[key] = { x: Math.round(rect.x), y: Math.round(rect.y) }
+        placed.push({ ...rect })
+        assigned += 1
+        index += 1
+      }
+    }
+
+    if (!assigned) return { assigned, version: data.version }
+
+    snapshot.positions = positions
+    const token = await csrfToken()
+    const res = await request('PUT', `/api/canvas/${workspaceId}/snapshot`, {
+      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': token },
+      body: JSON.stringify({ snapshot, baseVersion: data.version })
+    })
+    if (res.status === 409 && attempt === 0) continue
+    if (res.status >= 400) return { assigned, error: `HTTP ${res.status}` }
+    const result = parseJson(res.text)
+    return { assigned, version: result ? result.version : undefined }
+  }
+  return { assigned, error: '快照版本冲突' }
+}
+
 async function storyboard(opts) {
   if (!opts.file) fail('请提供 --file shots.json')
   let shots
@@ -678,10 +829,28 @@ async function storyboard(opts) {
   }))
 
   const workspaceId = Number(opts.workspace || 1)
+  const columns = opts.columns != null ? Number(opts.columns) : 4
+  if (!Number.isInteger(columns) || columns < 1 || columns > 12) fail('--columns 必须是 1-12 的整数（每行镜头数）')
   const body = { groupId: opts.group ? String(opts.group) : undefined, shots: normalized }
   const list = await api('POST', `/api/canvas/${workspaceId}/storyboards`, { body })
+
+  // 批量创建后自动排版，避免新节点堆叠；排版失败不影响已创建的镜头
+  let layout = null
+  if (list.length) {
+    try {
+      layout = await arrangeStoryboardLayout(workspaceId, list, columns)
+    } catch (error) {
+      layout = { error: error.message }
+    }
+  }
+
   if (opts.json) return printJson(list)
   console.log(`已创建 ${list.length} 个镜头：${list.map((node) => `#${node.id}`).join(' ')}`)
+  if (layout?.error) {
+    console.log(`自动排版未能保存（${layout.error}）；节点已创建，打开画布时会按默认规则布局`)
+  } else if (layout?.assigned) {
+    console.log(`已完成自动排版：每行最多 ${columns} 个镜头、超出自动折行，新组放在现有内容下方，参考图跟随所属镜头（快照 v${layout.version ?? '?'}）`)
+  }
 }
 
 function mimeOf(name) {
