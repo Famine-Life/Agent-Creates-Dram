@@ -4,6 +4,8 @@ server:
   forward-headers-strategy: framework
   servlet:
     session:
+      # 登录态有效期：30 天无操作后过期（每次请求自动续期）
+      timeout: 30d
       cookie:
         name: AIGCSESSION
         http-only: true
