@@ -238,6 +238,23 @@ export async function fillImagePrompt(imageId, text) {
   return updated
 }
 
+/** 保存 AI 图片节点提示词，只保存不触发重新生成 */
+const promptSaveSeq = new Map()
+
+export async function saveImagePrompt(imageId, prompt) {
+  const image = state.images.find((item) => item.id === imageId)
+  if (!image) return
+  const text = prompt == null ? '' : String(prompt)
+  if ((image.prompt || '') === text) return
+  image.prompt = text
+  const seq = (promptSaveSeq.get(imageId) || 0) + 1
+  promptSaveSeq.set(imageId, seq)
+  const updated = await api.updateImage(state.workspaceId, imageId, { prompt: text })
+  // 只接受最后一次保存的结果，避免旧请求回填覆盖新输入
+  if (promptSaveSeq.get(imageId) === seq) upsert(state.images, updated)
+  return updated
+}
+
 /** 把文本追加到镜头提示词，只保存不触发重新生成（连线传值） */
 export async function fillShotPrompt(taskId, text) {
   const task = state.tasks.find((item) => item.id === taskId)

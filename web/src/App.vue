@@ -796,8 +796,23 @@ async function onConnect(connection) {
   if (!source || !target || source === target) return
 
   if (source.startsWith('image-')) {
+    if (target.startsWith('image-')) {
+      // 图片 → 图片节点：作为图生图参考连线保存到画布快照
+      const targetImage = state.images.find((item) => item.id === Number(target.slice(6)))
+      if (!targetImage || !(targetImage.prompt != null || targetImage.status)) {
+        toast('图片只能连到镜头或 AI 图片节点')
+        return
+      }
+      if (state.links.some((link) => link.source === source && link.target === target)) {
+        toast('这两个节点已经连线')
+        return
+      }
+      addLink(source, target)
+      toast('已连接为图生图参考')
+      return
+    }
     if (!target.startsWith('shot-')) {
-      toast('请从图片右侧圆点拖到镜头卡片')
+      toast('请从图片右侧圆点拖到镜头卡片或 AI 图片节点')
       return
     }
     const imageId = Number(source.slice(6))

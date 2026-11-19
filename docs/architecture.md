@@ -380,7 +380,7 @@ web/src
     ├── TextNode.vue         # 文本节点
     ├── ImageGenNode.vue     # AI 图片节点
     ├── ImageRefEdge.vue     # 紫色虚线引用边（可悬浮删除 / 点击选中）
-    ├── LinkEdge.vue         # 绿色连线（文本 / 脚本 → 下游节点，可点击选中）
+    ├── LinkEdge.vue         # 绿色连线（文本 / 脚本 / 图片 → 下游节点，可点击选中）
     ├── Sidebar.vue          # 分组/镜头列表、搜索、折叠为图标栏
     ├── ShotInspector.vue    # 右侧检查器：只读详情、参数、重试、取消、删除；可收起
     ├── NewShotDialog.vue    # 新建提示词（@ 引用、粘贴/拖入上传）
@@ -426,12 +426,13 @@ web/src
 ### 5.5 节点内交互（v0.2）
 
 - **视频区**：默认 `controls` 隐藏，悬停出现中央播放按钮；点击视频只内联播放，不再弹窗；右上角 `⤢` 才打开 `PreviewDialog`。
-- **提示词编辑器**：位于镜头节点下方，宽 320、整体 `aspect-ratio: 16/9`；工具栏（上传 / 画布参考 / @图片）+ 文本域 + 底部（模型 select、参数汇总按钮、`✦` 优化、发送）。
+- **提示词编辑器**：位于镜头节点下方，宽 320、整体 `aspect-ratio: 16/9`；工具栏（上传 / 画布参考 / @图片）+ 文本域 + 底部（模型 select、参数汇总按钮、`✦` 优化、发送）。`@图片N` 按整体处理：光标紧邻时按 `Backspace / Delete` 整段删除，`Backspace` 会连同引用后的空格一起删掉。`@` 弹出图片列表后支持键盘操作：`↑ / ↓` 切换高亮、`Enter` 选中、`Esc` 关闭，当前高亮项带 `is-active` 样式。
 - **模型下拉**：镜头节点选择视频模型；脚本节点选择文本模型（`/nodes/{id}/script` 的 `model`）；AI 图片节点选择图片模型（`/images/{id}/generate` 的 `model`）。未选择时使用 `aigc.ai.script-model` / `aigc.ai.image-model`，服务端按 `text-models` / `image-models` 白名单校验。
 - **参数面板**：点击汇总按钮展开，比例网格、清晰度按钮组、时长滑块；滑块与面板容器带 `nodrag`，避免被 Vue Flow 节点拖拽抢事件。
 - **时长滑块**：拖动时只改本地值，`change` 时调用 `updateShotSettings` 保存，避免接口回填造成“拖不动”。
 - **全屏编辑**：`Teleport` 到 body，1040×82vh，`Esc` / 遮罩 / `⤡` 关闭。
 - **提示词优化**：`AiService.optimizePrompt` 返回文本，浮层支持复制、重新生成、填充输入框；填充不自动提交。
+- **图生图参考**：把图片节点右侧源锚点连到 AI 图片节点，连线以 `links` 存入画布快照；图片节点标题显示「参考图 N」，提交生成时取第一张有地址的连线图片作为 `/images/{id}/generate` 的 `referenceUrl`，由后端走 Ark 图生图接口。图片节点提示词里的 `@` 候选同样只列出已连线的图片。
 
 ### 5.6 重连
 

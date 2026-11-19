@@ -1,7 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { state, removeImage, generateAiImage, toast } from '../store/canvas'
+import { state, removeImage, generateAiImage, saveImagePrompt, toast } from '../store/canvas'
 import PromptEditor from './PromptEditor.vue'
 import ImageToolsDialog from './ImageToolsDialog.vue'
 
@@ -25,6 +25,28 @@ const editorVisible = computed(
   () => props.selected || state.selectedImageId === image.value.id
 )
 
+// 提示词只保存在输入框里会丢，输入时防抖保存到服务端，关闭编辑框时立即保存
+let promptTimer = null
+
+function flushPrompt() {
+  if (!promptTimer) return
+  clearTimeout(promptTimer)
+  promptTimer = null
+  saveImagePrompt(image.value.id, draftPrompt.value).catch((err) => toast(`提示词保存失败：${err.message}`))
+}
+
+function onPromptChange(text) {
+  draftPrompt.value = text
+  clearTimeout(promptTimer)
+  promptTimer = setTimeout(flushPrompt, 600)
+}
+
+watch(editorVisible, (visible) => {
+  if (!visible) flushPrompt()
+})
+
+onBeforeUnmount(flushPrompt)
+
 const RATIO_OPTIONS = ['智能', '1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9']
 const RESOLUTION_OPTIONS = ['1K', '1.5K', '2K']
 const COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -33,6 +55,14 @@ const settings = computed(
   () => state.imageSettings[image.value.id] || { ratio: '16:9', resolution: '1K', count: 1 }
 )
 const activeModel = computed(() => settings.value.model || state.meta.defaults?.image || '')
+
+/** 与当前图片节点相连的图片，生成时作为图生图参考（取第一张有地址的） */
+const linkedImages = computed(() =>
+  state.links
+    .filter((link) => link.target === `image-${image.value.id}` && link.source.startsWith('image-'))
+    .map((link) => state.images.find((item) => `image-${item.id}` === link.source))
+    .filter(Boolean)
+)
 
 function setSetting(key, value) {
   state.imageSettings = {
@@ -57,7 +87,8 @@ function select() {
 async function onGenerate(text) {
   saving.value = true
   try {
-    await generateAiImage(image.value.id, text, activeModel.value, undefined, settings.value)
+    const referenceUrl = linkedImages.value.find((item) => item.url)?.url
+    await generateAiImage(image.value.id, text, activeModel.value, referenceUrl, settings.value)
     toast(`已提交图片生成 · ${settings.value.count} 张`)
   } catch (e) {
     toast(`生成失败：${e.message}`)
@@ -105,6 +136,11 @@ async function onDelete(e) {
       <header class="node-head">
         <span class="node-kind">图片</span>
         <span class="node-title">{{ image.name }}</span>
+        <span
+          v-if="linkedImages.length"
+          class="pill tone-idle"
+          :title="`图生图参考：${linkedImages.map((item) => item.name).join('、')}`"
+        >参考图 {{ linkedImages.length }}</span>
         <span v-if="queued" class="pill tone-idle">等待本地资源</span>
         <span v-else-if="running" class="pill tone-busy">生成中</span>
         <span v-else-if="failed" class="pill tone-error">失败</span>
@@ -152,9 +188,10 @@ async function onDelete(e) {
 
     <PromptEditor
       v-if="editorVisible"
-      :prompt="image.prompt"
-      :images="[]"
-      :all-images="state.images"
+      :prompt="draftPrompt"
+      :images="linkedImages"
+      :all-images="linkedImages"
+      empty-images-text="暂无已连线图片，请先将图片连接到当前图片节点"
       :model="activeModel"
       :model-value="activeModel"
       :model-options="modelOptions"
@@ -168,9 +205,9 @@ async function onDelete(e) {
       :busy="saving || running || queued"
       :show-refs="false"
       submit-label="生成图片"
-      placeholder="描述你想要的画面，例如：雨夜霓虹街头，电影感，浅景深…"
+      placeholder="描述你想要的画面，例如：雨夜霓虹街头，电影感，浅景深…输入 @ 引用已连线图片"
       @update:model-value="setSetting('model', $event)"
-      @update:prompt="draftPrompt = $event"
+      @update:prompt="onPromptChange"
       @update:ratio="setSetting('ratio', $event)"
       @update:resolution="setSetting('resolution', $event)"
       @update:count="setSetting('count', $event)"

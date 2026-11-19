@@ -2428,8 +2428,13 @@ h2 {
   text-align: left;
 }
 
-.np-picker-item:hover {
+.np-picker-item:hover,
+.np-picker-item.is-active {
   background: var(--line-strong);
+}
+
+.np-picker-item.is-active {
+  box-shadow: inset 0 0 0 1px var(--brand);
 }
 
 .np-picker-item img,

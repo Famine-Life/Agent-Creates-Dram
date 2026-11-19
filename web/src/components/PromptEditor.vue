@@ -45,6 +45,8 @@ const draft = ref(props.prompt || '')
 const focused = ref(false)
 const pickerOpen = ref(false)
 const pickerAnchor = ref(0)
+const activePickerIndex = ref(0)
+const pickerRef = ref(null)
 const fullscreen = ref(false)
 const settingsOpen = ref(false)
 const optimizing = ref(false)
@@ -74,7 +76,12 @@ function indexOfLinked(image) {
 
 function openPicker(at) {
   pickerAnchor.value = at == null ? draft.value.length : at
+  activePickerIndex.value = 0
   pickerOpen.value = true
+}
+
+function scrollPickerToActive() {
+  nextTick(() => pickerRef.value?.querySelector('.np-picker-item.is-active')?.scrollIntoView({ block: 'nearest' }))
 }
 
 function onInput(event) {
@@ -85,6 +92,54 @@ function onInput(event) {
     openPicker(caret - 1)
   } else {
     pickerOpen.value = false
+  }
+}
+
+function onPickerKeydown(event) {
+  if (!pickerOpen.value || event.defaultPrevented) return
+  const list = availableImages.value
+  if (list.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault()
+    const step = event.key === 'ArrowDown' ? 1 : -1
+    activePickerIndex.value = (activePickerIndex.value + step + list.length) % list.length
+    scrollPickerToActive()
+    return
+  }
+  if (list.length && event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault()
+    pick(list[Math.min(activePickerIndex.value, list.length - 1)])
+  }
+}
+
+function onEscape() {
+  if (pickerOpen.value) {
+    pickerOpen.value = false
+    return
+  }
+  fullscreen.value = false
+}
+
+function onKeydown(event) {
+  if (event.isComposing || (event.key !== 'Backspace' && event.key !== 'Delete')) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  const element = textarea.value
+  if (!element || element.selectionStart !== element.selectionEnd) return
+  const caret = element.selectionStart
+  // 把 @图片N 当成整体：光标紧邻时整段删除，而不是只删一个字符
+  for (const match of draft.value.matchAll(/@图片\d+/g)) {
+    const start = match.index
+    const end = start + match[0].length
+    // 连同引用后紧跟的空格一起删除，避免按两次才删干净
+    const withSpace = event.key === 'Backspace' && caret === end + 1 && draft.value[end] === ' '
+    const hit = event.key === 'Backspace'
+      ? (caret > start && caret <= end) || withSpace
+      : caret >= start && caret < end
+    if (!hit) continue
+    event.preventDefault()
+    const removeEnd = withSpace ? end + 1 : end
+    draft.value = draft.value.slice(0, start) + draft.value.slice(removeEnd)
+    nextTick(() => element.setSelectionRange(start, start))
+    return
   }
 }
 
@@ -231,7 +286,8 @@ const settingsSummary = computed(() => {
       :class="{ 'is-fullscreen': fullscreen }"
       @pointerdown.stop
       @wheel.stop
-      @keydown.esc.stop="fullscreen = false"
+      @keydown="onPickerKeydown"
+      @keydown.esc.stop="onEscape"
     >
       <button class="np-full" :title="fullscreen ? '退出全屏' : '全屏编辑'" @click="toggleFullscreen">
         {{ fullscreen ? '⤡' : '⤢' }}
@@ -266,15 +322,18 @@ const settingsSummary = computed(() => {
         @focus="focused = true"
         @blur="onBlur"
         @input="onInput"
+        @keydown="onKeydown"
         @keydown.ctrl.enter.prevent="submit"
         @keydown.meta.enter.prevent="submit"
       />
-      <div v-if="pickerOpen" class="np-picker nopan nowheel">
+      <div v-if="pickerOpen" ref="pickerRef" class="np-picker nopan nowheel">
         <template v-if="availableImages.length">
           <button
-            v-for="image in availableImages"
+            v-for="(image, index) in availableImages"
             :key="image.id"
             class="np-picker-item"
+            :class="{ 'is-active': index === activePickerIndex }"
+            @mouseenter="activePickerIndex = index"
             @mousedown.prevent="pick(image)"
           >
             <img v-if="image.url" :src="image.url" :alt="image.name" />
