@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { api } from '../api'
+import { clearHistory, missingHistoryTarget, recordHistory, withoutHistory } from './history'
 
 /** 默认工作空间 ID，与后端初始化脚本写入的 workspace.id=1 对应 */
 const DEFAULT_WORKSPACE_ID = 1
@@ -113,6 +114,7 @@ export function applyCanvas(canvas) {
 }
 
 export async function loadAll() {
+  clearHistory()
   const [meta, canvas] = await Promise.all([api.meta(), api.canvas(state.workspaceId)])
   state.meta = meta
   applyCanvas(canvas)
@@ -206,6 +208,13 @@ function pruneLinks(nodeId) {
   state.links = state.links.filter((link) => link.source !== nodeId && link.target !== nodeId)
 }
 
+function flowNodeExists(id) {
+  if (id.startsWith('shot-')) return state.tasks.some((task) => task.id === Number(id.slice(5)))
+  if (id.startsWith('image-')) return state.images.some((image) => image.id === Number(id.slice(6)))
+  if (id.startsWith('node-')) return state.canvasNodes.some((node) => node.id === Number(id.slice(5)))
+  return false
+}
+
 /** 建立文本 / 脚本节点到下游节点的连线；重复连线直接返回已有记录 */
 export function addLink(source, target) {
   const existing = state.links.find((link) => link.source === source && link.target === target)
@@ -213,11 +222,33 @@ export function addLink(source, target) {
   linkSeq += 1
   const link = { id: `link-${Date.now()}-${linkSeq}`, source, target }
   state.links.push(link)
+  recordHistory({
+    workspaceId: state.workspaceId,
+    label: '新增连线',
+    undo: async () => {
+      if (!state.links.some((item) => item.id === link.id)) throw missingHistoryTarget('连线已不存在')
+      removeLink(link.id)
+    }
+  })
   return link
 }
 
 export function removeLink(linkId) {
-  state.links = state.links.filter((link) => link.id !== linkId)
+  const link = state.links.find((item) => item.id === linkId)
+  state.links = state.links.filter((item) => item.id !== linkId)
+  if (link) {
+    recordHistory({
+      workspaceId: state.workspaceId,
+      label: '删除连线',
+      undo: async () => {
+        if (!flowNodeExists(link.source) || !flowNodeExists(link.target)) {
+          throw missingHistoryTarget('连线两端的节点已不存在')
+        }
+        if (state.links.some((item) => item.id === link.id)) return
+        state.links.push({ ...link })
+      }
+    })
+  }
 }
 
 /** 把文本追加到脚本节点的提示词（连线传值） */
@@ -233,9 +264,7 @@ export async function fillImagePrompt(imageId, text) {
   const image = state.images.find((item) => item.id === imageId)
   if (!image || !text) return
   const prompt = image.prompt ? `${image.prompt}\n\n${text}` : text
-  const updated = await api.updateImage(state.workspaceId, imageId, { prompt })
-  upsert(state.images, updated)
-  return updated
+  return saveImagePrompt(imageId, prompt)
 }
 
 /** 保存 AI 图片节点提示词，只保存不触发重新生成 */
@@ -244,12 +273,25 @@ const promptSaveSeq = new Map()
 export async function saveImagePrompt(imageId, prompt) {
   const image = state.images.find((item) => item.id === imageId)
   if (!image) return
+  const workspaceId = state.workspaceId
+  const before = image.prompt || ''
   const text = prompt == null ? '' : String(prompt)
-  if ((image.prompt || '') === text) return
+  if (before === text) return
   image.prompt = text
   const seq = (promptSaveSeq.get(imageId) || 0) + 1
   promptSaveSeq.set(imageId, seq)
-  const updated = await api.updateImage(state.workspaceId, imageId, { prompt: text })
+  const updated = await api.updateImage(workspaceId, imageId, { prompt: text })
+  recordHistory({
+    workspaceId,
+    label: '编辑图片提示词',
+    mergeKey: `image:${imageId}:prompt`,
+    after: text,
+    undo: async () => {
+      if (!state.images.some((item) => item.id === imageId)) throw missingHistoryTarget('图片节点已不存在')
+      const restored = await api.updateImage(workspaceId, imageId, { prompt: before })
+      upsert(state.images, restored)
+    }
+  })
   // 只接受最后一次保存的结果，避免旧请求回填覆盖新输入
   if (promptSaveSeq.get(imageId) === seq) upsert(state.images, updated)
   return updated
@@ -260,16 +302,7 @@ export async function fillShotPrompt(taskId, text) {
   const task = state.tasks.find((item) => item.id === taskId)
   if (!task || !text) return
   const prompt = task.prompt ? `${task.prompt}\n\n${text}` : text
-  const node = await api.savePrompt(taskId, {
-    prompt,
-    regenerate: false,
-    model: task.modelKey || task.model || task.provider,
-    ratio: task.ratio || '16:9',
-    duration: task.duration || 5,
-    resolution: task.resolution || '720P'
-  })
-  upsert(state.tasks, node)
-  return node
+  return savePrompt(taskId, prompt, { regenerate: false })
 }
 
 // ------------------------------------------------------------------ WebSocket
@@ -344,29 +377,73 @@ function openSocket() {
 // ------------------------------------------------------------------ 业务动作
 
 export async function createShot(payload) {
-  const node = await api.createShot(state.workspaceId, payload)
+  const workspaceId = state.workspaceId
+  const node = await api.createShot(workspaceId, payload)
   upsert(state.tasks, node)
   state.selectedTaskId = node.id
+  recordHistory({
+    workspaceId,
+    label: '新建镜头',
+    undo: async () => {
+      if (!state.tasks.some((task) => task.id === node.id)) throw missingHistoryTarget('镜头已不存在')
+      await removeTask(node.id)
+    }
+  })
   toast('已创建镜头，正在排队生成')
   return node
 }
 
 export async function createStoryboard(payload) {
-  const list = await api.createStoryboard(state.workspaceId, payload)
+  const workspaceId = state.workspaceId
+  const list = await api.createStoryboard(workspaceId, payload)
   list.forEach((node) => upsert(state.tasks, node))
   if (list.length) {
     state.selectedTaskId = list[0].id
     state.selectedImageId = null
     state.selectedNodeId = null
+    recordHistory({
+      workspaceId,
+      label: '新建分镜',
+      composite: true,
+      undo: async () => {
+        for (const node of [...list].reverse()) {
+          if (!state.tasks.some((task) => task.id === node.id)) throw missingHistoryTarget('镜头已不存在')
+          await removeTask(node.id)
+        }
+      }
+    })
   }
   toast(`已添加 ${list.length} 个镜头到画布`)
   return list
 }
 
 export async function savePrompt(taskId, prompt, options = {}) {
+  const task = state.tasks.find((item) => item.id === taskId)
+  if (!task) throw new Error('镜头已不存在')
+  const workspaceId = state.workspaceId
+  const before = task.prompt || ''
   const node = await api.savePrompt(taskId, { prompt, regenerate: true, ...options })
   upsert(state.tasks, node)
-  toast('提示词已保存，重新开始生成')
+  recordHistory({
+    workspaceId,
+    label: '编辑镜头提示词',
+    after: node.prompt || '',
+    undo: async () => {
+      const current = state.tasks.find((item) => item.id === taskId)
+      if (!current) throw missingHistoryTarget('镜头已不存在')
+      const restored = await api.savePrompt(taskId, {
+        prompt: before,
+        regenerate: false,
+        model: current.modelKey || current.model || current.provider,
+        ratio: current.ratio || '16:9',
+        duration: current.duration || 5,
+        resolution: current.resolution || '720P'
+      })
+      upsert(state.tasks, restored)
+    }
+  })
+  if (options.regenerate !== false) toast('提示词已保存，重新开始生成')
+  return node
 }
 
 /** 只保存模型 / 比例 / 时长，不触发重新生成 */
@@ -450,7 +527,8 @@ export async function removeTasks(taskIds) {
 }
 
 export async function uploadImageFile(file, x, y) {
-  const result = await api.upload(state.workspaceId, file, x, y)
+  const workspaceId = state.workspaceId
+  const result = await api.upload(workspaceId, file, x, y)
   upsert(state.images, {
     id: result.id,
     name: result.name,
@@ -460,6 +538,14 @@ export async function uploadImageFile(file, x, y) {
     width: 148,
     height: 166,
     source: 'UPLOAD'
+  })
+  recordHistory({
+    workspaceId,
+    label: '上传图片',
+    undo: async () => {
+      if (!state.images.some((image) => image.id === result.id)) throw missingHistoryTarget('图片节点已不存在')
+      await removeImage(result.id)
+    }
   })
   return result
 }
@@ -476,7 +562,7 @@ export async function replaceImageFromAsset(imageId, asset) {
 }
 
 export async function replaceImageFromFile(imageId, file) {
-  const uploaded = await uploadImageFile(file)
+  const uploaded = await withoutHistory(() => uploadImageFile(file))
   try {
     const updated = await replaceImageFromAsset(imageId, uploaded)
     await api.removeImage(state.workspaceId, uploaded.id)
@@ -489,14 +575,41 @@ export async function replaceImageFromFile(imageId, file) {
 }
 
 export async function createEdge(taskId, imageId) {
-  const edge = await api.createEdge(state.workspaceId, { taskId, imageId })
+  const workspaceId = state.workspaceId
+  const existing = state.edges.find((edge) => edge.taskId === taskId && edge.imageId === imageId)
+  const edge = await api.createEdge(workspaceId, { taskId, imageId })
   upsert(state.edges, edge)
+  if (!existing) {
+    recordHistory({
+      workspaceId,
+      label: '新增参考图连线',
+      undo: async () => {
+        if (!state.edges.some((item) => item.id === edge.id)) throw missingHistoryTarget('连线已不存在')
+        await removeEdge(edge.id)
+      }
+    })
+  }
   return edge
 }
 
 export async function removeEdge(edgeId) {
-  await api.removeEdge(state.workspaceId, edgeId)
-  state.edges = state.edges.filter((e) => e.id !== edgeId)
+  const workspaceId = state.workspaceId
+  const before = state.edges.find((edge) => edge.id === edgeId)
+  await api.removeEdge(workspaceId, edgeId)
+  state.edges = state.edges.filter((edge) => edge.id !== edgeId)
+  if (before) {
+    recordHistory({
+      workspaceId,
+      label: '删除参考图连线',
+      undo: async () => {
+        if (!state.tasks.some((task) => task.id === before.taskId) ||
+            !state.images.some((image) => image.id === before.imageId)) {
+          throw missingHistoryTarget('连线两端的节点已不存在')
+        }
+        await createEdge(before.taskId, before.imageId)
+      }
+    })
+  }
 }
 
 export async function removeImage(imageId) {
@@ -519,14 +632,39 @@ export async function saveOrder(items) {
 // ------------------------------------------------------------------ 画布节点 / AI 生成
 
 export async function createCanvasNode(payload) {
-  const node = await api.createCanvasNode(state.workspaceId, payload)
+  const workspaceId = state.workspaceId
+  const node = await api.createCanvasNode(workspaceId, payload)
   upsert(state.canvasNodes, node)
+  recordHistory({
+    workspaceId,
+    label: '新建文本节点',
+    undo: async () => {
+      if (!state.canvasNodes.some((item) => item.id === node.id)) throw missingHistoryTarget('文本节点已不存在')
+      await removeCanvasNode(node.id)
+    }
+  })
   return node
 }
 
 export async function updateCanvasNode(nodeId, payload) {
-  const node = await api.updateCanvasNode(state.workspaceId, nodeId, payload)
+  const current = state.canvasNodes.find((item) => item.id === nodeId)
+  const workspaceId = state.workspaceId
+  const fields = ['prompt', 'content'].filter((key) => Object.prototype.hasOwnProperty.call(payload, key))
+  const before = {}
+  for (const key of fields) before[key] = current?.[key] || ''
+  const node = await api.updateCanvasNode(workspaceId, nodeId, payload)
   upsert(state.canvasNodes, node)
+  if (fields.length && fields.some((key) => before[key] !== (node[key] || ''))) {
+    recordHistory({
+      workspaceId,
+      label: '编辑文本',
+      undo: async () => {
+        if (!state.canvasNodes.some((item) => item.id === nodeId)) throw missingHistoryTarget('文本节点已不存在')
+        const restored = await api.updateCanvasNode(workspaceId, nodeId, before)
+        upsert(state.canvasNodes, restored)
+      }
+    })
+  }
   return node
 }
 
@@ -544,15 +682,33 @@ export async function generateScript(nodeId, prompt, model) {
 }
 
 export async function createAiImageNode(payload) {
-  const image = await api.createAiImage(state.workspaceId, payload)
+  const workspaceId = state.workspaceId
+  const image = await api.createAiImage(workspaceId, payload)
   upsert(state.images, image)
+  recordHistory({
+    workspaceId,
+    label: '新建图片节点',
+    undo: async () => {
+      if (!state.images.some((item) => item.id === image.id)) throw missingHistoryTarget('图片节点已不存在')
+      await removeImage(image.id)
+    }
+  })
   return image
 }
 
 /** 直接创建图片节点（复制已有图片时使用） */
 export async function createImageNode(payload) {
-  const image = await api.createImage(state.workspaceId, payload)
+  const workspaceId = state.workspaceId
+  const image = await api.createImage(workspaceId, payload)
   upsert(state.images, image)
+  recordHistory({
+    workspaceId,
+    label: '新建图片节点',
+    undo: async () => {
+      if (!state.images.some((item) => item.id === image.id)) throw missingHistoryTarget('图片节点已不存在')
+      await removeImage(image.id)
+    }
+  })
   return image
 }
 

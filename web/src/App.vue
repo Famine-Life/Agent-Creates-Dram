@@ -55,6 +55,7 @@ import {
   toast
 } from './store/canvas'
 import { api } from './api'
+import { historyBusy, historyTransaction, missingHistoryTarget, recordHistory, undoLatest, withoutHistory } from './store/history'
 import { theme, toggleTheme } from './theme'
 
 const emit = defineEmits(['logout'])
@@ -372,16 +373,18 @@ async function batchRemoveEdges() {
   const list = selectedEdges.value
   if (!list.length) return
   let removed = 0
-  for (const edge of list) {
-    try {
-      if (edge.type === 'ref') await removeEdge(edge.data.edgeId)
-      else if (edge.type === 'link') removeLink(edge.data.linkId)
-      else continue
-      removed += 1
-    } catch (error) {
-      toast(`删除连线失败：${error.message}`)
+  await historyTransaction('批量删除连线', async () => {
+    for (const edge of list) {
+      try {
+        if (edge.type === 'ref') await removeEdge(edge.data.edgeId)
+        else if (edge.type === 'link') removeLink(edge.data.linkId)
+        else continue
+        removed += 1
+      } catch (error) {
+        toast(`删除连线失败：${error.message}`)
+      }
     }
-  }
+  })
   if (removed) toast(`已删除 ${removed} 条连线`)
 }
 
@@ -542,15 +545,95 @@ function onNodeDrag({ node }) {
 // Alt + 拖动：复制节点但不带连线，原节点留在原位
 const COPY_OFFSET = 36
 let altDrag = null
+let dragStartState = null
+
+function captureMoveState(list) {
+  const positions = {}
+  for (const node of list) {
+    if (node && node.type !== 'group') positions[node.id] = { x: node.position.x, y: node.position.y }
+  }
+  return {
+    positions,
+    order: state.tasks.map((task) => ({
+      taskId: task.id,
+      groupId: task.groupId || '默认分组',
+      shotIndex: task.shotIndex
+    }))
+  }
+}
+
+function moveStateChanged(before) {
+  if (Object.entries(before.positions).some(([id, position]) => {
+    const node = nodes.value.find((item) => item.id === id)
+    return node && (Math.abs(node.position.x - position.x) > 0.5 || Math.abs(node.position.y - position.y) > 0.5)
+  })) return true
+  return before.order.some((item) => {
+    const task = state.tasks.find((entry) => entry.id === item.taskId)
+    return task && ((task.groupId || '默认分组') !== item.groupId || task.shotIndex !== item.shotIndex)
+  })
+}
+
+async function restoreMoveState(before) {
+  const entries = Object.entries(before.positions)
+  for (const [id] of entries) {
+    if (!nodes.value.some((node) => node.id === id)) throw missingHistoryTarget('被移动的节点已不存在')
+  }
+  const hasShot = entries.some(([id]) => id.startsWith('shot-'))
+  if (hasShot && before.order.some((item) => !state.tasks.some((task) => task.id === item.taskId))) {
+    throw missingHistoryTarget('镜头结构已变化，无法恢复移动')
+  }
+  for (const [id, position] of entries) {
+    explicit.set(id, { ...position })
+    const node = nodes.value.find((item) => item.id === id)
+    if (node) node.position = { ...position }
+  }
+  const previousOrder = new Map(before.order.map((item) => [item.taskId, item]))
+  const orderChanged = hasShot && before.order.some((item) => {
+    const task = state.tasks.find((entry) => entry.id === item.taskId)
+    return (task.groupId || '默认分组') !== item.groupId || task.shotIndex !== item.shotIndex
+  })
+  if (orderChanged) {
+    const order = state.tasks.map((task) => previousOrder.get(task.id) || {
+      taskId: task.id,
+      groupId: task.groupId || '默认分组',
+      shotIndex: task.shotIndex
+    })
+    if (order.length) await saveOrder(order)
+  }
+  for (const [id, position] of entries) {
+    if (id.startsWith('image-')) await moveImage(Number(id.slice(6)), position.x, position.y)
+    else if (id.startsWith('node-')) await updateCanvasNode(Number(id.slice(5)), { x: position.x, y: position.y })
+  }
+  syncGraph()
+  scheduleSave()
+}
+
+function recordDragStop() {
+  const before = dragStartState
+  dragStartState = null
+  if (!before || !moveStateChanged(before)) return
+  recordHistory({
+    workspaceId: state.workspaceId,
+    label: '移动节点',
+    composite: true,
+    undo: () => restoreMoveState(before)
+  })
+}
 
 function onNodeDragStart({ node, event }) {
   altDrag =
     event?.altKey && node && node.type !== 'group'
       ? { id: node.id, position: { x: node.position.x, y: node.position.y } }
       : null
+  if (altDrag || !node) {
+    dragStartState = null
+    return
+  }
+  const selected = selectedActionNodes()
+  dragStartState = captureMoveState(selected.some((item) => item.id === node.id) ? selected : [node])
 }
 
-async function duplicateNode(node, { x, y, withEdges = true }) {
+async function duplicateNodeUnchecked(node, { x, y, withEdges = true }) {
   if (node.type === 'shot') {
     const task = state.tasks.find((item) => item.id === Number(node.id.slice(5)))
     if (!task) return
@@ -619,6 +702,10 @@ async function duplicateNode(node, { x, y, withEdges = true }) {
   }
 }
 
+function duplicateNode(node, options) {
+  return withoutHistory(() => duplicateNodeUnchecked(node, options))
+}
+
 function selectOnlyNode(nodeId) {
   nodes.value.forEach((node) => {
     node.selected = node.id === nodeId
@@ -647,8 +734,38 @@ async function deleteNodes(list) {
   }
 }
 
+async function undoCanvasAction() {
+  if (historyBusy.value) return
+  try {
+    const undone = await undoLatest(state.workspaceId)
+    if (!undone) return
+    syncGraph()
+    scheduleSave()
+    toast('已撤销上一步操作')
+  } catch (error) {
+    if (error.historyMissing) {
+      toast(`已跳过：${error.message}`)
+    } else if (error.historyPartial) {
+      try {
+        await loadAll()
+        syncGraph()
+      } catch (e) {
+        /* 保留刷新失败提示 */
+      }
+      toast('撤销未完全执行，已刷新画布')
+    } else {
+      toast(`撤销失败：${error.message}`)
+    }
+  }
+}
+
 function onKeydown(event) {
   if (isTypingTarget(event.target)) return
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    undoCanvasAction()
+    return
+  }
   const list = selectedActionNodes()
   if (!list.length) {
     // 只选中连线时，Backspace / Delete 批量删除连线
@@ -749,6 +866,7 @@ async function onNodeDragStop({ node }) {
     }
   }
   scheduleSave()
+  recordDragStop()
 }
 
 async function applyLinkValue(action, label) {
@@ -759,6 +877,15 @@ async function applyLinkValue(action, label) {
     toast(`${label}失败：${e.message}`)
     return false
   }
+}
+
+async function connectWithPrompt(source, target, action, label, successMessage) {
+  await historyTransaction('连线并写入提示词', async () => {
+    const filled = await applyLinkValue(action, label)
+    if (!filled) return
+    addLink(source, target)
+    toast(successMessage)
+  })
 }
 
 function openShotPicker(source, target) {
@@ -782,13 +909,13 @@ async function applyPickedShot(shot) {
   const picker = linkPicker.value
   linkPicker.value = null
   if (!picker) return
-  const filled = await applyLinkValue(
+  await connectWithPrompt(
+    picker.source,
+    picker.target,
     () => fillShotPrompt(Number(picker.target.slice(5)), shot.prompt),
-    '写入镜头提示词'
+    '写入镜头提示词',
+    '分镜已写入镜头提示词'
   )
-  if (!filled) return
-  addLink(picker.source, picker.target)
-  toast('分镜已写入镜头提示词')
 }
 
 async function onConnect(connection) {
@@ -862,11 +989,13 @@ async function onConnect(connection) {
       toast('文本只能连到脚本、AI 图片或镜头节点')
       return
     }
-    const filled = await applyLinkValue(() => fillScriptPrompt(targetNode.id, text), '写入脚本提示词')
-    if (filled) {
-      addLink(source, target)
-      toast('文本已作为脚本输入')
-    }
+    await connectWithPrompt(
+      source,
+      target,
+      () => fillScriptPrompt(targetNode.id, text),
+      '写入脚本提示词',
+      '文本已作为脚本输入'
+    )
     return
   }
 
@@ -876,26 +1005,24 @@ async function onConnect(connection) {
       toast('文本只能连到 AI 图片节点')
       return
     }
-    const filled = await applyLinkValue(
+    await connectWithPrompt(
+      source,
+      target,
       () => fillImagePrompt(Number(target.slice(6)), text),
-      '写入图片提示词'
+      '写入图片提示词',
+      '文本已写入图片提示词'
     )
-    if (filled) {
-      addLink(source, target)
-      toast('文本已写入图片提示词')
-    }
     return
   }
 
   if (target.startsWith('shot-')) {
-    const filled = await applyLinkValue(
+    await connectWithPrompt(
+      source,
+      target,
       () => fillShotPrompt(Number(target.slice(5)), text),
-      '写入镜头提示词'
+      '写入镜头提示词',
+      '文本已写入镜头提示词'
     )
-    if (filled) {
-      addLink(source, target)
-      toast('文本已写入镜头提示词')
-    }
     return
   }
 
