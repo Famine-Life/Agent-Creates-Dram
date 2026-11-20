@@ -564,14 +564,80 @@ function nodeBox(node) {
   }
 }
 
-/** 一键排列：按连线把节点分成若干组，组内按文本 → 脚本 → 图片 → 视频分行，行内超宽自动换行 */
+/**
+ * 一键排列：按连线把节点分成若干组，组内按文本 → 脚本 → 图片 → 视频分行，行内超宽自动换行。
+ * 若存在 3 对及以上「1 张图片只连 1 个镜头、且该镜头只连这张图片」的简单参考图组合，
+ * 先把这些组合按每行 5 组排列（图片在左、镜头在右并垂直居中，使右侧图片锚点与左侧镜头锚点水平对齐），
+ * 再排其余复杂连线块和孤立节点。
+ */
 function arrangedPositions() {
   const positions = new Map()
   const graphNodes = nodes.value.filter((node) => node.type !== 'group')
   const known = new Set(graphNodes.map((node) => node.id))
+  const nodeById = new Map(graphNodes.map((node) => [node.id, node]))
+
+  const neighbors = new Map(graphNodes.map((node) => [node.id, new Set()]))
+  for (const edge of edges.value) {
+    if (!known.has(edge.source) || !known.has(edge.target)) continue
+    neighbors.get(edge.source).add(edge.target)
+    neighbors.get(edge.target).add(edge.source)
+  }
+
+  // 识别简单的「图片 ↔ 镜头」一对一参考图组合
+  const pairs = []
+  const pairedIds = new Set()
+  for (const node of graphNodes) {
+    if (node.type !== 'image' && node.type !== 'imageGen') continue
+    const linked = neighbors.get(node.id)
+    if (linked.size !== 1) continue
+    const shotId = [...linked][0]
+    const shot = nodeById.get(shotId)
+    if (shot?.type !== 'shot' || neighbors.get(shotId).size !== 1) continue
+    pairs.push({ image: node, shot })
+    pairedIds.add(node.id)
+    pairedIds.add(shotId)
+  }
+
+  const clusterBounds = new Map()
+  let y = PAD_Y
+  const pairLayout = pairs.length >= 3
+
+  if (pairLayout) {
+    pairs.sort((a, b) => {
+      const left = a.shot.data?.task
+      const right = b.shot.data?.task
+      return (
+        String(left?.groupId || '').localeCompare(String(right?.groupId || '')) ||
+        (left?.shotIndex ?? 0) - (right?.shotIndex ?? 0) ||
+        String(a.shot.id).localeCompare(String(b.shot.id))
+      )
+    })
+    const pairGapX = COL_GAP
+    const pairGapY = COL_GAP * 2
+    // 使用节点实际尺寸，避免上传图片或镜头卡片比默认尺寸宽时互相重叠
+    const pairBoxes = pairs.map((pair) => ({ pair, image: nodeBox(pair.image), shot: nodeBox(pair.shot) }))
+    const maxImageWidth = Math.max(...pairBoxes.map((item) => item.image.width))
+    const maxShotWidth = Math.max(...pairBoxes.map((item) => item.shot.width))
+    const unitWidth = maxImageWidth + pairGapX + maxShotWidth
+    const unitHeight = Math.max(...pairBoxes.map((item) => Math.max(item.image.height, item.shot.height)))
+    pairBoxes.forEach(({ pair, image, shot }, index) => {
+      const column = index % 5
+      if (index > 0 && column === 0) y += unitHeight + pairGapY
+      const x = PAD_X + column * (unitWidth + COL_GAP)
+      // 图片右缘对齐、镜头左缘对齐且整体垂直居中，连线水平等长
+      positions.set(pair.image.id, { x: x + maxImageWidth - image.width, y: y + (unitHeight - image.height) / 2 })
+      positions.set(pair.shot.id, { x: x + maxImageWidth + pairGapX, y: y + (unitHeight - shot.height) / 2 })
+      clusterBounds.set(pair.image.id, { left: x, top: y })
+      clusterBounds.set(pair.shot.id, { left: x, top: y })
+    })
+    y += unitHeight + 48
+  }
+
+  const remainingNodes = pairLayout ? graphNodes.filter((node) => !pairedIds.has(node.id)) : graphNodes
+  const remainingKnown = new Set(remainingNodes.map((node) => node.id))
 
   // 并查集：有连线的节点归为同一组
-  const roots = new Map(graphNodes.map((node) => [node.id, node.id]))
+  const roots = new Map(remainingNodes.map((node) => [node.id, node.id]))
   function rootOf(id) {
     let current = id
     while (roots.get(current) !== current) current = roots.get(current)
@@ -584,9 +650,9 @@ function arrangedPositions() {
   }
   const linked = new Set()
   for (const edge of edges.value) {
+    if (!remainingKnown.has(edge.source) || !remainingKnown.has(edge.target)) continue
     linked.add(edge.source)
     linked.add(edge.target)
-    if (!known.has(edge.source) || !known.has(edge.target)) continue
     const sourceRoot = rootOf(edge.source)
     const targetRoot = rootOf(edge.target)
     if (sourceRoot !== targetRoot) roots.set(sourceRoot, targetRoot)
@@ -594,7 +660,7 @@ function arrangedPositions() {
 
   const clusters = new Map()
   const isolated = []
-  for (const node of graphNodes) {
+  for (const node of remainingNodes) {
     if (!linked.has(node.id)) {
       isolated.push(node)
       continue
@@ -607,8 +673,6 @@ function arrangedPositions() {
   if (isolated.length) blocks.push(isolated)
 
   const maxRowRight = PAD_X + 4 * SHOT_W + 3 * COL_GAP
-  const clusterBounds = new Map()
-  let y = PAD_Y
 
   for (const members of blocks) {
     const rows = new Map()
@@ -1840,16 +1904,16 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <div class="brand">
         <span class="logo">◈</span>
-        <div>
+        <div class="brand-text">
           <strong>Agent造剧</strong>
           <span class="muted">{{ currentCanvasName }} · 提示词即镜头</span>
         </div>
       </div>
 
       <div class="topbar-center">
-        <span class="pill tone-info">供应商 {{ state.meta.providerLabel || state.meta.provider || 'mock' }}</span>
+        <span class="pill tone-info supplier-pill">供应商 {{ state.meta.providerLabel || state.meta.provider || 'mock' }}</span>
         <span class="conn" :class="state.connection">
-          <i />{{ connectionText }}
+          <i /><span class="conn-text">{{ connectionText }}</span>
         </span>
       </div>
 
