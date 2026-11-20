@@ -103,6 +103,24 @@ npm run dev
 
 后端 MCP 使用 SSE 传输，默认端点为 `/sse` 和 `/mcp/message`。请求需要通过 `Authorization: Bearer <MCP_API_TOKEN>` 认证。开发环境默认 Token 为 `12345678`，仅供本地使用；部署到可访问的网络前，请设置自己的随机 Token。
 
+当前提供 32 个工具，覆盖画布管理、模型与素材查询、分镜推送与自动排版、生成/重试/取消、参考图上传与连线、AI 图片生成、文本与脚本节点。与 CLI 相比，MCP 不需要登录，也不支持读取客户端本地文件路径；本地图片可改用 `upload_image` 的 base64 内容或可访问的图片 URL。
+
+客户端配置示例：
+
+```json
+{
+  "mcpServers": {
+    "aigc-canvas": {
+      "type": "sse",
+      "url": "http://localhost:8080/sse",
+      "headers": { "Authorization": "Bearer <MCP_API_TOKEN>" }
+    }
+  }
+}
+```
+
+完整工具列表、参数和推荐工作流见应用内「系统使用说明 → MCP 接入」页面。
+
 ## 作者
 
 [Wonder（`wonder`）](https://github.com/Famine-Life)

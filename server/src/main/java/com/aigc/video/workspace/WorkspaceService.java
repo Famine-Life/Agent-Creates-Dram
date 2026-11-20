@@ -1,5 +1,6 @@
 package com.aigc.video.workspace;
 
+import com.aigc.video.api.dto.WorkspaceView;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.NotFoundException;
 import com.aigc.video.domain.Canvas;
@@ -32,6 +33,8 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** 整个画布的聚合操作。 */
 @Service
@@ -50,6 +53,46 @@ public class WorkspaceService {
     private final TaskImageRefMapper refMapper;
     private final CanvasSocketRegistry socketRegistry;
     private final ObjectMapper objectMapper;
+
+    /** 画布列表：按 ID 升序，附带各自 canvas 的版本与更新时间 */
+    public List<WorkspaceView> list() {
+        List<Workspace> workspaces = workspaceMapper.selectList(
+                Wrappers.<Workspace>lambdaQuery().orderByAsc(Workspace::getId));
+        // 显式 select 字段，避免把 snapshot 大字段一起查出来
+        Map<Long, Canvas> canvases = canvasMapper.selectList(
+                        Wrappers.<Canvas>lambdaQuery()
+                                .select(Canvas::getId, Canvas::getWorkspaceId, Canvas::getVersion, Canvas::getUpdatedAt))
+                .stream()
+                .collect(Collectors.toMap(Canvas::getWorkspaceId, Function.identity(), (a, b) -> a));
+        return workspaces.stream()
+                .map(workspace -> toView(workspace, canvases.get(workspace.getId())))
+                .toList();
+    }
+
+    /** 新建空白画布：同时创建 workspace 与 canvas，名称按序号自动生成 */
+    @Transactional
+    public WorkspaceView createWorkspace() {
+        long count = workspaceMapper.selectCount(null);
+        Workspace workspace = new Workspace();
+        workspace.setName("画布 " + (count + 1));
+        workspace.setCreatedAt(LocalDateTime.now());
+        workspaceMapper.insert(workspace);
+
+        Canvas canvas = new Canvas();
+        canvas.setWorkspaceId(workspace.getId());
+        canvas.setVersion(0);
+        canvas.setUpdatedAt(LocalDateTime.now());
+        canvasMapper.insert(canvas);
+        return toView(workspace, canvas);
+    }
+
+    /** 按 ID 组装画布视图 */
+    public WorkspaceView viewOf(Long workspaceId) {
+        Workspace workspace = requireWorkspace(workspaceId);
+        Canvas canvas = canvasMapper.selectOne(Wrappers.<Canvas>lambdaQuery()
+                .eq(Canvas::getWorkspaceId, workspaceId));
+        return toView(workspace, canvas);
+    }
 
     /** 重命名画布 */
     @Transactional
@@ -267,6 +310,15 @@ public class WorkspaceService {
 
         socketRegistry.broadcast(workspaceId,
                 CanvasEvent.of("workspace.deleted", Map.of("workspaceId", workspaceId)));
+    }
+
+    private WorkspaceView toView(Workspace workspace, Canvas canvas) {
+        return new WorkspaceView(
+                workspace.getId(),
+                workspace.getName(),
+                canvas == null ? null : canvas.getId(),
+                canvas == null ? 0 : canvas.getVersion(),
+                canvas == null ? null : canvas.getUpdatedAt());
     }
 
     private Workspace requireWorkspace(Long workspaceId) {

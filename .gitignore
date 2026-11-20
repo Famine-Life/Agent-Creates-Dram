@@ -10,6 +10,9 @@ server/data/
 web/node_modules/
 web/dist/
 
+# 本地打包产物
+/release/
+
 # 本地私有配置（不提交 Git）
 /server/src/main/resources/application-local.yml
 

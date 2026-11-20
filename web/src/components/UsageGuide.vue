@@ -213,14 +213,19 @@ function copy(text) {
         <section id="guide-mcp">
           <h2>MCP 接入</h2>
           <p class="muted">
-            MCP 通过 SSE 长连接暴露工具，适合 WorkBuddy、Trae 等 AI 客户端直接推送分镜。服务端地址：
-            <code>{{ mcpEndpoint }}</code>
+            MCP 通过 SSE 长连接暴露工具，适合 WorkBuddy、Trae、Claude Desktop 等支持 MCP 的 AI 客户端。
+            当前共 <strong>32 个工具</strong>，覆盖画布管理、分镜推送、生成控制、参考图、图片生成、文本与脚本节点，
+            能力与 CLI 基本一致。服务端地址：<code>{{ mcpEndpoint }}</code>
+          </p>
+          <p class="muted">
+            选择建议：客户端支持 MCP 就直接接入，让 AI 自己读写画布；需要上传本地文件、批量跑脚本或在不支持 MCP 的环境中使用时选 CLI。
+            两者操作的是同一套画布数据，可混用。MCP 不需要 <code>login</code>，CLI 不使用 MCP Token。
           </p>
 
           <h3>1. 配置服务端 Token</h3>
           <p class="muted">
-            启动服务前设置环境变量 <code>MCP_API_TOKEN</code>（至少 32 位）。该 Token 只用于 MCP，不会下发到网页，
-            也不要提交到代码仓库。
+            启动服务前设置环境变量 <code>MCP_API_TOKEN</code>（建议至少 32 位随机字符串）。该 Token 只用于 MCP，
+            不会下发到网页，也不要提交到代码仓库。开发环境默认值 <code>12345678</code> 仅限本机使用。
           </p>
 
           <h3>2. 客户端配置</h3>
@@ -228,9 +233,96 @@ function copy(text) {
             <button class="btn ghost sm" @click="copy(mcpConfig)">复制</button>
             <pre>{{ mcpConfig }}</pre>
           </div>
-          <p class="muted">把占位符替换为实际 Token。若使用远程部署，把 URL 换成对外可访问的地址。</p>
+          <p class="muted">
+            把占位符替换为实际 Token。远程部署时把 URL 换成客户端可访问的地址（如 <code>https://aigc.example.com/sse</code>），
+            不要填网页路径或 <code>/api</code>。顶部「MCP 接入」按钮也可查看并复制当前地址与配置。
+          </p>
 
-          <h3>3. 可用工具</h3>
+          <h3>3. 推荐流程</h3>
+          <ol class="guide-steps">
+            <li>先 <code>list_workspaces</code> 确认 <code>workspaceId</code>，再用 <code>get_canvas_state</code> 读取现有镜头与生成状态。</li>
+            <li>用 <code>list_models</code> 查看可用模型，把返回的 <code>value</code>（形如 <code>ark/doubao-seedance-2-0-260128</code>）原样传给生成类工具。</li>
+            <li>写镜头：单个用 <code>push_shot</code>（默认立即排队生成）；整组用 <code>push_storyboard</code>，会自动排版但只创建草稿。</li>
+            <li>草稿用 <code>retry_shot</code> 或带 <code>regenerate=true</code> 的 <code>update_shot_prompt</code> 提交生成；改参数也走 <code>update_shot_prompt</code>。</li>
+            <li>参考图：先 <code>upload_image</code> / <code>create_image_node</code> 得到图片 ID，再用 <code>link_image</code> 连接到镜头并写入 <code>@图片N</code> 说明。</li>
+            <li>生成是异步的：每隔 5–10 秒调用 <code>get_canvas_state</code>，直到状态为 <code>SUCCEEDED</code>、<code>FAILED</code>、<code>TIMEOUT</code> 或 <code>CANCELED</code>；失败看错误信息，必要时 <code>retry_shot</code> 或 <code>cancel_shot</code>。</li>
+            <li>AI 图片：<code>create_ai_image_node</code> 建节点 → <code>set_image_model</code> 选模型 → <code>generate_image</code> 提交；图生图时传 <code>referenceUrl</code>。</li>
+            <li>文本与脚本：<code>create_canvas_node</code> 建节点，<code>generate_script</code> 生成分镜脚本，<code>optimize_prompt</code> 润色提示词。</li>
+          </ol>
+
+          <h3>4. 工具一览</h3>
+          <p class="muted">带 * 的参数必填；<code>workspaceId</code> 省略时默认使用画布 1。所有工具返回 JSON。</p>
+
+          <h4 class="guide-subtitle">画布与查询</h4>
+          <table class="guide-table">
+            <thead>
+              <tr><th>工具</th><th>参数</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>get_canvas_state</code></td>
+                <td>workspaceId</td>
+                <td>读取全部镜头、图片、节点、连线与生成状态</td>
+              </tr>
+              <tr>
+                <td><code>list_workspaces</code></td>
+                <td>—</td>
+                <td>画布列表及快照版本</td>
+              </tr>
+              <tr>
+                <td><code>create_workspace</code></td>
+                <td>—</td>
+                <td>新建空白画布，名称自动编号</td>
+              </tr>
+              <tr>
+                <td><code>rename_workspace</code></td>
+                <td>workspaceId*、name*</td>
+                <td>重命名画布</td>
+              </tr>
+              <tr>
+                <td><code>copy_workspace</code></td>
+                <td>workspaceId*</td>
+                <td>复制画布及其全部内容</td>
+              </tr>
+              <tr>
+                <td><code>delete_workspace</code></td>
+                <td>workspaceId*</td>
+                <td>删除画布（危险操作，需用户确认；至少保留一个画布）</td>
+              </tr>
+              <tr>
+                <td><code>list_models</code></td>
+                <td>type（video | image | text）</td>
+                <td>可用模型、默认项与展示名</td>
+              </tr>
+              <tr>
+                <td><code>list_assets</code></td>
+                <td>type（video | ai | upload）、workspaceId</td>
+                <td>查询已生成视频、AI 图片、上传图片</td>
+              </tr>
+              <tr>
+                <td><code>list_prompt_records</code></td>
+                <td>workspaceId</td>
+                <td>最近 200 条提示词修改历史</td>
+              </tr>
+              <tr>
+                <td><code>optimize_prompt</code></td>
+                <td>prompt*、model</td>
+                <td>用文本模型润色/扩写提示词，不改画布</td>
+              </tr>
+              <tr>
+                <td><code>save_canvas_snapshot</code></td>
+                <td>workspaceId*、snapshotJson*、baseVersion</td>
+                <td>保存节点坐标等前端快照，baseVersion 用于乐观锁</td>
+              </tr>
+              <tr>
+                <td><code>save_shot_order</code></td>
+                <td>workspaceId*、itemsJson*</td>
+                <td>保存镜头分组与镜号（拖拽排序结果）</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4 class="guide-subtitle">镜头</h4>
           <table class="guide-table">
             <thead>
               <tr><th>工具</th><th>参数</th><th>说明</th></tr>
@@ -238,22 +330,133 @@ function copy(text) {
             <tbody>
               <tr>
                 <td><code>push_shot</code></td>
-                <td>prompt*、title、groupId、shotIndex、imageUrls、imageIds</td>
-                <td>推送单个镜头，可带参考图</td>
+                <td>prompt*、title、groupId、shotIndex、imageUrls、imageIds、model、ratio、duration、resolution、draft、workspaceId</td>
+                <td>创建单个镜头；<code>draft=true</code> 只建草稿不生成</td>
               </tr>
               <tr>
                 <td><code>push_storyboard</code></td>
-                <td>shotsJson*、groupId</td>
-                <td>批量推送分镜（JSON 数组字符串）</td>
+                <td>shotsJson*、groupId、columns、workspaceId</td>
+                <td>批量创建分镜并自动排版（每行默认 4 个），只创建草稿</td>
               </tr>
               <tr>
-                <td><code>get_canvas_state</code></td>
-                <td>workspaceId</td>
-                <td>读取画布节点与生成状态，便于 AI 续写</td>
+                <td><code>update_shot_prompt</code></td>
+                <td>taskId*、prompt*、model、ratio、duration、resolution、regenerate</td>
+                <td>改提示词与参数；<code>regenerate=true</code>（默认）立即重新生成</td>
+              </tr>
+              <tr>
+                <td><code>retry_shot</code></td>
+                <td>taskId*</td>
+                <td>用当前提示词重新提交生成</td>
+              </tr>
+              <tr>
+                <td><code>cancel_shot</code></td>
+                <td>taskId*</td>
+                <td>取消排队中或生成中的任务</td>
+              </tr>
+              <tr>
+                <td><code>set_video_model</code></td>
+                <td>taskId*、model*</td>
+                <td>只切换模型并保存，不触发生成</td>
+              </tr>
+              <tr>
+                <td><code>delete_shot</code></td>
+                <td>taskId*</td>
+                <td>删除镜头及参考图连线（危险操作，需用户确认）</td>
               </tr>
             </tbody>
           </table>
-          <p class="muted">顶部「MCP 接入」按钮也可以查看并复制当前服务地址与配置。</p>
+
+          <h4 class="guide-subtitle">图片</h4>
+          <table class="guide-table">
+            <thead>
+              <tr><th>工具</th><th>参数</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>upload_image</code></td>
+                <td>url 或 base64Data、fileName、x、y、workspaceId</td>
+                <td>上传参考图并创建节点；URL 由服务端下载转存，不支持本地文件路径</td>
+              </tr>
+              <tr>
+                <td><code>create_image_node</code></td>
+                <td>url*、name、prompt、x、y、workspaceId</td>
+                <td>只保存外部图片地址，不下载文件</td>
+              </tr>
+              <tr>
+                <td><code>create_ai_image_node</code></td>
+                <td>prompt、x、y、workspaceId</td>
+                <td>创建 AI 图片占位节点</td>
+              </tr>
+              <tr>
+                <td><code>generate_image</code></td>
+                <td>imageId*、prompt、model、referenceUrl、ratio、resolution、count、workspaceId</td>
+                <td>提交 AI 图片生成，异步完成；传 referenceUrl 做图生图</td>
+              </tr>
+              <tr>
+                <td><code>update_image_node</code></td>
+                <td>imageId*、name、url、prompt、x、y、width、height、workspaceId</td>
+                <td>修改图片节点</td>
+              </tr>
+              <tr>
+                <td><code>set_image_model</code></td>
+                <td>imageId*、model*、workspaceId</td>
+                <td>只保存图片模型，不提交生成</td>
+              </tr>
+              <tr>
+                <td><code>link_image</code></td>
+                <td>taskId*、imageId*、description、workspaceId</td>
+                <td>连接图片到镜头并写入 <code>@图片N：说明</code>，不提交生成</td>
+              </tr>
+              <tr>
+                <td><code>unlink_image</code></td>
+                <td>edgeId*、workspaceId</td>
+                <td>删除图片与镜头的连线</td>
+              </tr>
+              <tr>
+                <td><code>delete_image_node</code></td>
+                <td>imageId*、workspaceId</td>
+                <td>删除图片节点及连线（危险操作，需用户确认）</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4 class="guide-subtitle">文本与脚本</h4>
+          <table class="guide-table">
+            <thead>
+              <tr><th>工具</th><th>参数</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>create_canvas_node</code></td>
+                <td>type*（text | script）、title、prompt、content、x、y、width、height、workspaceId</td>
+                <td>创建文本或脚本节点</td>
+              </tr>
+              <tr>
+                <td><code>update_canvas_node</code></td>
+                <td>nodeId*、title、prompt、content、x、y、width、height、workspaceId</td>
+                <td>修改节点内容与坐标</td>
+              </tr>
+              <tr>
+                <td><code>delete_canvas_node</code></td>
+                <td>nodeId*、workspaceId</td>
+                <td>删除节点（危险操作，需用户确认）</td>
+              </tr>
+              <tr>
+                <td><code>generate_script</code></td>
+                <td>nodeId*、prompt、model、workspaceId</td>
+                <td>生成分镜脚本，异步写入节点 content</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>5. 使用约定</h3>
+          <ul class="guide-steps">
+            <li>模型参数必须来自 <code>list_models</code> 的返回项，不要凭记忆拼写。</li>
+            <li>提交生成后必须轮询 <code>get_canvas_state</code> 确认终态，不能只凭创建成功就认为生成完成。</li>
+            <li>删除画布、镜头、图片、节点属于危险操作，必须先用 <code>get_canvas_state</code> 核对 ID 与类型，并得到用户明确同意。</li>
+            <li>汇报结果时只给任务 ID、标题、状态和失败原因，不要粘贴完整画布快照或 Token。</li>
+            <li>与 CLI 的差异：MCP 不提供 <code>login</code> / <code>logout</code>，也没有「上传本地文件路径」；需要本地文件时改用 <code>upload_image</code> 的 base64 内容，或先由外部生成可访问 URL。</li>
+          </ul>
         </section>
 
         <section id="guide-cli">
@@ -490,6 +693,11 @@ function copy(text) {
 .guide-content h3 {
   font-size: 16px;
   margin: 22px 0 10px;
+}
+
+.guide-subtitle {
+  font-size: 14px;
+  margin: 18px 0 6px;
 }
 
 .guide-content p {
