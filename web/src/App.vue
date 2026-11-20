@@ -1,6 +1,6 @@
 <script setup>
-import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { VueFlow, useNodesInitialized, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -95,6 +95,13 @@ const canvasWrap = ref(null)
 const dragging = ref(false)
 const contextMenu = ref(null)
 const linkPicker = ref(null)
+const batchLink = ref(null)
+const batchLinkBusy = ref(false)
+const batchTargetInput = ref(null)
+watch(() => state.workspaceId, () => {
+  batchLink.value = null
+  linkPicker.value = null
+})
 let lastCanvasPointer = null
 const newShotPosition = ref(null)
 const pendingUpload = ref(null)
@@ -112,10 +119,13 @@ watch(inspectorHidden, (value) => {
 const explicit = new Map()
 let snapshotPositions = {}
 let saveTimer = null
+let snapshotSaving = null
 let ready = false
 
-const { setViewport, getViewport, fitView, viewport, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, getSelectedEdges, userSelectionRect, applyEdgeChanges, onSelectionEnd: onSelectionEndHook, removeSelectedElements } =
+const { setViewport, getViewport, fitView, viewport, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, getSelectedEdges, userSelectionRect, applyEdgeChanges, onSelectionEnd: onSelectionEndHook, removeSelectedElements, findNode } =
   useVueFlow()
+const nodesInitialized = useNodesInitialized()
+const canArrange = computed(() => nodesInitialized.value && !state.loading && !deletingCanvas.value && !historyBusy.value)
 
 const groups = computed(() => {
   const map = new Map()
@@ -158,15 +168,133 @@ const patternColor = computed(() => (theme.value === 'light' ? '#dfe4ee' : '#242
 // 正从图片锚点拖出连线时给镜头卡片加高亮，提示整张卡片都可落点
 const linking = computed(() => connectionStartHandle.value?.nodeId?.startsWith('image-'))
 
+const selectedNodes = computed(() => getSelectedNodes.value.filter((node) => node.type !== 'group'))
 // 画布多选：镜头与图片分别显示对应的批量操作
-const selectedShots = computed(() =>
-  (getSelectedNodes.value || []).filter((node) => node.type === 'shot')
-)
-const selectedImages = computed(() =>
-  (getSelectedNodes.value || []).filter((node) => node.type === 'image' || node.type === 'imageGen')
-)
+const selectedShots = computed(() => selectedNodes.value.filter((node) => node.type === 'shot'))
+const selectedImages = computed(() => selectedNodes.value.filter((node) => node.type === 'image' || node.type === 'imageGen'))
 // 连线多选：点击连线选中，Ctrl / Cmd + 点击追加，Backspace 批量删除
 const selectedEdges = computed(() => getSelectedEdges.value || [])
+
+// 多选框右侧的批量连线按钮：把所选节点的包围盒换算到画布屏幕坐标，跟随缩放和拖拽
+const batchLinkAnchor = computed(() => {
+  if (selectedNodes.value.length < 2) return null
+  const zoom = viewport.value.zoom || 1
+  const offsetX = viewport.value.x || 0
+  const offsetY = viewport.value.y || 0
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
+  for (const node of selectedNodes.value) {
+    const position = node.computedPosition || node.position
+    if (!position) continue
+    const width = node.dimensions?.width ?? node.width ?? 0
+    const height = node.dimensions?.height ?? node.height ?? 0
+    const nodeLeft = position.x * zoom + offsetX
+    const nodeTop = position.y * zoom + offsetY
+    left = Math.min(left, nodeLeft)
+    top = Math.min(top, nodeTop)
+    right = Math.max(right, nodeLeft + width * zoom)
+    bottom = Math.max(bottom, nodeTop + height * zoom)
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return null
+  return { left: right + 12, top: top + (bottom - top) / 2 }
+})
+
+// 多选框右侧的 ＋ 手柄：按住拖到目标节点即可批量连线，单击回落到弹窗选择
+const batchLinkDrag = ref(null)
+let batchLinkHoverEl = null
+let batchLinkDragSources = []
+
+function canvasPoint(event) {
+  const rect = canvasWrap.value?.getBoundingClientRect()
+  return { x: event.clientX - (rect?.left || 0), y: event.clientY - (rect?.top || 0) }
+}
+
+function findLinkTarget(clientX, clientY) {
+  const element = document.elementFromPoint(clientX, clientY)
+  const nodeEl = element?.closest?.('.vue-flow__node')
+  const id = nodeEl?.dataset.id
+  if (!id || batchLinkDragSources.includes(id)) return null
+  const node = findNode(id)
+  return node && linkPromptTargets[node.type] ? nodeEl : null
+}
+
+function startBatchLinkDrag(event) {
+  if (!batchLinkAnchor.value || batchLinkBusy.value || historyBusy.value) return
+  event.preventDefault()
+  batchLinkDragSources = selectedNodes.value.map((node) => node.id)
+  const anchor = batchLinkAnchor.value
+  batchLinkDrag.value = {
+    start: { x: anchor.left + 12, y: anchor.top },
+    point: canvasPoint(event),
+    origin: { x: event.clientX, y: event.clientY },
+    hoverId: null
+  }
+  window.addEventListener('pointermove', onBatchLinkDragMove)
+  window.addEventListener('pointerup', onBatchLinkDragEnd)
+  window.addEventListener('pointercancel', onBatchLinkDragEnd)
+}
+
+function onBatchLinkDragMove(event) {
+  const drag = batchLinkDrag.value
+  if (!drag) return
+  const targetEl = findLinkTarget(event.clientX, event.clientY)
+  if (targetEl !== batchLinkHoverEl) {
+    batchLinkHoverEl?.classList.remove('batch-link-target')
+    targetEl?.classList.add('batch-link-target')
+    batchLinkHoverEl = targetEl
+  }
+  batchLinkDrag.value = {
+    ...drag,
+    point: canvasPoint(event),
+    hoverId: targetEl?.dataset.id || null
+  }
+}
+
+async function onBatchLinkDragEnd(event) {
+  window.removeEventListener('pointermove', onBatchLinkDragMove)
+  window.removeEventListener('pointerup', onBatchLinkDragEnd)
+  window.removeEventListener('pointercancel', onBatchLinkDragEnd)
+  const canceled = event.type === 'pointercancel'
+  const drag = batchLinkDrag.value
+  const sources = batchLinkDragSources
+  batchLinkDrag.value = null
+  batchLinkDragSources = []
+  batchLinkHoverEl?.classList.remove('batch-link-target')
+  batchLinkHoverEl = null
+  if (!drag || canceled) return
+  // 原地单击：沿用弹窗选择目标
+  if (!drag.hoverId) {
+    if (Math.hypot(event.clientX - drag.origin.x, event.clientY - drag.origin.y) < 4) openBatchLink()
+    return
+  }
+  const target = findNode(drag.hoverId)
+  if (!target) return
+  const results = sources.map((id) => resolveLink(findNode(id), target))
+  const plans = results.filter((plan) => !plan.error)
+  if (!plans.length) {
+    const firstError = results.find((plan) => plan.error)
+    if (firstError) toast(firstError.error)
+    return
+  }
+  // 目标包含分镜选择时仍需弹窗确认写入哪一场
+  if (plans.some((plan) => plan.shots)) {
+    batchLink.value = { sources, target: target.id, shotChoices: {} }
+    await nextTick()
+    batchTargetInput.value?.focus()
+    return
+  }
+  await connectBatch(target.id, plans, sources)
+}
+
+const batchLinkPath = computed(() => {
+  const drag = batchLinkDrag.value
+  if (!drag) return ''
+  const { start, point } = drag
+  const curve = Math.max(40, Math.abs(point.x - start.x) / 2)
+  return `M ${start.x} ${start.y} C ${start.x + curve} ${start.y}, ${point.x - curve} ${point.y}, ${point.x} ${point.y}`
+})
 
 // Shift + 拖拽框选：把与选框相交的连线一并选中（Vue Flow 默认只选中框内节点及其连线）
 let lastSelectionRect = null
@@ -405,6 +533,82 @@ function computeLayout() {
   return { map, bottom: y - ROW_STEP + SHOT_H + 200 }
 }
 
+function arrangedPositions() {
+  const positions = new Map()
+  let x = PAD_X
+  let y = PAD_Y
+  let rowHeight = 0
+
+  function place(node) {
+    const { width, height } = node.dimensions
+    positions.set(node.id, { x, y })
+    x += Math.ceil(width) + COL_GAP
+    rowHeight = Math.max(rowHeight, Math.ceil(height))
+  }
+
+  function nextRow(gap) {
+    x = PAD_X
+    y += rowHeight + gap
+    rowHeight = 0
+  }
+
+  for (const group of groups.value) {
+    place(findNode(`group-${group.name}`))
+    nextRow(12)
+    const tasks = [...group.tasks].sort((a, b) =>
+      (a.shotIndex ?? Infinity) - (b.shotIndex ?? Infinity) || a.id - b.id
+    )
+    for (const task of tasks) place(findNode(`shot-${task.id}`))
+    nextRow(COL_GAP * 2)
+  }
+
+  const rowRight = PAD_X + 4 * SHOT_W + 3 * COL_GAP
+  for (const node of nodes.value) {
+    if (node.type === 'group' || node.type === 'shot') continue
+    const measured = findNode(node.id)
+    if (x > PAD_X && x + measured.dimensions.width > rowRight) nextRow(COL_GAP)
+    place(measured)
+  }
+  return positions
+}
+
+function applyPositions(positions) {
+  for (const node of nodes.value) {
+    const position = positions.get(node.id)
+    if (!position) continue
+    explicit.set(node.id, { ...position })
+    node.position = { ...position }
+  }
+}
+
+async function arrangeCanvas() {
+  if (!ready || !canArrange.value) return
+  const workspaceId = state.workspaceId
+  const previousViewport = getViewport()
+  const positions = arrangedPositions()
+  const before = new Map()
+  for (const node of nodes.value) {
+    const position = positions.get(node.id)
+    if (node.position.x !== position.x || node.position.y !== position.y) {
+      before.set(node.id, { ...node.position })
+    }
+  }
+  if (before.size) {
+    applyPositions(positions)
+    recordHistory({
+      workspaceId,
+      label: '一键排列',
+      undo: () => {
+        applyPositions(before)
+        return setViewport(previousViewport)
+      }
+    })
+    scheduleSave()
+  }
+  await nextTick()
+  if (state.workspaceId === workspaceId) fitView({ padding: 0.16, duration: 260, maxZoom: 1 })
+}
+
 function pickPos(id, fallback) {
   return explicit.get(id) || snapshotPositions[id] || fallback
 }
@@ -418,13 +622,14 @@ function syncGraph() {
   for (const group of groups.value) {
     const id = `group-${group.name}`
     const data = { name: group.name, count: group.tasks.length }
+    const position = pickPos(id, map.get(id))
     const old = previous.get(id)
     const node = old
-      ? Object.assign(old, { position: map.get(id), data })
+      ? Object.assign(old, { position: { ...position }, data })
       : {
           id,
           type: 'group',
-          position: map.get(id),
+          position: { ...position },
           data,
           draggable: false,
           selectable: false,
@@ -629,7 +834,7 @@ function onNodeDragStart({ node, event }) {
     dragStartState = null
     return
   }
-  const selected = selectedActionNodes()
+  const selected = selectedNodes.value
   dragStartState = captureMoveState(selected.some((item) => item.id === node.id) ? selected : [node])
 }
 
@@ -712,10 +917,6 @@ function selectOnlyNode(nodeId) {
   })
 }
 
-function selectedActionNodes() {
-  return getSelectedNodes.value.filter((node) => node && node.type !== 'group')
-}
-
 function isTypingTarget(target) {
   if (!target) return false
   const tag = target.tagName
@@ -760,13 +961,17 @@ async function undoCanvasAction() {
 }
 
 function onKeydown(event) {
+  if (batchLink.value) {
+    if (event.key === 'Escape') closeBatchLink()
+    return
+  }
   if (isTypingTarget(event.target)) return
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
     event.preventDefault()
     undoCanvasAction()
     return
   }
-  const list = selectedActionNodes()
+  const list = selectedNodes.value
   if (!list.length) {
     // 只选中连线时，Backspace / Delete 批量删除连线
     if (event.key === 'Backspace' || event.key === 'Delete') {
@@ -869,164 +1074,189 @@ async function onNodeDragStop({ node }) {
   recordDragStop()
 }
 
-async function applyLinkValue(action, label) {
+function scriptShots(node) {
   try {
-    await action()
-    return true
+    const list = JSON.parse(node.content || '[]')
+    return Array.isArray(list) ? list.filter((shot) => typeof shot?.prompt === 'string' && shot.prompt.trim()) : []
   } catch (e) {
-    toast(`${label}失败：${e.message}`)
-    return false
+    return []
   }
 }
 
-async function connectWithPrompt(source, target, action, label, successMessage) {
-  await historyTransaction('连线并写入提示词', async () => {
-    const filled = await applyLinkValue(action, label)
-    if (!filled) return
-    addLink(source, target)
-    toast(successMessage)
-  })
+const linkPromptTargets = {
+  shot: { key: 'task', label: '镜头', write: fillShotPrompt },
+  imageGen: { key: 'image', label: '图片', write: fillImagePrompt },
+  script: { key: 'node', label: '脚本', write: fillScriptPrompt }
 }
 
-function openShotPicker(source, target) {
-  const node = state.canvasNodes.find((item) => `node-${item.id}` === source)
-  if (!node) return
-  let list = []
+function resolveLink(source, target) {
+  if (!source || !target || source.id === target.id) return { error: '请选择其他节点作为目标' }
+  const link = { source: source.id, target: target.id }
+
+  if (source.type === 'image' || source.type === 'imageGen') {
+    if (target.type === 'shot') {
+      const imageId = source.data.image.id
+      const taskId = target.data.task.id
+      if (state.edges.some((edge) => edge.imageId === imageId && edge.taskId === taskId)) {
+        return { error: '这两个节点已经连线' }
+      }
+      return { ...link, addReference: () => createEdge(taskId, imageId) }
+    }
+    if (target.type !== 'imageGen') return { error: '图片只能连到镜头或 AI 图片节点' }
+    if (state.links.some((item) => item.source === link.source && item.target === link.target)) {
+      return { error: '这两个节点已经连线' }
+    }
+    return { ...link, message: '已连接为图生图参考' }
+  }
+
+  if (state.links.some((item) => item.source === link.source && item.target === link.target)) {
+    return { error: '这两个节点已经连线' }
+  }
+  if (source.type === 'script') {
+    if (target.type !== 'shot') return { error: '脚本只能连到镜头，选中分镜后写入提示词' }
+    const shots = scriptShots(source.data.node)
+    if (!shots.length) return { error: '脚本还没有分镜，先在上方生成脚本' }
+    return {
+      ...link,
+      title: source.data.node.title || '分镜脚本',
+      shots,
+      writePrompt: (shot) => fillShotPrompt(target.data.task.id, shot.prompt),
+      message: '分镜已写入镜头提示词'
+    }
+  }
+  if (source.type === 'text') {
+    const text = (source.data.node.content || '').trim()
+    if (!text) return { error: '文本节点还没有内容' }
+    const promptTarget = linkPromptTargets[target.type]
+    if (!promptTarget) return { error: '文本只能连到脚本、AI 图片或镜头节点' }
+    const { key, label, write } = promptTarget
+    return {
+      ...link,
+      writePrompt: () => write(target.data[key].id, text),
+      message: `文本已写入${label}提示词`
+    }
+  }
+  return { error: '请从文本、脚本或图片节点开始连线' }
+}
+
+async function applyLink(plan, shot) {
+  if (plan.addReference) return plan.addReference()
+  const workspaceId = state.workspaceId
+  if (plan.writePrompt) await plan.writePrompt(shot)
+  if (state.workspaceId === workspaceId) addLink(plan.source, plan.target)
+}
+
+async function submitSingleLink(plan, shot) {
   try {
-    list = JSON.parse(node.content || '[]')
+    if (plan.writePrompt) {
+      await historyTransaction('连线并写入提示词', () => applyLink(plan, shot))
+    } else {
+      await applyLink(plan)
+    }
+    if (plan.message) toast(plan.message)
   } catch (e) {
-    list = []
+    toast(`连线失败：${e.message}`)
   }
-  list = Array.isArray(list) ? list.filter((shot) => shot && shot.prompt) : []
-  if (!list.length) {
-    toast('脚本还没有分镜，先在上方生成脚本')
-    return
-  }
-  linkPicker.value = { source, target, title: node.title || '分镜脚本', shots: list }
 }
 
 async function applyPickedShot(shot) {
   const picker = linkPicker.value
   linkPicker.value = null
   if (!picker) return
-  await connectWithPrompt(
-    picker.source,
-    picker.target,
-    () => fillShotPrompt(Number(picker.target.slice(5)), shot.prompt),
-    '写入镜头提示词',
-    '分镜已写入镜头提示词'
-  )
+  const plan = resolveLink(findNode(picker.source), findNode(picker.target))
+  if (plan.error) return toast(plan.error)
+  await submitSingleLink(plan, shot)
 }
 
-async function onConnect(connection) {
-  const { source, target } = connection
+async function onConnect({ source, target }) {
   if (!source || !target || source === target) return
+  const plan = resolveLink(findNode(source), findNode(target))
+  if (plan.error) return toast(plan.error)
+  if (plan.shots) {
+    linkPicker.value = plan
+    return
+  }
+  await submitSingleLink(plan)
+}
 
-  if (source.startsWith('image-')) {
-    if (target.startsWith('image-')) {
-      // 图片 → 图片节点：作为图生图参考连线保存到画布快照
-      const targetImage = state.images.find((item) => item.id === Number(target.slice(6)))
-      if (!targetImage || !(targetImage.prompt != null || targetImage.status)) {
-        toast('图片只能连到镜头或 AI 图片节点')
-        return
+const batchLinkTargets = computed(() => {
+  const picker = batchLink.value
+  if (!picker || batchLinkBusy.value) return []
+  const sources = picker.sources.map((id) => findNode(id))
+  const targets = []
+  for (const node of nodes.value) {
+    if (picker.sources.includes(node.id) || !linkPromptTargets[node.type]) continue
+    const plans = sources.map((source) => resolveLink(source, node)).filter((plan) => !plan.error)
+    if (!plans.length) continue
+    const item = node.data[linkPromptTargets[node.type].key]
+    const label = node.type === 'shot'
+      ? `${node.data.code} · ${item.title || '镜头'}`
+      : `${linkPromptTargets[node.type].label} · ${item.title || item.name || item.id}`
+    targets.push({ id: node.id, label, plans })
+  }
+  return targets
+})
+
+const batchLinkTarget = computed(() => batchLinkTargets.value.find((item) => item.id === batchLink.value?.target))
+const canSubmitBatchLink = computed(() => !batchLinkBusy.value && batchLinkTarget.value?.plans.every((plan) =>
+  !plan.shots || plan.shots[batchLink.value.shotChoices[plan.source]]
+))
+
+async function openBatchLink() {
+  if (selectedNodes.value.length < 2 || batchLinkBusy.value || historyBusy.value) return
+  batchLink.value = { sources: selectedNodes.value.map((node) => node.id), target: '', shotChoices: {} }
+  await nextTick()
+  batchTargetInput.value?.focus()
+}
+
+function closeBatchLink() {
+  if (!batchLinkBusy.value) batchLink.value = null
+}
+
+async function submitBatchLink() {
+  if (!canSubmitBatchLink.value || historyBusy.value) return
+  const { id: target, plans } = batchLinkTarget.value
+  const { sources, shotChoices } = batchLink.value
+  try {
+    await connectBatch(target, plans, sources, shotChoices)
+  } finally {
+    batchLinkBusy.value = false
+    closeBatchLink()
+  }
+}
+
+/** 把多个来源节点按计划连到同一目标；拖动 + 手柄与弹窗确认共用 */
+async function connectBatch(targetId, plans, sources, shotChoices = {}) {
+  const workspaceId = state.workspaceId
+  let connected = 0
+  const errors = []
+  batchLinkBusy.value = true
+  try {
+    // 按顺序写入同一目标，保留提示词和参考图的追加顺序。
+    await historyTransaction('批量连线', async () => {
+      for (const planned of plans) {
+        if (state.workspaceId !== workspaceId) break
+        const connection = resolveLink(findNode(planned.source), findNode(targetId))
+        if (connection.error) continue
+        const shot = planned.shots?.[shotChoices[planned.source]]
+        try {
+          await applyLink(connection, shot)
+          connected += 1
+        } catch (e) {
+          errors.push(e.message)
+        }
       }
-      if (state.links.some((link) => link.source === source && link.target === target)) {
-        toast('这两个节点已经连线')
-        return
-      }
-      addLink(source, target)
-      toast('已连接为图生图参考')
-      return
+    })
+    if (state.workspaceId === workspaceId) {
+      const skipped = sources.length - connected - errors.length
+      const parts = [`已连接 ${connected} 个节点`]
+      if (skipped) parts.push(`跳过 ${skipped} 个`)
+      if (errors.length) parts.push(`${errors.length} 个失败：${errors[0]}`)
+      toast(parts.join('，'))
     }
-    if (!target.startsWith('shot-')) {
-      toast('请从图片右侧圆点拖到镜头卡片或 AI 图片节点')
-      return
-    }
-    const imageId = Number(source.slice(6))
-    const taskId = Number(target.slice(5))
-    if (state.edges.some((edge) => edge.imageId === imageId && edge.taskId === taskId)) {
-      toast('这两个节点已经连线')
-      return
-    }
-    try {
-      await createEdge(taskId, imageId)
-    } catch (e) {
-      toast(`连线失败：${e.message}`)
-    }
-    return
+  } finally {
+    batchLinkBusy.value = false
   }
-
-  if (!source.startsWith('node-')) {
-    toast('请从文本 / 脚本 / 图片节点右侧圆点拖出连线')
-    return
-  }
-
-  const sourceNode = state.canvasNodes.find((item) => `node-${item.id}` === source)
-  if (!sourceNode) return
-  if (state.links.some((link) => link.source === source && link.target === target)) {
-    toast('这两个节点已经连线')
-    return
-  }
-
-  if (sourceNode.type === 'script') {
-    if (!target.startsWith('shot-')) {
-      toast('脚本只能连到镜头，选中分镜后写入提示词')
-      return
-    }
-    openShotPicker(source, target)
-    return
-  }
-
-  const text = (sourceNode.content || '').trim()
-  if (!text) {
-    toast('文本节点还没有内容')
-    return
-  }
-
-  if (target.startsWith('node-')) {
-    const targetNode = state.canvasNodes.find((item) => `node-${item.id}` === target)
-    if (!targetNode || targetNode.type !== 'script') {
-      toast('文本只能连到脚本、AI 图片或镜头节点')
-      return
-    }
-    await connectWithPrompt(
-      source,
-      target,
-      () => fillScriptPrompt(targetNode.id, text),
-      '写入脚本提示词',
-      '文本已作为脚本输入'
-    )
-    return
-  }
-
-  if (target.startsWith('image-')) {
-    const targetImage = state.images.find((item) => item.id === Number(target.slice(6)))
-    if (!targetImage || !(targetImage.prompt != null || targetImage.status)) {
-      toast('文本只能连到 AI 图片节点')
-      return
-    }
-    await connectWithPrompt(
-      source,
-      target,
-      () => fillImagePrompt(Number(target.slice(6)), text),
-      '写入图片提示词',
-      '文本已写入图片提示词'
-    )
-    return
-  }
-
-  if (target.startsWith('shot-')) {
-    await connectWithPrompt(
-      source,
-      target,
-      () => fillShotPrompt(Number(target.slice(5)), text),
-      '写入镜头提示词',
-      '文本已写入镜头提示词'
-    )
-    return
-  }
-
-  toast('文本只能连到脚本、AI 图片或镜头节点')
 }
 
 // 从锚点拖出连线后，松开在目标节点卡片的任意位置都能建立连线
@@ -1108,21 +1338,33 @@ function snapshotPayload() {
 
 /** 立即保存当前画布快照；带 baseVersion 做乐观锁，切换画布前会先调用它 */
 async function saveSnapshotNow() {
-  if (!ready) return
   const workspaceId = state.workspaceId
-  try {
-    const canvas = await api.saveSnapshot(workspaceId, snapshotPayload(), state.version)
-    if (state.workspaceId === workspaceId) state.version = canvas?.version ?? state.version
-  } catch (e) {
-    // 版本冲突：其他标签页/实例已保存过，拉取最新布局，避免互相覆盖
-    if (e.status === 409 && state.workspaceId === workspaceId) {
-      toast('画布已在其他窗口更新，已同步最新布局')
-      try {
-        await loadAll()
-      } catch (err) {
-        /* 忽略刷新失败 */
+  while (snapshotSaving) await snapshotSaving
+  if (!ready || state.workspaceId !== workspaceId) return
+  snapshotSaving = api.saveSnapshot(workspaceId, snapshotPayload(), state.version)
+    .then((canvas) => {
+      if (state.workspaceId === workspaceId) state.version = canvas?.version ?? state.version
+    })
+    .catch(async (e) => {
+      if (state.workspaceId !== workspaceId) return
+      if (e.status === 409) {
+        try {
+          await loadAll()
+          if (state.workspaceId !== workspaceId) return
+          explicit.clear()
+          syncGraph()
+          toast('画布已在其他窗口更新，已同步最新布局')
+        } catch (err) {
+          toast(`同步画布失败：${err.message}`)
+        }
+      } else {
+        toast(`保存画布失败：${e.message}`)
       }
-    }
+    })
+  try {
+    await snapshotSaving
+  } finally {
+    snapshotSaving = null
   }
 }
 
@@ -1262,7 +1504,7 @@ function pastePoint() {
 }
 
 async function onPaste(event) {
-  if (isTypingTarget(event.target)) return
+  if (batchLink.value || isTypingTarget(event.target)) return
   const files = [...(event.clipboardData?.items || [])]
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
@@ -1558,7 +1800,7 @@ onBeforeUnmount(() => {
       <main
         ref="canvasWrap"
         class="canvas-wrap"
-        :class="{ dragging, linking }"
+        :class="{ dragging, linking, 'batch-linking': batchLinkDrag }"
         @dragover.prevent="dragging = true"
         @dragleave="dragging = false"
         @drop.prevent="onDrop"
@@ -1590,7 +1832,17 @@ onBeforeUnmount(() => {
           @connect="onConnect"
         >
           <Background :gap="18" :size="1" :pattern-color="patternColor" />
-          <Controls position="bottom-left" />
+          <Controls position="bottom-left">
+            <template #top>
+              <button
+                type="button"
+                class="vue-flow__controls-button canvas-arrange-logo"
+                title="一键排列：按分组和镜头序号排列画布节点"
+                :disabled="!canArrange"
+                @click="arrangeCanvas"
+              >◈</button>
+            </template>
+          </Controls>
           <MiniMap
             position="bottom-right"
             :pannable="true"
@@ -1599,6 +1851,20 @@ onBeforeUnmount(() => {
             mask-color="rgba(10, 11, 13, 0.72)"
           />
         </VueFlow>
+
+        <svg v-if="batchLinkDrag" class="batch-link-line" aria-hidden="true">
+          <path :d="batchLinkPath" />
+        </svg>
+
+        <button
+          v-if="batchLinkAnchor"
+          type="button"
+          class="batch-link-float"
+          title="拖到目标节点批量连线，单击选择目标"
+          :style="{ left: `${batchLinkAnchor.left}px`, top: `${batchLinkAnchor.top}px` }"
+          :disabled="batchLinkBusy || historyBusy"
+          @pointerdown="startBatchLinkDrag"
+        >＋</button>
 
         <div v-if="dragging" class="drop-hint">松开鼠标上传参考图</div>
 
@@ -1616,9 +1882,8 @@ onBeforeUnmount(() => {
           @close="contextMenu = null"
         />
 
-        <div v-if="selectedShots.length || selectedImages.length || selectedEdges.length" class="selection-bar">
-          <span class="selection-count">已选 {{ selectedShots.length + selectedImages.length + selectedEdges.length }} 项<span v-if="selectedShots.length"> · {{ selectedShots.length }} 个镜头</span><span v-if="selectedImages.length"> · {{ selectedImages.length }} 张图片</span><span v-if="selectedEdges.length"> · {{ selectedEdges.length }} 条连线</span></span>
-          <span class="selection-hint muted">Shift + 拖拽框选节点与连线，Ctrl / Shift + 点击多选，Backspace 删除</span>
+        <div v-if="selectedNodes.length || selectedEdges.length" class="selection-bar">
+          <span class="selection-count">已选 {{ selectedNodes.length + selectedEdges.length }} 项<span v-if="selectedShots.length"> · {{ selectedShots.length }} 个镜头</span><span v-if="selectedImages.length"> · {{ selectedImages.length }} 张图片</span><span v-if="selectedEdges.length"> · {{ selectedEdges.length }} 条连线</span></span>
           <template v-if="selectedShots.length">
             <button class="btn ghost sm" @click="batchRetry">重新生成</button>
             <button class="btn ghost sm" @click="batchCancel">取消</button>
@@ -1664,6 +1929,50 @@ onBeforeUnmount(() => {
     <PromptRecordDialog v-if="showPromptRecords" @close="showPromptRecords = false" />
     <UsageGuide v-if="showGuide" @close="showGuide = false" />
     <PreviewDialog v-if="state.previewTask" :task="state.previewTask" @close="state.previewTask = null" />
+
+    <div v-if="batchLink" class="overlay" @click.self="closeBatchLink">
+      <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="batch-link-heading" @submit.prevent="submitBatchLink">
+        <header class="dialog-head">
+          <h2 id="batch-link-heading">批量连线</h2>
+          <button type="button" class="icon-btn" aria-label="关闭" :disabled="batchLinkBusy" @click="closeBatchLink">×</button>
+        </header>
+        <div class="dialog-body">
+          <p v-if="batchLinkBusy" class="muted" role="status">正在建立连线…</p>
+          <p v-else-if="!batchLinkTargets.length" class="muted">所选节点没有可连接的目标，或已完成连线。</p>
+          <template v-else>
+            <label class="field">
+              <span class="field-label">目标节点</span>
+              <select ref="batchTargetInput" v-model="batchLink.target" required>
+                <option disabled value="">选择要连到的节点</option>
+                <option v-for="target in batchLinkTargets" :key="target.id" :value="target.id">
+                  {{ target.label }}（{{ target.plans.length }} 个可连接）
+                </option>
+              </select>
+            </label>
+            <template v-if="batchLinkTarget">
+              <p v-if="batchLinkTarget.plans.length < batchLink.sources.length" class="muted">
+                将跳过 {{ batchLink.sources.length - batchLinkTarget.plans.length }} 个不兼容或已连线的节点。
+              </p>
+              <template v-for="plan in batchLinkTarget.plans" :key="plan.source">
+                <label v-if="plan.shots" class="field">
+                  <span class="field-label">{{ plan.title }} · 选择要写入的分镜</span>
+                  <select v-model="batchLink.shotChoices[plan.source]" required>
+                    <option disabled :value="undefined">选择分镜</option>
+                    <option v-for="(shot, index) in plan.shots" :key="index" :value="index">
+                      {{ index + 1 }}. {{ shot.title || shot.prompt }}
+                    </option>
+                  </select>
+                </label>
+              </template>
+            </template>
+          </template>
+        </div>
+        <footer class="dialog-foot">
+          <button type="button" class="btn ghost" :disabled="batchLinkBusy" @click="closeBatchLink">取消</button>
+          <button type="submit" class="btn primary" :disabled="!canSubmitBatchLink || historyBusy">确认连线</button>
+        </footer>
+      </form>
+    </div>
 
     <div v-if="linkPicker" class="overlay" @click.self="linkPicker = null">
       <div class="dialog">

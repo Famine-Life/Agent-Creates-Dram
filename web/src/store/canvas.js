@@ -264,20 +264,20 @@ export async function fillImagePrompt(imageId, text) {
   const image = state.images.find((item) => item.id === imageId)
   if (!image || !text) return
   const prompt = image.prompt ? `${image.prompt}\n\n${text}` : text
-  return saveImagePrompt(imageId, prompt)
+  return saveImagePrompt(imageId, prompt, { optimistic: false })
 }
 
 /** 保存 AI 图片节点提示词，只保存不触发重新生成 */
 const promptSaveSeq = new Map()
 
-export async function saveImagePrompt(imageId, prompt) {
+export async function saveImagePrompt(imageId, prompt, { optimistic = true } = {}) {
   const image = state.images.find((item) => item.id === imageId)
   if (!image) return
   const workspaceId = state.workspaceId
   const before = image.prompt || ''
   const text = prompt == null ? '' : String(prompt)
   if (before === text) return
-  image.prompt = text
+  if (optimistic) image.prompt = text
   const seq = (promptSaveSeq.get(imageId) || 0) + 1
   promptSaveSeq.set(imageId, seq)
   const updated = await api.updateImage(workspaceId, imageId, { prompt: text })

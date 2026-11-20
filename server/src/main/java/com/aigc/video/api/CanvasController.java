@@ -161,6 +161,11 @@ public class CanvasController {
         return taskService.createEdge(workspaceId, request);
     }
 
+    @PostMapping("/edges/with-prompt")
+    public EdgeView createEdgeWithPrompt(@PathVariable Long workspaceId, @RequestBody EdgeRequest request) {
+        return taskService.createEdgeWithPrompt(workspaceId, request);
+    }
+
     @DeleteMapping("/edges/{edgeId}")
     public Map<String, Object> deleteEdge(@PathVariable Long workspaceId,
                                           @PathVariable Long edgeId) {

@@ -68,8 +68,8 @@ node cli/aigc.mjs upload --file ./ref.png --workspace 2 --x 120 --y 80 --json
 # 把 Agent 生成的图片 URL 下载到服务端素材存储并创建节点
 node cli/aigc.mjs upload-url --image-url "https://example.com/generated-image.png" --name "AI生成图" --workspace 2 --json
 
-# 将已有图片节点连接到镜头（视频）节点
-node cli/aigc.mjs link-image --task-id 12 --image-id 34 --json
+# 连接参考图并在镜头提示词中写入 @图片N 说明
+node cli/aigc.mjs link-image --task-id 12 --image-id 34 --description "女主的正面定妆照，用于参考人物造型" --json
 
 # 切换已有镜头的视频模型，不立即重新生成
 node cli/aigc.mjs set-video-model --id 12 --model ark/doubao-seedance-2-0-260128 --json
@@ -161,10 +161,10 @@ function copy(text) {
               <tr>
                 <td><code>Shift + 拖动</code></td>
                 <td>框选多个节点</td>
-                <td>在画布空白处拖出选框，批量选中后可配合 Ctrl / ⌘ + D 或 Backspace。</td>
+                <td>在画布空白处拖出选框。选中多个节点后，从多选框右侧的 ＋ 拖到目标节点即可批量连线；单击 ＋ 可打开目标选择弹窗。</td>
               </tr>
               <tr>
-                <td><code>Ctrl / ⌘ + 点击</code></td>
+                <td><code>Shift + 点击</code> 或 <code>Ctrl / ⌘ + 点击</code></td>
                 <td>追加选择</td>
                 <td>逐个点选节点，配合框选进行多选。</td>
               </tr>
@@ -176,7 +176,7 @@ function copy(text) {
               <tr>
                 <td><code>Esc</code></td>
                 <td>退出 / 关闭</td>
-                <td>退出提示词全屏编辑，或关闭新建镜头弹窗。</td>
+                <td>退出提示词全屏编辑，或关闭新建镜头、批量连线弹窗。</td>
               </tr>
             </tbody>
           </table>
@@ -297,7 +297,7 @@ function copy(text) {
               <tr><td><code>storyboard</code></td><td>批量推送分镜</td><td>--file、--group</td></tr>
               <tr><td><code>upload</code></td><td>上传本地图片并创建画布图片节点</td><td>--file、--workspace、--x、--y、--json</td></tr>
               <tr><td><code>upload-url</code></td><td>下载图片 URL 并上传到服务端素材存储，创建图片节点</td><td>--image-url、--name、--workspace、--x、--y、--json</td></tr>
-              <tr><td><code>link-image</code></td><td>关联已有图片节点与镜头（视频）节点</td><td>--task-id、--image-id</td></tr>
+              <tr><td><code>link-image</code></td><td>连接图片到镜头并写入 @图片N 说明</td><td>--task-id、--image-id、--description（可选）</td></tr>
               <tr><td><code>unlink-image</code></td><td>解除图片与镜头之间的连线</td><td>--id 连线ID</td></tr>
               <tr><td><code>rm / rm-image</code></td><td>删除镜头 / 图片节点</td><td>--id</td></tr>
             </tbody>
@@ -325,8 +325,9 @@ function copy(text) {
             分镜文件支持 JSON 镜头数组，或 <code>{ "shots": [...] }</code> 格式；镜头可填写提示词、标题、分组、序号、参考图片 ID/URL、模型和生成参数。
             Agent 生成了可访问的图片 URL 时，使用 <code>upload-url --image-url &lt;图片URL&gt;</code>：CLI 会下载图片并上传到画布服务的素材存储，再创建图片节点（单张最大 50 MB，支持 HTTP/HTTPS 和有限重定向）。
             这与 <code>create-image --url &lt;地址&gt;</code> 不同：后者只在节点里保存外部图片地址，不会把文件导入服务端。
-            已有节点可用 <code>link-image --task-id &lt;镜头任务ID&gt; --image-id &lt;图片ID&gt; --json</code> 建立图片到镜头的连线；
-            <code>--task-id</code> 是镜头任务 ID，<code>--image-id</code> 是图片节点 ID。也可在推送时通过 <code>push --images &lt;图片ID,...&gt;</code> 一并关联。
+            已有节点可用 <code>link-image --task-id &lt;镜头任务ID&gt; --image-id &lt;图片ID&gt; --description "图片内容和用途" --json</code> 连接。
+            命令会按镜头中的参考图顺序保存 <code>@图片N：说明</code>。省略说明时，使用图片的生成提示词或名称。
+            也可在推送时通过 <code>push --images &lt;图片ID,...&gt;</code> 一并关联。
             若需移除连线，先从画布 JSON 中确认连线 ID，再用 <code>unlink-image --id &lt;连线ID&gt; --json</code>。
             推送后记下任务 ID，每隔 5–10 秒运行 <code>canvas --json</code> 查询，直到任务完成或失败；不要仅凭创建成功就报告生成完成。
             画布复制会复制画布内容并创建新画布；画布删除会移除该画布及其内容，系统至少保留一个画布。

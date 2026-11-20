@@ -757,6 +757,87 @@ h2 {
   background: var(--bg);
 }
 
+/* 一键排列：并入缩放控件组顶部，用品牌 logo 图标呈现 */
+.canvas-arrange-logo {
+  color: var(--brand);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.canvas-arrange-logo:hover {
+  color: #9a8cff;
+}
+
+.canvas-arrange-logo:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* 多选框右侧的 ＋ 连线手柄，位置由所选节点包围盒计算 */
+.batch-link-float {
+  position: absolute;
+  z-index: 6;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.batch-link-float:hover {
+  background: #9a8cff;
+}
+
+.batch-link-float:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 拖动 ＋ 连线期间禁止框选文本 */
+.canvas-wrap.batch-linking {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 从 ＋ 手柄拖动时的虚线 */
+.batch-link-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.batch-link-line path {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+}
+
+/* 拖到可连接目标时的高亮 */
+.vue-flow__node.batch-link-target {
+  outline: 2px solid var(--brand);
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
 .canvas-wrap.dragging::after {
   content: '';
   position: absolute;
@@ -1626,7 +1707,11 @@ h2 {
   transform: translateX(-50%);
   z-index: 6;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 24px);
   gap: 8px;
   padding: 8px 10px;
   border-radius: 12px;
@@ -1639,17 +1724,6 @@ h2 {
   font-size: 12px;
   color: var(--accent-text);
   white-space: nowrap;
-}
-
-.selection-hint {
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-@media (max-width: 900px) {
-  .selection-hint {
-    display: none;
-  }
 }
 
 .inspector-head {
@@ -1742,7 +1816,8 @@ h2 {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1761,7 +1836,8 @@ h2 {
 }
 
 .field input:focus,
-.field textarea:focus {
+.field textarea:focus,
+.field select:focus {
   border-color: var(--brand);
 }
 

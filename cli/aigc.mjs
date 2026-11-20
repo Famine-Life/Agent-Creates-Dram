@@ -27,6 +27,7 @@ const HELP = `AIGC 画布工作台 CLI
   canvas      查看画布统计与镜头列表    [--workspace 1] [--json]
   workspaces  列出画布                 [--json]
   new-workspace 新建空白画布           [--json]
+  rename-workspace 重命名画布           --id <画布ID> --name <名称> [--json]
   copy-workspace 复制画布               --id <画布ID> [--json]
   delete-workspace 删除画布             --id <画布ID> [--json]
   models      查看当前可用模型           [--type video|image|text] [--json]
@@ -61,7 +62,8 @@ const HELP = `AIGC 画布工作台 CLI
   edit-node   更新文本/脚本节点       --id <节点ID> [--title <名称>] [--prompt <文本>] [--content <文本>]
   delete-node 删除文本/脚本节点       --id <节点ID>
   generate-script 生成脚本           --id <节点ID> [--prompt <文本>] [--model <模型>] [--json]
-  link-image 关联图片与镜头           --task-id <任务ID> --image-id <图片ID> [--json]
+  link-image 关联图片并写入 @图片N 说明 --task-id <任务ID> --image-id <图片ID>
+                [--description <图片内容或用途>] [--workspace 1] [--json]
   unlink-image 删除图片与镜头关联     --id <连线ID> [--workspace 1] [--json]
   rm          删除镜头             --id <任务ID>
   rm-image    删除图片节点         --id <图片ID>
@@ -321,6 +323,17 @@ async function createWorkspace(opts) {
   const workspace = await api('POST', '/api/workspaces')
   if (opts.json) return printJson(workspace)
   console.log(`已创建画布 #${workspace.id}：${workspace.name}`)
+}
+
+async function renameWorkspace(opts) {
+  if (!opts.id) fail('请提供 --id 画布ID')
+  if (!opts.name) fail('请提供 --name 名称')
+  const id = Number(opts.id)
+  if (!Number.isInteger(id) || id <= 0) fail('--id 必须是正整数画布ID')
+  await api('PUT', `/api/workspaces/${id}`, { body: { name: String(opts.name) } })
+  const result = { ok: true, workspaceId: id, name: String(opts.name) }
+  if (opts.json) return printJson(result)
+  console.log(`已将画布 #${id} 重命名为：${result.name}`)
 }
 
 async function copyWorkspace(opts) {
@@ -614,13 +627,26 @@ async function generateScript(opts) {
 }
 
 async function linkImage(opts) {
-  if (!opts['task-id'] || !opts['image-id']) fail('请提供 --task-id 和 --image-id')
-  const workspaceId = Number(opts.workspace || 1)
-  const edge = await api('POST', `/api/canvas/${workspaceId}/edges`, {
-    body: { taskId: Number(opts['task-id']), imageId: Number(opts['image-id']) }
+  const taskId = Number(opts['task-id'])
+  const imageId = Number(opts['image-id'])
+  const workspaceId = Number(opts.workspace ?? 1)
+  if (opts['task-id'] === true || !Number.isSafeInteger(taskId) || taskId <= 0) {
+    fail('请提供正整数 --task-id 镜头任务ID')
+  }
+  if (opts['image-id'] === true || !Number.isSafeInteger(imageId) || imageId <= 0) {
+    fail('请提供正整数 --image-id 图片节点ID')
+  }
+  if (opts.workspace === true || !Number.isSafeInteger(workspaceId) || workspaceId <= 0) {
+    fail('--workspace 必须是正整数画布ID')
+  }
+  const description = typeof opts.description === 'string' ? opts.description.trim() : undefined
+  if (opts.description !== undefined && !description) fail('请在 --description 后填写图片内容或用途')
+
+  const edge = await api('POST', `/api/canvas/${workspaceId}/edges/with-prompt`, {
+    body: { taskId, imageId, description }
   })
   if (opts.json) return printJson(edge)
-  console.log(`已关联图片 #${edge.imageId} 与镜头 #${edge.taskId}（连线 #${edge.id}）`)
+  console.log(`已关联图片 #${edge.imageId} 与镜头 #${edge.taskId}（连线 #${edge.id}），并保存提示词中的参考图说明`)
 }
 
 async function unlinkImage(opts) {
@@ -1047,6 +1073,8 @@ async function main() {
       return workspaces(opts)
     case 'new-workspace':
       return createWorkspace(opts)
+    case 'rename-workspace':
+      return renameWorkspace(opts)
     case 'copy-workspace':
       return copyWorkspace(opts)
     case 'delete-workspace':

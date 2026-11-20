@@ -54,6 +54,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /** 画布 / 任务 / 图片 / 连线的全部业务逻辑 */
@@ -66,6 +68,8 @@ public class TaskService {
     private int maxQueuedTasks;
 
     public static final String DEFAULT_GROUP = "默认分组";
+    private static final int MAX_PROMPT_LENGTH = 2000;
+    private static final int MAX_DEFAULT_IMAGE_DESCRIPTION = 160;
 
     private static final double IMAGE_W = 148;
     private static final double IMAGE_H = 166;
@@ -121,7 +125,7 @@ public class TaskService {
         }
         boolean draft = Boolean.TRUE.equals(request.draft())
                 || request.prompt() == null || request.prompt().isBlank();
-        if (!draft && request.prompt().length() > 2000) {
+        if (!draft && request.prompt().length() > MAX_PROMPT_LENGTH) {
             throw new BadRequestException("提示词不能超过 2000 字");
         }
         Canvas canvas = requireCanvas(workspaceId);
@@ -212,7 +216,7 @@ public class TaskService {
         if (request == null || request.prompt() == null || request.prompt().isBlank()) {
             throw new BadRequestException("提示词不能为空");
         }
-        if (request.prompt().length() > 2000) {
+        if (request.prompt().length() > MAX_PROMPT_LENGTH) {
             throw new BadRequestException("提示词不能超过 2000 字");
         }
         LocalDateTime now = LocalDateTime.now();
@@ -465,34 +469,95 @@ public class TaskService {
 
     @Transactional
     public EdgeView createEdge(Long workspaceId, EdgeRequest request) {
+        return createEdge(workspaceId, request, false);
+    }
+
+    @Transactional
+    public EdgeView createEdgeWithPrompt(Long workspaceId, EdgeRequest request) {
+        return createEdge(workspaceId, request, true);
+    }
+
+    private EdgeView createEdge(Long workspaceId, EdgeRequest request, boolean annotatePrompt) {
         if (request == null || request.taskId() == null || request.imageId() == null) {
             throw new BadRequestException("连线需要同时指定镜头与图片");
         }
-        GenerationTask task = requireTask(request.taskId());
-        if (!Objects.equals(task.getWorkspaceId(), workspaceId)) {
+        // 同一镜头的连线共用锁，避免并发分配相同顺序或覆盖刚保存的说明。
+        GenerationTask task = taskMapper.selectOne(Wrappers.<GenerationTask>lambdaQuery()
+                .eq(GenerationTask::getId, request.taskId())
+                .eq(GenerationTask::getWorkspaceId, workspaceId)
+                .last("FOR UPDATE"));
+        if (task == null) {
             throw new NotFoundException("镜头不存在：" + request.taskId());
         }
         CanvasImage image = requireImage(workspaceId, request.imageId());
-
-        TaskImageRef existing = refMapper.selectOne(Wrappers.<TaskImageRef>lambdaQuery()
-                .eq(TaskImageRef::getTaskId, task.getId())
-                .eq(TaskImageRef::getImageId, image.getId())
-                .last("LIMIT 1"));
-        if (existing != null) {
-            return toEdgeView(existing);
+        List<TaskImageRef> refs = refsOf(List.of(task));
+        TaskImageRef ref = refs.stream().filter(item -> Objects.equals(item.getImageId(), image.getId()))
+                .findFirst().orElse(null);
+        boolean newEdge = ref == null;
+        boolean promptChanged = false;
+        String prompt = Objects.toString(task.getPrompt(), "");
+        if (annotatePrompt) {
+            // 引用编号是实际图片列表中的位置。删除过图片时 sortIndex 可能有空位。
+            int number = newEdge ? refs.size() + 1 : refs.indexOf(ref) + 1;
+            String annotated = annotateImageReference(prompt, number, image, request.description());
+            if (annotated.length() > MAX_PROMPT_LENGTH) {
+                throw new BadRequestException("添加参考图说明后提示词不能超过 2000 字");
+            }
+            promptChanged = !annotated.equals(prompt);
+            prompt = annotated;
         }
 
-        TaskImageRef ref = new TaskImageRef();
-        ref.setTaskId(task.getId());
-        ref.setImageId(image.getId());
-        ref.setSortIndex(nextSortIndex(task.getId()));
-        ref.setCreatedAt(LocalDateTime.now());
-        refMapper.insert(ref);
+        if (newEdge) {
+            int sortIndex = refs.stream().map(TaskImageRef::getSortIndex)
+                    .filter(Objects::nonNull).max(Integer::compareTo).orElse(-1) + 1;
+            ref = new TaskImageRef();
+            ref.setTaskId(task.getId());
+            ref.setImageId(image.getId());
+            ref.setSortIndex(sortIndex);
+            ref.setCreatedAt(LocalDateTime.now());
+            refMapper.insert(ref);
+        }
+        if (promptChanged) {
+            taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
+                    .eq(GenerationTask::getId, task.getId())
+                    .set(GenerationTask::getPrompt, prompt)
+                    .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
+            recordPrompt(workspaceId, task.getId(), prompt);
+        }
 
         EdgeView view = toEdgeView(ref);
-        socketRegistry.broadcast(workspaceId, CanvasEvent.of("edge.created", view));
-        broadcastTask("node.updated", task.getId());
+        if (newEdge) {
+            socketRegistry.broadcast(workspaceId, CanvasEvent.of("edge.created", view));
+        }
+        if (newEdge || promptChanged) {
+            broadcastTask("node.updated", task.getId());
+        }
         return view;
+    }
+
+    private String annotateImageReference(String prompt, int number, CanvasImage image, String description) {
+        String token = "@图片" + number;
+        Matcher existing = Pattern.compile("(?m)^\\h*" + token + "\\h*[：:][^\\r\\n]*").matcher(prompt);
+        boolean hasDescription = existing.find();
+        String summary = Objects.toString(description, "").replaceAll("\\R", " ").strip();
+        if (summary.isEmpty()) {
+            if (hasDescription) {
+                return prompt;
+            }
+            String metadata = image.getPrompt() == null || image.getPrompt().isBlank() ? image.getName() : image.getPrompt();
+            summary = Objects.toString(metadata, "").replaceAll("\\R", " ").strip();
+            if (summary.isEmpty()) {
+                summary = "画布参考图 #" + image.getId();
+            }
+            if (summary.codePointCount(0, summary.length()) > MAX_DEFAULT_IMAGE_DESCRIPTION) {
+                summary = summary.substring(0, summary.offsetByCodePoints(0, MAX_DEFAULT_IMAGE_DESCRIPTION)) + "…";
+            }
+        }
+        String line = token + "：" + summary;
+        if (hasDescription) {
+            return prompt.substring(0, existing.start()) + line + prompt.substring(existing.end());
+        }
+        return prompt.isBlank() ? line : prompt.stripTrailing() + "\n\n" + line;
     }
 
     @Transactional
@@ -780,16 +845,6 @@ public class TaskService {
                 .filter(Objects::nonNull)
                 .max(Integer::compareTo)
                 .orElse(0) + 1;
-    }
-
-    private int nextSortIndex(Long taskId) {
-        List<TaskImageRef> refs = refMapper.selectList(Wrappers.<TaskImageRef>lambdaQuery()
-                .eq(TaskImageRef::getTaskId, taskId));
-        return refs.stream()
-                .map(TaskImageRef::getSortIndex)
-                .filter(Objects::nonNull)
-                .max(Integer::compareTo)
-                .orElse(-1) + 1;
     }
 
     private String normalizeGroup(String groupId) {

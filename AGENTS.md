@@ -85,6 +85,14 @@ node cli/aigc.mjs upload-url --image-url <图片URL> --name "<节点名称>" --w
 
 `upload` 会把本地图片传到当前服务；`upload-url` 会下载 Agent 提供的 HTTP/HTTPS 图片 URL，再上传到服务端素材存储。两者都会在画布创建图片节点；`--workspace <画布ID>` 指定目标画布，省略时默认画布 1。`create-image --url` 只保存外部 URL，不会导入图片文件。
 
+连接上游图片到视频节点：
+
+```sh
+node cli/aigc.mjs link-image --task-id <镜头任务ID> --image-id <图片节点ID> --description "红色风衣女主的正面定妆照，用于参考人物造型" --json
+```
+
+连接时用 `--description` 说明图片里的角色、场景或道具，以及在镜头中的参考用途。命令按镜头的参考图顺序保存 `@图片N：说明`，并保留原提示词中的其他内容。命令只保存连线和提示词，需要提交生成时再单独操作。指定其他画布时加 `--workspace <画布ID>`。
+
 删除镜头或图片节点：
 
 ```sh
