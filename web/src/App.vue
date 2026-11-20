@@ -1,6 +1,6 @@
 <script setup>
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { VueFlow, useNodesInitialized, useVueFlow } from '@vue-flow/core'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -136,8 +136,27 @@ let ready = false
 
 const { setViewport, getViewport, fitView, viewport, onMoveEnd, onNodesInitialized, screenToFlowCoordinate, onConnectEnd, connectionStartHandle, getSelectedNodes, getSelectedEdges, userSelectionRect, applyEdgeChanges, onSelectionEnd: onSelectionEndHook, removeSelectedElements, findNode } =
   useVueFlow()
-const nodesInitialized = useNodesInitialized()
-const canArrange = computed(() => nodesInitialized.value && !state.loading && !deletingCanvas.value && !historyBusy.value)
+// 开启视口渲染后，视野外的节点不会被挂载和测量，不能再等 nodesInitialized；
+// 未测量的节点在一键排列时使用默认尺寸兜底。
+const canArrange = computed(() => !state.loading && !deletingCanvas.value && !historyBusy.value)
+// 刚载入画布时先完整挂载一次，保证尺寸测量和 fitView 正确，随后再按视口渲染
+const virtualizeNodes = ref(false)
+let virtualizationTimer = null
+
+function scheduleVirtualization(delay) {
+  clearTimeout(virtualizationTimer)
+  virtualizeNodes.value = false
+  virtualizationTimer = setTimeout(() => {
+    virtualizeNodes.value = true
+  }, delay)
+}
+
+/** 等节点挂载并完成 ResizeObserver 测量，供一键排列和镜头聚焦使用 */
+function waitForMeasurement() {
+  return nextTick().then(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  )
+}
 
 const groups = computed(() => {
   const map = new Map()
@@ -738,6 +757,10 @@ async function arrangeCanvas() {
   if (!ready || !canArrange.value) return
   const workspaceId = state.workspaceId
   const previousViewport = getViewport()
+  // 排列依赖节点实际尺寸，先临时完整挂载，避免视野外节点用默认尺寸导致重叠
+  virtualizeNodes.value = false
+  await waitForMeasurement()
+  if (state.workspaceId !== workspaceId) return
   const positions = arrangedPositions()
   const before = new Map()
   for (const node of nodes.value) {
@@ -759,7 +782,9 @@ async function arrangeCanvas() {
     scheduleSave()
   }
   await nextTick()
-  if (state.workspaceId === workspaceId) fitView({ padding: 0.16, duration: 260, maxZoom: 1 })
+  if (state.workspaceId !== workspaceId) return
+  fitView({ padding: 0.16, duration: 260, maxZoom: 1 })
+  scheduleVirtualization(600)
 }
 
 function pickPos(id, fallback) {
@@ -805,6 +830,15 @@ function syncGraph() {
     ids.add(id)
   }
 
+  // 预计算每张图片的首条连线与每个镜头的图片数，避免图片多时出现 O(图片² × 连线) 的查找
+  const firstEdgeByImage = new Map()
+  const imagesPerTask = new Map()
+  for (const edge of state.edges) {
+    if (firstEdgeByImage.has(edge.imageId)) continue
+    firstEdgeByImage.set(edge.imageId, edge)
+    imagesPerTask.set(edge.taskId, (imagesPerTask.get(edge.taskId) || 0) + 1)
+  }
+
   let counter = 0
   for (const image of state.images) {
     const id = `image-${image.id}`
@@ -812,15 +846,10 @@ function syncGraph() {
     if (image.x != null && image.y != null) {
       fallback = { x: image.x, y: image.y }
     } else {
-      const edge = state.edges.find((item) => item.imageId === image.id)
+      const edge = firstEdgeByImage.get(image.id)
       const shotPos = edge ? map.get(`shot-${edge.taskId}`) : null
       if (shotPos) {
-        const sibling = state.images
-          .filter((it) => it.id !== image.id)
-          .filter((it) => {
-            const e = state.edges.find((x) => x.imageId === it.id)
-            return e && e.taskId === edge.taskId
-          }).length
+        const sibling = (imagesPerTask.get(edge.taskId) || 1) - 1
         fallback = { x: shotPos.x + sibling * (IMG_W + 16), y: shotPos.y + SHOT_H + 20 }
       } else {
         fallback = { x: PAD_X + counter * (IMG_W + 18), y: bottom + 16 }
@@ -1471,13 +1500,19 @@ function onSelectionEnd() {
   state.selectionBoxActive = false
 }
 
-function focusTask(taskId) {
+async function focusTask(taskId) {
   state.selectedTaskId = taskId
   state.selectedImageId = null
   const node = nodes.value.find((item) => item.id === `shot-${taskId}`)
-  if (node) {
-    fitView({ nodes: [node], duration: 320, maxZoom: 1.1, padding: 0.6 })
+  if (!node) return
+  // 目标镜头可能在视野外而未挂载，先恢复完整挂载再聚焦
+  const needsMount = !node.dimensions?.width || !node.dimensions?.height
+  if (needsMount) {
+    virtualizeNodes.value = false
+    await waitForMeasurement()
   }
+  fitView({ nodes: [node], duration: 320, maxZoom: 1.1, padding: 0.6 })
+  if (needsMount) scheduleVirtualization(600)
 }
 
 /** 组装画布快照：节点坐标 + 视口 + 连线 + 图片生成参数，切换画布前也会先落库 */
@@ -1702,8 +1737,14 @@ function applyInitialView() {
 /** 切换画布：先保存当前快照，再重置本地视图与实时连接 */
 async function openCanvas(workspaceId) {
   if (!workspaceId || workspaceId === state.workspaceId) return
+  const perfOn = localStorage.getItem('aigc.perf') === '1'
+  const mark = (label, started) => {
+    if (perfOn) console.info(`[perf] ${label}: ${Math.round(performance.now() - started)}ms`)
+  }
+  let started = performance.now()
   clearTimeout(saveTimer)
   await saveSnapshotNow()
+  mark('保存快照', started)
   disconnectRealtime()
 
   state.workspaceId = workspaceId
@@ -1721,11 +1762,16 @@ async function openCanvas(workspaceId) {
   ready = false
 
   try {
-    await loadAll()
-    await loadWorkspaces().catch(() => {})
-    syncGraph()
+    started = performance.now()
+    // 画布数据和画布列表互不依赖，并行请求，省掉一次串行往返
+    await Promise.all([loadAll(), loadWorkspaces().catch(() => {})])
+    mark('加载画布数据与列表', started)
+    scheduleVirtualization(700)
     ready = true
     connectRealtime()
+    started = performance.now()
+    await nextTick()
+    mark('构建并渲染节点', started)
     setTimeout(() => {
       if (state.snapshot?.viewport?.zoom) {
         viewApplied = true
@@ -1871,7 +1917,7 @@ async function bootstrap() {
     }
     localStorage.setItem('aigc.workspace.id', String(selected.id))
     await loadAll()
-    syncGraph()
+    scheduleVirtualization(900)
     ready = true
     connectRealtime()
     onMoveEnd(() => scheduleSave())
@@ -1891,6 +1937,7 @@ onMounted(() => {
   bootstrap()
 })
 onBeforeUnmount(() => {
+  clearTimeout(virtualizationTimer)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('paste', onPaste)
   window.removeEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
@@ -1974,6 +2021,7 @@ onBeforeUnmount(() => {
           :min-zoom="0.3"
           :max-zoom="3"
           :nodes-draggable="true"
+          :only-render-visible-elements="virtualizeNodes"
           :pan-on-drag="interactionMode === 'pan' ? true : [1]"
           :connect-on-click="false"
           :delete-key-code="null"

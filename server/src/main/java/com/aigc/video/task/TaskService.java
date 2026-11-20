@@ -335,12 +335,27 @@ public class TaskService {
 
     @Transactional
     public CanvasState saveSnapshot(Long workspaceId, JsonNode snapshot, Integer baseVersion) {
+        writeSnapshot(workspaceId, snapshot, baseVersion);
+        return getCanvas(workspaceId);
+    }
+
+    /**
+     * 只保存快照并返回新版本号。前端切换画布前调用，
+     * 避免为了拿版本号再回传一遍整张画布（节点多时序列化和传输都很重）。
+     */
+    @Transactional
+    public int saveSnapshotVersion(Long workspaceId, JsonNode snapshot, Integer baseVersion) {
+        return writeSnapshot(workspaceId, snapshot, baseVersion);
+    }
+
+    private int writeSnapshot(Long workspaceId, JsonNode snapshot, Integer baseVersion) {
         Canvas canvas = requireCanvas(workspaceId);
         String text = snapshot == null || snapshot.isNull() ? null : snapshot.toString();
+        int nextVersion = (canvas.getVersion() == null ? 0 : canvas.getVersion()) + 1;
         LambdaUpdateWrapper<Canvas> update = Wrappers.<Canvas>lambdaUpdate()
                 .eq(Canvas::getId, canvas.getId())
                 .set(Canvas::getSnapshot, text)
-                .set(Canvas::getVersion, (canvas.getVersion() == null ? 0 : canvas.getVersion()) + 1)
+                .set(Canvas::getVersion, nextVersion)
                 .set(Canvas::getUpdatedAt, LocalDateTime.now());
         if (baseVersion != null) {
             // 乐观锁：版本不一致说明其他标签页/实例已保存过
@@ -351,7 +366,7 @@ public class TaskService {
         } else {
             canvasMapper.update(null, update);
         }
-        return getCanvas(workspaceId);
+        return nextVersion;
     }
 
     // ---------------------------------------------------------------- 图片节点

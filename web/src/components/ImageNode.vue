@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { state, removeImage, replaceImageFromAsset, replaceImageFromFile, toast } from '../store/canvas'
 import ImageToolsDialog from './ImageToolsDialog.vue'
@@ -20,6 +20,31 @@ const replacing = ref(false)
 const replaceMode = ref('')
 const fileInput = ref(null)
 const replacementAssets = computed(() => state.images.filter((item) => item.id !== image.value.id && item.url))
+
+// 只有进入视口附近才真正请求图片，避免切换画布时几百张图同时下载
+const rootEl = ref(null)
+const mediaVisible = ref(false)
+let mediaObserver = null
+
+onMounted(() => {
+  if (!rootEl.value || typeof IntersectionObserver === 'undefined') {
+    mediaVisible.value = true
+    return
+  }
+  mediaObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      mediaVisible.value = true
+      mediaObserver?.disconnect()
+      mediaObserver = null
+    }
+  }, { rootMargin: '800px' })
+  mediaObserver.observe(rootEl.value)
+})
+
+onBeforeUnmount(() => {
+  mediaObserver?.disconnect()
+  mediaObserver = null
+})
 
 function readDimensions(event) {
   const { naturalWidth, naturalHeight } = event.currentTarget
@@ -79,9 +104,18 @@ async function onFileChange(event) {
 </script>
 
 <template>
-  <div class="image-node" :class="{ selected }" :style="{ '--node-width': `${nodeWidth}px` }" @click="select">
+  <div ref="rootEl" class="image-node" :class="{ selected }" :style="{ '--node-width': `${nodeWidth}px` }" @click="select">
     <div class="image-media" :style="{ '--image-ratio': imageRatio }">
-      <img :src="image.url" :alt="image.name" draggable="false" @load="readDimensions" />
+      <img
+        v-if="mediaVisible"
+        :src="image.url"
+        :alt="image.name"
+        draggable="false"
+        loading="lazy"
+        decoding="async"
+        @load="readDimensions"
+      />
+      <div v-else class="image-media-placeholder" />
       <div class="image-tool-actions" @click.stop>
         <button title="放大预览" @click="previewing = true">⤢</button>
         <button title="替换图片" @click="replaceOpen = true; replaceMode = ''">⇄</button>

@@ -2280,6 +2280,17 @@ h2 {
   color: var(--brand);
 }
 
+.tool-group + .tool-group {
+  margin-top: 14px;
+}
+
+.tool-group-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
 .preview-video {
   width: 100%;
   max-height: 62vh;

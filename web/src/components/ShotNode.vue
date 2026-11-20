@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import {
   state,
@@ -26,6 +26,10 @@ const DEFAULT_DURATIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 const saving = ref(false)
 const videoEl = ref(null)
+// 视频只在进入浏览器视口附近时才挂载，避免一次加载整张画布的所有视频元数据
+const mediaEl = ref(null)
+const mediaVisible = ref(false)
+let mediaObserver = null
 const started = ref(false)
 const hovering = ref(false)
 const captureMenuOpen = ref(false)
@@ -265,6 +269,29 @@ async function onCancel() {
     toast(`取消失败：${e.message}`)
   }
 }
+
+onMounted(() => {
+  if (!mediaEl.value || typeof IntersectionObserver === 'undefined') {
+    mediaVisible.value = true
+    return
+  }
+  mediaObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        mediaVisible.value = true
+        mediaObserver?.disconnect()
+        mediaObserver = null
+      }
+    },
+    { rootMargin: '240px' }
+  )
+  mediaObserver.observe(mediaEl.value)
+})
+
+onBeforeUnmount(() => {
+  mediaObserver?.disconnect()
+  mediaObserver = null
+})
 </script>
 
 <template>
@@ -279,9 +306,9 @@ async function onCancel() {
         <button class="shot-del" title="删除镜头" @click="onDelete">×</button>
       </header>
 
-      <div class="shot-media" @mouseenter="hovering = true" @mouseleave="hovering = false">
+      <div ref="mediaEl" class="shot-media" @mouseenter="hovering = true" @mouseleave="hovering = false">
         <video
-          v-if="ready"
+          v-if="ready && mediaVisible"
           ref="videoEl"
           :src="task.videoUrl + '#t=0.1'"
           class="nowheel nopan"
@@ -291,7 +318,7 @@ async function onCancel() {
           @click.stop
         />
         <button
-          v-if="ready && !started"
+          v-if="ready && mediaVisible && !started"
           class="media-play"
           :class="{ show: hovering }"
           title="播放"

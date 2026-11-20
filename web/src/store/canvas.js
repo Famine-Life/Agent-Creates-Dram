@@ -311,14 +311,19 @@ let socket = null
 let retryCount = 0
 let reconnectTimer = null
 let stopped = false
+// 调用方刚完成一次 loadAll 后建立连接，首次握手成功时无需再全量刷新
+let skipFirstRefresh = false
 
 export function connectRealtime() {
   stopped = false
+  retryCount = 0
+  skipFirstRefresh = true
   openSocket()
 }
 
 export function disconnectRealtime() {
   stopped = true
+  skipFirstRefresh = false
   clearTimeout(reconnectTimer)
   socket?.close()
   socket = null
@@ -336,9 +341,13 @@ function openSocket() {
   ws.onopen = async () => {
     if (socket !== ws) return
     state.connection = 'online'
+    const reconnected = retryCount > 0
     retryCount = 0
+    const fresh = skipFirstRefresh
+    skipFirstRefresh = false
+    if (fresh && !reconnected) return
     try {
-      // 断线期间可能漏掉事件，重连后全量刷新一次
+      // 断线期间可能漏掉事件，重连后全量刷新一次；首次连接紧跟 loadAll，跳过可少一次全量加载
       await loadAll()
     } catch (e) {
       /* 忽略，等待下一次重连 */

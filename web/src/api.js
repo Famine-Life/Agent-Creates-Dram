@@ -47,8 +47,9 @@ export const api = {
   retry: (taskId) => http.post(`/tasks/${taskId}/retry`),
   cancel: (taskId) => http.post(`/tasks/${taskId}/cancel`),
   removeTask: (taskId) => http.delete(`/tasks/${taskId}`),
+  // lite 只返回版本号，避免切换画布前回传整张画布的节点数据
   saveSnapshot: (workspaceId, snapshot, baseVersion) =>
-    http.put(`/canvas/${workspaceId}/snapshot`, { snapshot, baseVersion }),
+    http.put(`/canvas/${workspaceId}/snapshot?lite=1`, { snapshot, baseVersion }),
   saveOrder: (workspaceId, items) => http.put(`/canvas/${workspaceId}/order`, { items }),
   createEdge: (workspaceId, body) => http.post(`/canvas/${workspaceId}/edges`, body),
   removeEdge: (workspaceId, edgeId) => http.delete(`/canvas/${workspaceId}/edges/${edgeId}`),

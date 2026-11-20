@@ -154,6 +154,8 @@ async function onDelete(e) {
           :src="image.url"
           :alt="image.name"
           draggable="false"
+          loading="lazy"
+          decoding="async"
           title="点击放大预览"
           @click.stop="previewing = true"
         />

@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -74,8 +75,13 @@ public class CanvasController {
     }
 
     @PutMapping("/snapshot")
-    public CanvasState saveSnapshot(@PathVariable Long workspaceId,
-                                    @RequestBody SnapshotRequest request) {
+    public Object saveSnapshot(@PathVariable Long workspaceId,
+                               @RequestBody SnapshotRequest request,
+                               @RequestParam(defaultValue = "false") boolean lite) {
+        if (lite) {
+            return Map.of("version",
+                    taskService.saveSnapshotVersion(workspaceId, request.snapshot(), request.baseVersion()));
+        }
         return taskService.saveSnapshot(workspaceId, request.snapshot(), request.baseVersion());
     }
 
