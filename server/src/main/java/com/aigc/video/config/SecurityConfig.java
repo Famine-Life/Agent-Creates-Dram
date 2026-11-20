@@ -54,6 +54,7 @@ public class SecurityConfig {
 
         // 故意不声明为 Filter Bean，避免 Spring Boot 在安全链之外再注册一次。
         McpAuthenticationFilter mcpFilter = new McpAuthenticationFilter(properties, objectMapper);
+        LoginRateLimitFilter loginRateLimitFilter = new LoginRateLimitFilter(properties, objectMapper);
 
         http
                 .csrf(csrf -> csrf
@@ -90,7 +91,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/sse", "/mcp/message").permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(mcpFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(mcpFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

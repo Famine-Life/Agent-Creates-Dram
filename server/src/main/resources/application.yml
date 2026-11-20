@@ -82,6 +82,8 @@ aigc:
     cookie-secure: ${AIGC_COOKIE_SECURE:false}
     # 可选的跨域前端 / WebSocket 来源，多个用英文逗号分隔；同源部署留空
     allowed-origins: ${AIGC_ALLOWED_ORIGINS:}
+    # 登录限流白名单 IP，多个用英文逗号分隔；填固定出口 IP 可避免 NAT 误伤后无法登录
+    login-ip-allowlist: ${AIGC_LOGIN_IP_ALLOWLIST:}
   session:
     # 多实例共享登录态：true 时 Session 写入 Redis（各实例需连同一个 Redis）；
     # 单实例保持 false，沿用容器内存 Session，无需 Redis 也能登录

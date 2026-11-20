@@ -35,6 +35,9 @@ public class SecurityProperties {
     /** 额外允许的跨域来源；同源始终允许 */
     private List<String> allowedOrigins = new ArrayList<>();
 
+    /** 登录限流白名单 IP：不参与失败计数与封禁，用于固定出口 IP 自救；回环地址始终放行。 */
+    private List<String> loginIpAllowlist = new ArrayList<>();
+
     public String[] allowedOriginPatterns() {
         return allowedOrigins.stream()
                 .filter(origin -> origin != null && !origin.isBlank())
