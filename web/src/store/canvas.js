@@ -389,7 +389,7 @@ export async function createShot(payload) {
       await removeTask(node.id)
     }
   })
-  toast('已创建镜头，正在排队生成')
+  toast(payload.draft ? '已复制镜头（未开始生成）' : '已创建镜头，正在排队生成')
   return node
 }
 

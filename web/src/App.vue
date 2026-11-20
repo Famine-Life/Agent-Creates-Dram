@@ -98,6 +98,18 @@ const linkPicker = ref(null)
 const batchLink = ref(null)
 const batchLinkBusy = ref(false)
 const batchTargetInput = ref(null)
+// 画布交互模式：select 为框选，pan 为拖动画布
+const interactionMode = ref('select')
+
+function toggleInteractionMode() {
+  interactionMode.value = interactionMode.value === 'select' ? 'pan' : 'select'
+}
+
+/** 打开使用说明并定位到画布快捷键 */
+function openGuideKeys() {
+  showGuide.value = true
+  nextTick(() => document.getElementById('guide-keys')?.scrollIntoView({ block: 'start' }))
+}
 watch(() => state.workspaceId, () => {
   batchLink.value = null
   linkPicker.value = null
@@ -533,41 +545,118 @@ function computeLayout() {
   return { map, bottom: y - ROW_STEP + SHOT_H + 200 }
 }
 
+const TYPE_ORDER = { text: 0, script: 1, image: 2, imageGen: 2, shot: 3 }
+const TYPE_FALLBACK_SIZE = {
+  shot: { width: SHOT_W, height: SHOT_H },
+  image: { width: IMG_W, height: IMG_H },
+  imageGen: { width: IMG_W, height: IMG_H },
+  text: { width: 280, height: 140 },
+  script: { width: 300, height: 320 }
+}
+
+function nodeBox(node) {
+  const measured = findNode(node.id)
+  const dimensions = measured?.dimensions || node.dimensions || {}
+  const fallback = TYPE_FALLBACK_SIZE[node?.type] || { width: 260, height: 160 }
+  return {
+    width: Math.ceil(dimensions.width || 0) || fallback.width,
+    height: Math.ceil(dimensions.height || 0) || fallback.height
+  }
+}
+
+/** 一键排列：按连线把节点分成若干组，组内按文本 → 脚本 → 图片 → 视频分行，行内超宽自动换行 */
 function arrangedPositions() {
   const positions = new Map()
-  let x = PAD_X
+  const graphNodes = nodes.value.filter((node) => node.type !== 'group')
+  const known = new Set(graphNodes.map((node) => node.id))
+
+  // 并查集：有连线的节点归为同一组
+  const roots = new Map(graphNodes.map((node) => [node.id, node.id]))
+  function rootOf(id) {
+    let current = id
+    while (roots.get(current) !== current) current = roots.get(current)
+    while (roots.get(id) !== current) {
+      const next = roots.get(id)
+      roots.set(id, current)
+      id = next
+    }
+    return current
+  }
+  const linked = new Set()
+  for (const edge of edges.value) {
+    linked.add(edge.source)
+    linked.add(edge.target)
+    if (!known.has(edge.source) || !known.has(edge.target)) continue
+    const sourceRoot = rootOf(edge.source)
+    const targetRoot = rootOf(edge.target)
+    if (sourceRoot !== targetRoot) roots.set(sourceRoot, targetRoot)
+  }
+
+  const clusters = new Map()
+  const isolated = []
+  for (const node of graphNodes) {
+    if (!linked.has(node.id)) {
+      isolated.push(node)
+      continue
+    }
+    const key = rootOf(node.id)
+    if (!clusters.has(key)) clusters.set(key, [])
+    clusters.get(key).push(node)
+  }
+  const blocks = [...clusters.values()].sort((a, b) => b.length - a.length)
+  if (isolated.length) blocks.push(isolated)
+
+  const maxRowRight = PAD_X + 4 * SHOT_W + 3 * COL_GAP
+  const clusterBounds = new Map()
   let y = PAD_Y
-  let rowHeight = 0
 
-  function place(node) {
-    const { width, height } = node.dimensions
-    positions.set(node.id, { x, y })
-    x += Math.ceil(width) + COL_GAP
-    rowHeight = Math.max(rowHeight, Math.ceil(height))
+  for (const members of blocks) {
+    const rows = new Map()
+    for (const node of members) {
+      const order = TYPE_ORDER[node.type] ?? 9
+      if (!rows.has(order)) rows.set(order, [])
+      rows.get(order).push(node)
+    }
+    const top = y
+    for (const order of [...rows.keys()].sort((a, b) => a - b)) {
+      const rowNodes = rows.get(order).sort((a, b) => {
+        const left = a.data?.task?.shotIndex ?? 0
+        const right = b.data?.task?.shotIndex ?? 0
+        return left - right || String(a.id).localeCompare(String(b.id))
+      })
+      let x = PAD_X
+      let rowHeight = 0
+      for (const node of rowNodes) {
+        const { width, height } = nodeBox(node)
+        // 同一类型排成一行，超过一行宽度后换行
+        if (x > PAD_X && x + width > maxRowRight) {
+          x = PAD_X
+          y += rowHeight + COL_GAP
+          rowHeight = 0
+        }
+        positions.set(node.id, { x, y })
+        x += width + COL_GAP
+        rowHeight = Math.max(rowHeight, height)
+      }
+      y += rowHeight + COL_GAP * 2
+    }
+    for (const node of members) clusterBounds.set(node.id, { left: PAD_X, top })
+    y += 48
   }
 
-  function nextRow(gap) {
-    x = PAD_X
-    y += rowHeight + gap
-    rowHeight = 0
-  }
-
+  // 分组标签放到对应镜头所在块的上方，同一块内多个标签向上错开
+  const labelRows = new Map()
   for (const group of groups.value) {
-    place(findNode(`group-${group.name}`))
-    nextRow(12)
-    const tasks = [...group.tasks].sort((a, b) =>
-      (a.shotIndex ?? Infinity) - (b.shotIndex ?? Infinity) || a.id - b.id
-    )
-    for (const task of tasks) place(findNode(`shot-${task.id}`))
-    nextRow(COL_GAP * 2)
-  }
-
-  const rowRight = PAD_X + 4 * SHOT_W + 3 * COL_GAP
-  for (const node of nodes.value) {
-    if (node.type === 'group' || node.type === 'shot') continue
-    const measured = findNode(node.id)
-    if (x > PAD_X && x + measured.dimensions.width > rowRight) nextRow(COL_GAP)
-    place(measured)
+    const firstShot = group.tasks[0] ? `shot-${group.tasks[0].id}` : null
+    const bounds = firstShot ? clusterBounds.get(firstShot) : null
+    if (!bounds) {
+      positions.set(`group-${group.name}`, { x: PAD_X, y })
+      y += 40
+      continue
+    }
+    const stacked = labelRows.get(bounds.top) || 0
+    labelRows.set(bounds.top, stacked + 1)
+    positions.set(`group-${group.name}`, { x: bounds.left, y: bounds.top - 34 - stacked * 20 })
   }
   return positions
 }
@@ -842,13 +931,19 @@ async function duplicateNodeUnchecked(node, { x, y, withEdges = true }) {
   if (node.type === 'shot') {
     const task = state.tasks.find((item) => item.id === Number(node.id.slice(5)))
     if (!task) return
+    // 原任务可能来自已下线的模型或当前环境未配置密钥的平台，复制时退回当前可用模型
+    const requestedModel = task.modelKey || task.model
+    const availableModels = state.meta.videoModels || []
+    const model = availableModels.some((option) => option.value === requestedModel) ? requestedModel : undefined
+    if (requestedModel && !model) toast(`模型 ${requestedModel} 当前不可用，已改用默认模型`)
     const created = await createShot({
       prompt: task.prompt,
       groupId: task.groupId,
-      model: task.modelKey || task.model,
+      model,
       ratio: task.ratio,
       duration: task.duration,
-      resolution: task.resolution
+      resolution: task.resolution,
+      draft: true
     })
     explicit.set(`shot-${created.id}`, { x, y })
     if (withEdges) {
@@ -1800,7 +1895,7 @@ onBeforeUnmount(() => {
       <main
         ref="canvasWrap"
         class="canvas-wrap"
-        :class="{ dragging, linking, 'batch-linking': batchLinkDrag }"
+        :class="{ dragging, linking, 'batch-linking': batchLinkDrag, 'canvas-pan': interactionMode === 'pan' }"
         @dragover.prevent="dragging = true"
         @dragleave="dragging = false"
         @drop.prevent="onDrop"
@@ -1815,10 +1910,10 @@ onBeforeUnmount(() => {
           :min-zoom="0.3"
           :max-zoom="3"
           :nodes-draggable="true"
-          :pan-on-drag="true"
+          :pan-on-drag="interactionMode === 'pan' ? true : [1]"
           :connect-on-click="false"
           :delete-key-code="null"
-          :selection-key-code="'Shift'"
+          :selection-key-code="interactionMode === 'select' ? true : 'Shift'"
           selection-mode="partial"
           :multi-selection-key-code="['Control', 'Meta', 'Shift']"
           @node-drag-start="onNodeDragStart"
@@ -1836,11 +1931,39 @@ onBeforeUnmount(() => {
             <template #top>
               <button
                 type="button"
+                class="vue-flow__controls-button canvas-mode-toggle"
+                :title="interactionMode === 'select'
+                  ? '框选模式：拖拽空白处框选节点，按住空格拖动画布（点击切换为移动）'
+                  : '移动模式：拖拽画布平移视图（点击切换为框选）'"
+                @click="toggleInteractionMode"
+              >
+                <svg v-if="interactionMode === 'select'" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 3l14 8-6 1.6L10 19z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 12V6a1.5 1.5 0 0 1 3 0v5m0-6a1.5 1.5 0 0 1 3 0v6m0-5a1.5 1.5 0 0 1 3 0v7m0-4a1.5 1.5 0 0 1 3 0v6c0 3.5-2.5 6-6 6h-1.5a5.5 5.5 0 0 1-4.4-2.2L5 14.5a1.6 1.6 0 0 1 2.4-2.1L8 13" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 class="vue-flow__controls-button canvas-arrange-logo"
-                title="一键排列：按分组和镜头序号排列画布节点"
+                title="一键排列：按连线分组，按文本/脚本/图片/视频分行排列"
                 :disabled="!canArrange"
                 @click="arrangeCanvas"
               >◈</button>
+            </template>
+            <template #default>
+              <button
+                type="button"
+                class="vue-flow__controls-button canvas-help-btn"
+                title="查看画布快捷键"
+                @click="openGuideKeys"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="6" width="18" height="12" rx="2" />
+                  <path d="M6.5 10h.01M9.5 10h.01M12.5 10h.01M15.5 10h.01M18 10h.01M7 14h10" />
+                </svg>
+              </button>
             </template>
           </Controls>
           <MiniMap

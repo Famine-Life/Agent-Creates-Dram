@@ -752,9 +752,33 @@ h2 {
 
 .canvas-wrap {
   position: relative;
+  /* 框选模式的自定义箭头光标，热点在箭头尖 */
+  --cursor-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 3l14 8-6 1.6L10 19z' fill='%2315171c' stroke='%23ffffff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E") 5 3, default;
   flex: 1;
   min-width: 0;
   background: var(--bg);
+}
+
+/* 框选 / 移动 模式切换与快捷键说明按钮 */
+.canvas-mode-toggle,
+.canvas-help-btn {
+  color: var(--muted);
+}
+
+.canvas-mode-toggle:hover,
+.canvas-help-btn:hover {
+  color: var(--text);
+}
+
+.canvas-mode-toggle svg,
+.canvas-help-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* 一键排列：并入缩放控件组顶部，用品牌 logo 图标呈现 */
@@ -853,7 +877,20 @@ h2 {
 }
 
 .vue-flow__pane {
+  cursor: var(--cursor-select);
+}
+
+.canvas-pan .vue-flow__pane {
   cursor: grab;
+}
+
+/* 框选模式统一用箭头光标，移动模式才显示抓手 */
+.canvas-wrap:not(.canvas-pan) .vue-flow__pane.selection,
+.canvas-wrap:not(.canvas-pan) .vue-flow__node.draggable,
+.canvas-wrap:not(.canvas-pan) .vue-flow__node.draggable.dragging,
+.canvas-wrap:not(.canvas-pan) .vue-flow__nodesselection-rect,
+.canvas-wrap:not(.canvas-pan) .vue-flow__nodesselection-rect.dragging {
+  cursor: var(--cursor-select);
 }
 
 .vue-flow__node {
