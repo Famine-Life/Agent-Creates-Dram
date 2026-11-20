@@ -5,10 +5,12 @@ import com.aigc.video.common.ConflictException;
 import com.aigc.video.common.NotFoundException;
 import com.aigc.video.common.TooManyRequestsException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.Map;
@@ -46,6 +48,15 @@ public class ApiExceptionHandler {
                 ? "文件超过大小限制"
                 : e.getMessage();
         return body(HttpStatus.BAD_REQUEST, message);
+    }
+
+    /**
+     * 客户端提前关闭连接（暂停/关闭视频、刷新页面、SSE 断开）时会触发 Broken pipe。
+     * 响应已无法写回，只记录 debug 日志，避免被当成 500 接口异常刷屏。
+     */
+    @ExceptionHandler({ClientAbortException.class, AsyncRequestNotUsableException.class})
+    public void clientDisconnected(Exception e) {
+        log.debug("客户端已断开连接，忽略响应写入：{}", e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
