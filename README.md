@@ -74,6 +74,29 @@ CLI 当前负责分镜级素材生成和任务编排；视频剪辑、配音、�
 - 前端：Vue 3、Vite、Vue Flow、Node.js
 - 数据库：H2（默认）或 MySQL
 
+## 功能对比：单用户 vs 多用户会员制
+
+> ⚠️ **当前版本为单用户模式**。多用户 + 会员积分制正在开发中，下表展示了两种模式在各模块上的差异，便于评估升级范围。
+
+| 模块 | 单用户（当前，已实现 ✅） | 多用户会员制（开发中 🚧） |
+| --- | --- | --- |
+| **用户体系** | 单管理员账号，凭据通过环境变量注入 | 多用户注册/邮箱验证/找回密码；管理员从用户中提升 |
+| **数据隔离** | 所有业务表无 `user_id`，共享同一套数据 | 每张业务表加 `user_id`；Mapper 自动按登录用户过滤；唯一索引改为 `(user_id, 原字段)` 组合 |
+| **画布 / 工作空间** | 默认 `workspace.id=1`，CLI/MCP 硬编码 id=1 | 每用户可创建多个 workspace；列表接口只返回当前用户的；CLI/MCP 传入 `--workspace` 时校验归属 |
+| **积分 / 会员系统** | 无 | 积分账户 + 消费流水 + 会员等级；不同等级对应不同每日额度、并发上限、分辨率权益 |
+| **任务调度与并发** | 并发闸门按 `provider/model` 全局分组（企业 10 / 个人 3），队列容量 1000 | 双重配额：用户级并发（按会员等级） + 平台级总并发；扣费不足标记 `INSUFFICIENT_BALANCE`；高并发用户可加权调度 |
+| **API 并发请求与 MQ** | API 同步写库后直接由进程内 `@Scheduled` 调度轮询；无独立消息队列，单机串行消费 | 引入 MQ（RabbitMQ / RocketMQ / Kafka）解耦 API 与调度：API 写入后投递消息，调度消费端独立扩缩容；削峰填谷，支持突发高并发提交；失败消息走死信队列人工介入 |
+| **REST API 归属校验** | 登录即全量访问，无资源归属检查 | 每个接口验证 `user_id == 当前登录用户`；越权返回 404；计划抽取 `OwnershipAspect` AOP 切面 |
+| **WebSocket 鉴权** | Session 鉴权后允许连接任意 `workspaceId`，广播不校验归属 | 握手验证 `workspaceId` 属于当前用户；`CanvasSocketRegistry` 按 `(userId, workspaceId)` 分组 |
+| **幂等键** | `sha256(workspaceId\|groupId\|shotIndex\|prompt)`，唯一索引 `uk_task_idem` | 加入 `userId`；唯一索引改为 `(user_id, idem_key)` |
+| **MCP Token 体系** | 全局单一 `MCP_API_TOKEN` | 每用户可生成/吊销独立 Token，可设置过期时间；`McpAuthenticationFilter` 改为查库 |
+| **对象存储路径** | 扁平目录 `files/images/<uuid>.xxx`、`files/videos/<uuid>.mp4` | 按用户隔离为 `{userId}/images/...`、`{userId}/videos/...` |
+| **CLI 登录态** | 单一 Session Cookie，与网页共用同一账号 | 支持 `--username` 切换账号；所有命令自动携带当前用户上下文 |
+| **前端用户界面** | 登录后直接进入默认画布，无用户/积分 UI | 登录首页展示「我的画布」列表、积分余额、会员等级；新增「我的账户」页面 |
+| **任务状态** | `RECEIVED → QUEUED → ... → SUCCEEDED / FAILED` | 新增 `INSUFFICIENT_BALANCE`、`QUOTA_EXCEEDED`；扣费时失败插入流水记录 |
+| **审计与风控** | 仅记录 `prompt_record` | 每日/每小时调用计数；异常调用触发限流；管理员后台查看用户行为日志 |
+| **支付接入** | 无 | 积分充值对接微信支付 / 支付宝（IJPay）；订单表 + 回调验签 + 异步到账 |
+
 ## 本地开发
 
 需要安装 JDK 17、Maven 和 Node.js。
