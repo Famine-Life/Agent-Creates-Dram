@@ -64,11 +64,11 @@ export const api = {
   createAiImage: (workspaceId, body) => http.post(`/canvas/${workspaceId}/images/ai`, body),
   optimizePrompt: (workspaceId, prompt, model) =>
     http.post(`/canvas/${workspaceId}/ai/prompt/optimize`, { prompt, model }),
-  generateImage: (workspaceId, imageId, prompt, model, referenceUrl, settings = {}) =>
+  generateImage: (workspaceId, imageId, prompt, model, referenceUrls, settings = {}) =>
     http.post(`/canvas/${workspaceId}/images/${imageId}/generate`, {
       prompt,
       model,
-      referenceUrl,
+      referenceUrls,
       ...settings
     }),
   upload: (workspaceId, file, x, y) => {

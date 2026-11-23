@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** MCP：参考图上传、图片节点、AI 图片生成与图片连线 */
@@ -110,8 +111,10 @@ public class McpImageTools {
             @ToolParam(required = false, description = "生成数量 1-9，默认 1") Integer count,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(imageId, "图片ID");
+        List<String> references = referenceUrl == null || referenceUrl.isBlank()
+                ? List.of() : List.of(referenceUrl);
         return McpToolSupport.toJson(objectMapper, canvasNodeService.generateImage(
-                McpToolSupport.workspace(workspaceId), id, prompt, model, referenceUrl, ratio, resolution, count));
+                McpToolSupport.workspace(workspaceId), id, prompt, model, references, ratio, resolution, count));
     }
 
     @Tool(name = "update_image_node",

@@ -2420,6 +2420,11 @@ h2 {
   aspect-ratio: 16 / 9;
 }
 
+/* AI 图片编辑器含参考图行，按内容增高，避免输入框覆盖底部参数栏 */
+.image-gen-wrap > .node-prompt {
+  aspect-ratio: auto;
+}
+
 .np-bar {
   display: flex;
   align-items: center;
@@ -2445,12 +2450,21 @@ h2 {
 
 .np-thumbs {
   display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 4px;
-  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 56px;
+  margin-left: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .np-thumb {
   position: relative;
+  flex: 0 0 26px;
   width: 26px;
   height: 26px;
   border-radius: 6px;

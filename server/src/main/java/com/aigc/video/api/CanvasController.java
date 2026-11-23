@@ -110,10 +110,22 @@ public class CanvasController {
         return canvasNodeService.generateImage(workspaceId, imageId,
                 request == null ? null : request.prompt(),
                 request == null ? null : request.model(),
-                request == null ? null : request.referenceUrl(),
+                referenceUrls(request),
                 request == null ? null : request.ratio(),
                 request == null ? null : request.resolution(),
                 request == null ? null : request.count());
+    }
+
+    /** 优先使用多参考图列表，兼容旧的单图 referenceUrl */
+    private static List<String> referenceUrls(ImageGenerateRequest request) {
+        if (request == null) {
+            return List.of();
+        }
+        if (request.referenceUrls() != null && !request.referenceUrls().isEmpty()) {
+            return request.referenceUrls();
+        }
+        String single = request.referenceUrl();
+        return single == null || single.isBlank() ? List.of() : List.of(single);
     }
 
     // ---------------------------------------------------------------- 文本 / 脚本节点

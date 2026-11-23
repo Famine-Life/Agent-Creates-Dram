@@ -100,8 +100,8 @@ public class AiService {
         return content;
     }
 
-    /** 生成图片，返回可直接展示的地址；referenceUrl 非空时以该图作为参考做图生图 */
-    public String generateImage(String prompt, String model, String referenceUrl, String size) {
+    /** 生成图片，返回可直接展示的地址；referenceUrls 非空时按顺序作为参考图做图生图 */
+    public String generateImage(String prompt, String model, List<String> referenceUrls, String size) {
         ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
         if (resolved.mock()) {
             return storeMockImage(prompt);
@@ -115,8 +115,14 @@ public class AiService {
                 body.put("size", targetSize);
                 body.put("response_format", "url");
                 body.put("watermark", false);
-                if (referenceUrl != null && !referenceUrl.isBlank()) {
-                    body.put("image", assetService.providerImageUrl(referenceUrl));
+                List<String> images = referenceUrls == null ? List.of() : referenceUrls.stream()
+                        .filter(url -> url != null && !url.isBlank())
+                        .map(assetService::providerImageUrl)
+                        .toList();
+                if (images.size() == 1) {
+                    body.put("image", images.get(0));
+                } else if (!images.isEmpty()) {
+                    body.put("image", images);
                 }
             }
             case "openai-image" -> {

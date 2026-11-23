@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { state, removeImage, generateAiImage, saveImagePrompt, toast } from '../store/canvas'
+import { state, removeImage, generateAiImage, saveImagePrompt, addLink, removeLink, uploadImageFile, toast } from '../store/canvas'
 import PromptEditor from './PromptEditor.vue'
 import ImageToolsDialog from './ImageToolsDialog.vue'
 
@@ -56,13 +56,29 @@ const settings = computed(
 )
 const activeModel = computed(() => settings.value.model || state.meta.defaults?.image || '')
 
-/** 与当前图片节点相连的图片，生成时作为图生图参考（取第一张有地址的） */
+/** 与当前图片节点相连的图片，生成时作为图生图参考 */
 const linkedImages = computed(() =>
   state.links
     .filter((link) => link.target === `image-${image.value.id}` && link.source.startsWith('image-'))
-    .map((link) => state.images.find((item) => `image-${item.id}` === link.source))
+    .map((link) => {
+      const linked = state.images.find((item) => `image-${item.id}` === link.source)
+      return linked ? { ...linked, linkId: link.id } : null
+    })
     .filter(Boolean)
 )
+
+/** 提示词里的 @图片N 按编号取对应连线图；没有 @ 引用时把全部连线图按顺序作为参考 */
+function resolveReferenceUrls(text) {
+  const numbers = [...new Set([...(text || '').matchAll(/@图片(\d+)/g)].map((match) => Number(match[1])))]
+  const picked = numbers.length
+    ? numbers.map((number) => linkedImages.value[number - 1])
+    : linkedImages.value
+  const urls = []
+  for (const item of picked) {
+    if (item?.url && !urls.includes(item.url)) urls.push(item.url)
+  }
+  return urls
+}
 
 function setSetting(key, value) {
   state.imageSettings = {
@@ -87,13 +103,30 @@ function select() {
 async function onGenerate(text) {
   saving.value = true
   try {
-    const referenceUrl = linkedImages.value.find((item) => item.url)?.url
-    await generateAiImage(image.value.id, text, activeModel.value, referenceUrl, settings.value)
+    await generateAiImage(image.value.id, text, activeModel.value, resolveReferenceUrls(text), settings.value)
     toast(`已提交图片生成 · ${settings.value.count} 张`)
   } catch (e) {
     toast(`生成失败：${e.message}`)
   } finally {
     saving.value = false
+  }
+}
+
+function onLinkImage(source) {
+  if (source.id === image.value.id) return
+  addLink(`image-${source.id}`, `image-${image.value.id}`)
+}
+
+function onUnlinkImage(linked) {
+  if (linked.linkId) removeLink(linked.linkId)
+}
+
+async function onUpload(file) {
+  try {
+    const uploaded = await uploadImageFile(file)
+    addLink(`image-${uploaded.id}`, `image-${image.value.id}`)
+  } catch (e) {
+    toast(`上传失败：${e.message}`)
   }
 }
 
@@ -109,7 +142,7 @@ async function onRestyle(e) {
   if (!window.confirm('将基于当前图片重新生成，并替换这张图。继续？')) return
   saving.value = true
   try {
-    await generateAiImage(image.value.id, prompt, activeModel.value, image.value.url, settings.value)
+    await generateAiImage(image.value.id, prompt, activeModel.value, [image.value.url], settings.value)
     toast('已提交图生图任务')
   } catch (err) {
     toast(`图生图失败：${err.message}`)
@@ -205,9 +238,11 @@ async function onDelete(e) {
       :count="settings.count"
       :count-options="COUNT_OPTIONS"
       :busy="saving || running || queued"
-      :show-refs="false"
       submit-label="生成图片"
       placeholder="描述你想要的画面，例如：雨夜霓虹街头，电影感，浅景深…输入 @ 引用已连线图片"
+      @link="onLinkImage"
+      @unlink="onUnlinkImage"
+      @upload="onUpload"
       @update:model-value="setSetting('model', $event)"
       @update:prompt="onPromptChange"
       @update:ratio="setSetting('ratio', $event)"

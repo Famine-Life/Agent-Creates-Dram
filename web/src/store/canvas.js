@@ -721,8 +721,8 @@ export async function createImageNode(payload) {
   return image
 }
 
-export async function generateAiImage(imageId, prompt, model, referenceUrl, settings) {
-  const image = await api.generateImage(state.workspaceId, imageId, prompt, model, referenceUrl, settings)
+export async function generateAiImage(imageId, prompt, model, referenceUrls, settings) {
+  const image = await api.generateImage(state.workspaceId, imageId, prompt, model, referenceUrls, settings)
   upsert(state.images, image)
   return image
 }

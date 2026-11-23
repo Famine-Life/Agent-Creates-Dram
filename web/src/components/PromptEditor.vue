@@ -296,7 +296,7 @@ const settingsSummary = computed(() => {
       <button class="np-tool" @click="fileInput.click()">＋ 上传</button>
       <button class="np-tool" @click="addReference">画布参考</button>
       <button class="np-tool" @click="addReference">@ 图片</button>
-      <div class="np-thumbs">
+      <div v-if="images.length" class="np-thumbs">
         <div
           v-for="(image, index) in images"
           :key="image.id"

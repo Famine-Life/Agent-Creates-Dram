@@ -37,11 +37,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /** 管理文本、脚本节点及 AI 图片生成。 */
 @Slf4j
 @Service
 public class CanvasNodeService {
+
+    private static final Pattern IMAGE_REFERENCE_TOKEN = Pattern.compile("@图片\\d+");
 
     public static final String STATUS_IDLE = "IDLE";
     public static final String STATUS_QUEUED = "QUEUED";
@@ -236,12 +239,19 @@ public class CanvasNodeService {
 
     /** 触发 AI 图片生成，立即返回 RUNNING 状态，完成后通过 WebSocket 推送结果 */
     public ImageNode generateImage(Long workspaceId, Long imageId, String prompt, String model,
-                                   String referenceUrl, String ratio, String resolution, Integer count) {
+                                   List<String> referenceUrls, String ratio, String resolution, Integer count) {
         CanvasImage image = requireImage(workspaceId, imageId);
         String text = prompt == null || prompt.isBlank() ? image.getPrompt() : prompt.trim();
         if (text == null || text.isBlank()) {
             throw new BadRequestException("请先填写图片提示词");
         }
+        List<String> references = referenceUrls == null ? List.of() : referenceUrls.stream()
+                .filter(url -> url != null && !url.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        // @图片N 已经由调用方按顺序解析成参考图，不再作为文本提交给模型
+        String aiPrompt = stripImageReferences(text);
         ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
         int quantity = count == null ? 1 : Math.max(1, Math.min(9, count));
         String size = imageSize(ratio, resolution);
@@ -262,7 +272,7 @@ public class CanvasNodeService {
             broadcastImage(workspaceId, imageId);
             for (int index = 0; index < quantity; index++) {
                 try {
-                    String url = aiService.generateImage(text, resolved.key(), referenceUrl, size);
+                    String url = aiService.generateImage(aiPrompt, resolved.key(), references, size);
                     if (index == 0) {
                         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                                 .eq(CanvasImage::getId, imageId)
@@ -462,5 +472,12 @@ public class CanvasNodeService {
             return null;
         }
         return message.length() > 900 ? message.substring(0, 900) : message;
+    }
+
+    /** 移除图片提示词中的 @图片N 标记；整段只有引用时保留原文，避免提示词变空 */
+    private static String stripImageReferences(String text) {
+        String stripped = IMAGE_REFERENCE_TOKEN.matcher(text).replaceAll("")
+                .replaceAll("[ \\t]{2,}", " ").trim();
+        return stripped.isBlank() ? text : stripped;
     }
 }

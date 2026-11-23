@@ -100,9 +100,22 @@ const batchLinkBusy = ref(false)
 const batchTargetInput = ref(null)
 // 画布交互模式：select 为框选，pan 为拖动画布
 const interactionMode = ref('select')
+// 框选模式下按住空格临时切换为拖动画布，松开恢复
+const spacePressed = ref(false)
+const panOnDrag = computed(() =>
+  interactionMode.value === 'pan' || spacePressed.value ? true : [1]
+)
 
 function toggleInteractionMode() {
   interactionMode.value = interactionMode.value === 'select' ? 'pan' : 'select'
+}
+
+function onKeyup(event) {
+  if (event.code === 'Space') spacePressed.value = false
+}
+
+function resetSpacePan() {
+  spacePressed.value = false
 }
 
 /** 打开使用说明并定位到画布快捷键 */
@@ -1154,6 +1167,11 @@ function onKeydown(event) {
     return
   }
   if (isTypingTarget(event.target)) return
+  if (event.code === 'Space') {
+    event.preventDefault()
+    spacePressed.value = true
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
     event.preventDefault()
     undoCanvasAction()
@@ -1932,6 +1950,8 @@ async function bootstrap() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('keyup', onKeyup)
+  window.addEventListener('blur', resetSpacePan)
   window.addEventListener('paste', onPaste)
   window.addEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
   bootstrap()
@@ -1939,6 +1959,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearTimeout(virtualizationTimer)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keyup', onKeyup)
+  window.removeEventListener('blur', resetSpacePan)
   window.removeEventListener('paste', onPaste)
   window.removeEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
   disconnectRealtime()
@@ -2006,7 +2028,7 @@ onBeforeUnmount(() => {
       <main
         ref="canvasWrap"
         class="canvas-wrap"
-        :class="{ dragging, linking, 'batch-linking': batchLinkDrag, 'canvas-pan': interactionMode === 'pan' }"
+        :class="{ dragging, linking, 'batch-linking': batchLinkDrag, 'canvas-pan': interactionMode === 'pan' || spacePressed }"
         @dragover.prevent="dragging = true"
         @dragleave="dragging = false"
         @drop.prevent="onDrop"
@@ -2022,7 +2044,7 @@ onBeforeUnmount(() => {
           :max-zoom="3"
           :nodes-draggable="true"
           :only-render-visible-elements="virtualizeNodes"
-          :pan-on-drag="interactionMode === 'pan' ? true : [1]"
+          :pan-on-drag="panOnDrag"
           :connect-on-click="false"
           :delete-key-code="null"
           :selection-key-code="interactionMode === 'select' ? true : 'Shift'"
