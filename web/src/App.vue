@@ -1080,6 +1080,12 @@ async function duplicateNodeUnchecked(node, { x, y, withEdges = true }) {
     } else {
       created = await createAiImageNode({ x, y, prompt: image.prompt })
     }
+    // 复制图片生成参数（模型 / 比例 / 清晰度 / 数量），让新节点与原节点设置保持一致；
+    // imageSettings 的深度 watcher 会自动触发快照保存，无需额外调用 scheduleSave
+    const sourceSettings = state.imageSettings[image.id]
+    if (sourceSettings) {
+      state.imageSettings = { ...state.imageSettings, [created.id]: { ...sourceSettings } }
+    }
     explicit.set(`image-${created.id}`, { x, y })
     if (withEdges) {
       const taskIds = state.edges

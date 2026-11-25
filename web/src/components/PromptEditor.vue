@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { api } from '../api'
 import { state, toast, copyText } from '../store/canvas'
 
@@ -49,6 +49,8 @@ const activePickerIndex = ref(0)
 const pickerRef = ref(null)
 const fullscreen = ref(false)
 const settingsOpen = ref(false)
+const settingsBtnRef = ref(null)
+const settingsRef = ref(null)
 const optimizing = ref(false)
 const optimized = ref('')
 const textarea = ref(null)
@@ -276,6 +278,29 @@ const settingsSummary = computed(() => {
   else if (props.countOptions.length) parts.push(`${props.count} 张`)
   return parts.join(' · ')
 })
+
+/** 设置弹窗打开后，点击弹窗与触发按钮之外的区域自动关闭 */
+function onSettingsOutside(event) {
+  if (!settingsOpen.value) return
+  const target = event.target
+  if (settingsRef.value?.contains(target)) return
+  if (settingsBtnRef.value?.contains(target)) return
+  settingsOpen.value = false
+}
+
+watch(settingsOpen, (open) => {
+  // 用捕获阶段监听：编辑器容器有 @pointerdown.stop，捕获阶段先于其执行，
+  // 保证在编辑区内部点弹窗外（如文本框）也能触发关闭
+  if (open) {
+    document.addEventListener('pointerdown', onSettingsOutside, true)
+  } else {
+    document.removeEventListener('pointerdown', onSettingsOutside, true)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onSettingsOutside, true)
+})
 </script>
 
 <template>
@@ -363,6 +388,7 @@ const settingsSummary = computed(() => {
       <span v-else-if="model" class="np-model" :title="modelLabel">{{ modelLabel }}</span>
       <template v-if="showSettings">
         <button
+          ref="settingsBtnRef"
           class="np-chip np-chip-btn"
           :class="{ active: settingsOpen }"
           title="比例 · 清晰度 · 时长 / 数量"
@@ -390,6 +416,7 @@ const settingsSummary = computed(() => {
 
     <div
       v-if="settingsOpen && showSettings"
+      ref="settingsRef"
       class="np-settings nopan nowheel nodrag"
       @pointerdown.stop
       @wheel.stop
