@@ -90,8 +90,8 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
         </div>
 
         <h1>
-          把一句话交给 Agent<br />
-          <span>变成一集漫剧</span>
+          专注你的创作<br />
+          <span>让Agent帮你编排画布</span>
         </h1>
         <p class="hero-desc">
           Codex、Claude Code、WorkBuddy 等 Agent 通过 CLI 把创意拆成脚本、参考图与分镜视频，
@@ -153,7 +153,6 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
         <ul class="caps">
           <li><b>CLI 编排</b>批量建节点</li>
           <li><b>画布可编辑</b>随时接管</li>
-          <li><b>任务可追踪</b>失败有原因</li>
           <li><b>多模型接入</b>可私有化</li>
         </ul>
 
@@ -295,13 +294,16 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 
 .hero-brand strong {
   display: block;
-  font-size: 15px;
-  letter-spacing: 0.3px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #f4f5fa;
+  text-shadow: 0 0 14px rgba(124, 107, 255, 0.35);
 }
 
 .hero-brand span {
-  color: var(--muted);
-  font-size: 10.5px;
+  color: var(--text-soft);
+  font-size: 12px;
 }
 
 .hero-tags {
@@ -312,12 +314,12 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 }
 
 .tag {
-  padding: 2px 9px;
+  padding: 3px 11px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(124, 107, 255, 0.06);
-  color: var(--muted);
-  font-size: 10px;
+  color: #c2c8d8;
+  font-size: 12.5px;
   letter-spacing: 0.3px;
 }
 
@@ -329,7 +331,7 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 
 .hero h1 {
   margin: 14px 0 0;
-  font-size: clamp(26px, 2.7vw, 36px);
+  font-size: clamp(30px, 3.2vw, 42px);
   line-height: 1.3;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -344,11 +346,11 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 }
 
 .hero-desc {
-  margin: 12px 0 0;
-  max-width: 470px;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.85;
+  margin: 14px 0 0;
+  max-width: 500px;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.8;
 }
 
 /* ---------------- Agent 对话与流水线 ---------------- */
@@ -385,20 +387,20 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 
 .agent-cmd p {
   margin: 1px 0 0;
-  color: #d5d9e2;
-  font-size: 11.5px;
+  color: #e6e9f0;
+  font-size: 13.5px;
   line-height: 1.65;
 }
 
 .cmd-badge {
   flex: 0 0 auto;
   align-self: flex-start;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid rgba(124, 107, 255, 0.35);
   background: rgba(124, 107, 255, 0.12);
   color: #b9aeff;
-  font-size: 9px;
+  font-size: 10.5px;
   letter-spacing: 0.4px;
 }
 
@@ -427,7 +429,7 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 10px 8px 8px;
+  padding: 10px 12px 10px 10px;
   border-radius: 11px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -480,15 +482,15 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 }
 
 .pipe-body strong {
-  font-size: 11.5px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
 }
 
 .pipe-body em {
   font-style: normal;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text-soft);
+  font-size: 12px;
 }
 
 .chip {
@@ -497,9 +499,9 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 7px;
+  padding: 2px 9px;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 
@@ -535,12 +537,12 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 }
 
 .caps li {
-  padding: 3px 9px;
+  padding: 5px 12px;
   border-radius: 7px;
   border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text-soft);
+  font-size: 13px;
 }
 
 .caps b {
@@ -551,8 +553,17 @@ onBeforeUnmount(() => window.removeEventListener('aigc:unauthorized', onUnauthor
 
 .hero-note {
   margin: 12px 0 0;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+/* 暗色登录卡：提升字段标签对比度（仅作用于本组件） */
+.field-label {
+  font-size: 12.5px;
+  color: #d8dcea;
+}
+.field-label em {
+  color: #aeb4c6;
 }
 
 /* ---------------------------------------------------------------- 右侧登录卡 */
