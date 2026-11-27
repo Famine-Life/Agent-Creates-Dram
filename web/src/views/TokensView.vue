@@ -1,4 +1,5 @@
 <script setup>
+// MCP Token：创建、查看与撤销个人访问 Token，完整 Token 仅在创建后显示一次
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import AccountShell from '../components/AccountShell.vue'
@@ -41,6 +42,7 @@ async function create() {
   }
 }
 
+// 撤销不可恢复：确认后立即调用接口，使用该 Token 的客户端会同步失效
 async function revoke(item) {
   if (!window.confirm(`确定撤销 Token「${item.name}」？撤销后使用该 Token 的客户端将立即失效。`)) return
   revoking.value = item.id

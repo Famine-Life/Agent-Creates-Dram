@@ -36,6 +36,7 @@ public class PaymentController {
     private final WechatPayGateway wechatPayGateway;
     private final AlipayGateway alipayGateway;
 
+    /** 查询各支付渠道是否可用及默认渠道。 */
     @GetMapping("/api/payments/channels")
     public Map<String, Object> channels() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -46,6 +47,7 @@ public class PaymentController {
         return result;
     }
 
+    /** 创建订单并返回支付参数：Mock 标记、微信二维码或支付宝表单。 */
     @PostMapping("/api/payments/orders")
     public Map<String, Object> create(@RequestBody Map<String, Object> body) {
         String productType = string(body.get("productType"));
@@ -54,26 +56,31 @@ public class PaymentController {
         return paymentService.createOrder(UserContext.requireUserId(), productType, productCode, channel).toMap();
     }
 
+    /** 当前用户最近的订单。 */
     @GetMapping("/api/payments/orders")
     public List<PaymentOrder> orders(@RequestParam(defaultValue = "20") int limit) {
         return paymentService.listOrders(UserContext.requireUserId(), limit);
     }
 
+    /** 按订单号查询当前用户的订单。 */
     @GetMapping("/api/payments/orders/{orderNo}")
     public PaymentOrder order(@PathVariable String orderNo) {
         return paymentService.getOrder(UserContext.requireUserId(), orderNo);
     }
 
+    /** Mock 渠道模拟支付成功。 */
     @PostMapping("/api/payments/orders/{orderNo}/mock-pay")
     public PaymentOrder mockPay(@PathVariable String orderNo) {
         return paymentService.mockPay(UserContext.requireUserId(), orderNo);
     }
 
+    /** 关闭未支付订单。 */
     @PostMapping("/api/payments/orders/{orderNo}/close")
     public PaymentOrder close(@PathVariable String orderNo) {
         return paymentService.close(UserContext.requireUserId(), orderNo);
     }
 
+    /** 微信支付异步通知：验签解密后按统一到账逻辑处理。 */
     @RequestMapping(value = "/api/payments/notify/wechat", method = {RequestMethod.POST})
     public ResponseEntity<Map<String, Object>> wechatNotify(@RequestHeader Map<String, String> headers,
                                                             @RequestBody String body) {
@@ -99,6 +106,7 @@ public class PaymentController {
         }
     }
 
+    /** 支付宝异步通知：验签后按统一到账逻辑处理。 */
     @PostMapping("/api/payments/notify/alipay")
     public String alipayNotify(@RequestParam Map<String, String> params) {
         try {

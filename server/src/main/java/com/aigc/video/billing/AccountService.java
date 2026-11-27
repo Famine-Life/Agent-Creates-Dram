@@ -25,6 +25,7 @@ public class AccountService {
     private final MembershipService membershipService;
     private final QuotaService quotaService;
 
+    /** 汇总用户会员、钱包与当日用量。 */
     public AccountSummary summary(Long userId) {
         AppUser user = userMapper.selectById(userId);
         MemberPlan plan = membershipService.resolve(user);
@@ -38,6 +39,7 @@ public class AccountService {
                 counter == null || counter.getCalls() == null ? 0 : counter.getCalls());
     }
 
+    /** 查询用户最近的积分流水，limit 最大 200。 */
     public List<CreditLedger> ledgers(Long userId, int limit) {
         return ledgerMapper.selectList(Wrappers.<CreditLedger>lambdaQuery()
                 .eq(CreditLedger::getUserId, userId)

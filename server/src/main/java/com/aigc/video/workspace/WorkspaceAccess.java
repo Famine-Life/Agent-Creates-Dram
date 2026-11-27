@@ -16,6 +16,7 @@ public class WorkspaceAccess {
     private final WorkspaceMapper workspaceMapper;
     private final ProjectService projectService;
 
+    /** 校验画布归属并返回，越权访问统一按不存在处理。 */
     public Workspace requireOwned(Long workspaceId) {
         Long userId = UserContext.currentUserId();
         if (userId == null) {
@@ -31,6 +32,7 @@ public class WorkspaceAccess {
         return workspace;
     }
 
+    /** 校验归属并返回画布 ID。 */
     public Long requireOwnedId(Long workspaceId) {
         return requireOwned(workspaceId).getId();
     }

@@ -1,4 +1,5 @@
 <script setup>
+// 重置密码：使用邮件链接中的令牌设置新的登录密码
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { resetPassword } from '../store/auth'

@@ -19,6 +19,7 @@ public class LoginAuditListener {
     private final AppUserMapper userMapper;
     private final AuditService auditService;
 
+    /** 登录成功后刷新最后登录时间并记录登录审计。 */
     @EventListener
     public void onSuccess(AuthenticationSuccessEvent event) {
         if (!(event.getAuthentication().getPrincipal() instanceof AuthUser principal)) {

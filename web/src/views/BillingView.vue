@@ -1,4 +1,5 @@
 <script setup>
+// 会员与充值：列出会员套餐和积分包，下单后轮询订单状态直到支付成功或关闭
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api'
 import AccountShell from '../components/AccountShell.vue'
@@ -56,6 +57,7 @@ async function load() {
   }
 }
 
+// 下单：确认邮箱已验证且有可用渠道后创建支付订单，重置弹窗状态并开始轮询
 async function buy(productType, item) {
   if (!emailVerified.value) {
     toast('请先完成邮箱验证后再充值')
@@ -91,6 +93,7 @@ async function buy(productType, item) {
   }
 }
 
+// 订单轮询：每 2.5 秒拉取一次订单，支付成功或订单关闭后停止
 function startPolling() {
   stopPolling()
   pollTimer = setInterval(refreshOrder, 2500)
@@ -149,6 +152,7 @@ async function closeOrder() {
   }
 }
 
+// 关闭支付弹窗：先停止轮询，再清空订单与提示状态
 function closeDialog() {
   stopPolling()
   buying.value = null

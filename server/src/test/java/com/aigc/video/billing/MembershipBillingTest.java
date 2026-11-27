@@ -20,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 会员计费集成测试：覆盖会员档位解析与升级、积分冻结/实扣/退回的幂等性，以及日额度与充值到账。
+ */
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:membership-billing-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1",
         "aigc.storage.type=local",
@@ -36,6 +39,7 @@ class MembershipBillingTest {
     @Autowired
     private MembershipService membershipService;
 
+    /** 验证预留、实扣、退回重复调用均幂等，且余额不足时不会透支。 */
     @Test
     void reserveCaptureAndReleaseAreIdempotent() {
         Long userId = newUser("wallet-user");
@@ -65,6 +69,7 @@ class MembershipBillingTest {
         assertEquals(70, walletService.walletOf(userId).getAvailableCredits());
     }
 
+    /** 验证 Mock 支付重复回调只会为订单入账一次积分。 */
     @Test
     void mockPaymentGrantsCreditsOnlyOnce() {
         Long userId = newUser("pay-user");
@@ -84,6 +89,7 @@ class MembershipBillingTest {
                 paymentService.getOrder(userId, info.orderNo).getStatus());
     }
 
+    /** 验证会员订单支付后用户档位升级且有效期被延长。 */
     @Test
     void mockMembershipOrderUpgradesUser() {
         Long userId = newUser("member-user");

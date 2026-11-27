@@ -50,6 +50,7 @@ public class AuthService {
     @Value("${aigc.public-base-url:http://localhost:8080}")
     private String publicBaseUrl;
 
+    /** 注册账号：校验格式与唯一性、赠送免费档积分并发送验证邮件。 */
     @Transactional
     public Map<String, Object> register(AuthDtos.RegisterRequest request) {
         String username = request == null || request.username() == null ? "" : request.username().trim();
@@ -108,6 +109,7 @@ public class AuthService {
         return result;
     }
 
+    /** 核销邮箱验证 Token 并把用户标记为已验证。 */
     @Transactional
     public Map<String, Object> verifyEmail(String rawToken) {
         AuthToken token = requireToken(rawToken, AuthToken.PURPOSE_VERIFY);
@@ -120,6 +122,7 @@ public class AuthService {
         return Map.of("ok", true);
     }
 
+    /** 重发验证邮件，无论账号是否存在都返回相同结果以避免枚举。 */
     public Map<String, Object> resendVerification(String email) {
         AppUser user = findVerifiedOrUnverified(email);
         // 无论账号是否存在都返回相同结果，避免账号枚举
@@ -135,6 +138,7 @@ public class AuthService {
         return result;
     }
 
+    /** 发送重置密码邮件，同样不暴露账号是否存在。 */
     public Map<String, Object> forgotPassword(String email) {
         AppUser user = findVerifiedOrUnverified(email);
         if (user == null || !user.isActive()) {
@@ -149,6 +153,7 @@ public class AuthService {
         return result;
     }
 
+    /** 使用一次性 Token 重置密码。 */
     @Transactional
     public Map<String, Object> resetPassword(String rawToken, String password) {
         if (password == null || password.length() < 8 || password.length() > 72) {
@@ -164,6 +169,7 @@ public class AuthService {
         return Map.of("ok", true);
     }
 
+    /** 按 ID 获取用户，不存在时抛 404。 */
     public AppUser requireUser(Long userId) {
         AppUser user = userId == null ? null : userMapper.selectById(userId);
         if (user == null) {
@@ -223,12 +229,14 @@ public class AuthService {
                 .set(AuthToken::getUsedAt, LocalDateTime.now()));
     }
 
+    /** 生成 URL 安全的随机 Token。 */
     public static String randomToken() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    /** 计算文本的 SHA-256 十六进制摘要。 */
     public static String sha256(String text) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

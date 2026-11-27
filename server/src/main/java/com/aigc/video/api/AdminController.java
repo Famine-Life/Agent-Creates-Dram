@@ -49,6 +49,7 @@ public class AdminController {
     private final PaymentService paymentService;
     private final AuditService auditService;
 
+    /** 后台概览：用户数、订单数与死信事件数。 */
     @GetMapping("/overview")
     public Map<String, Object> overview() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -59,6 +60,7 @@ public class AdminController {
         return result;
     }
 
+    /** 按用户名或邮箱模糊查询用户，limit 最大 200。 */
     @GetMapping("/users")
     public List<Map<String, Object>> users(@RequestParam(required = false) String keyword,
                                            @RequestParam(defaultValue = "50") int limit) {
@@ -71,6 +73,7 @@ public class AdminController {
         return users.stream().map(this::userView).toList();
     }
 
+    /** 修改用户状态、角色或会员档位，并记录审计。 */
     @PutMapping("/users/{id}")
     public Map<String, Object> updateUser(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         AppUser user = userMapper.selectById(id);
@@ -110,11 +113,13 @@ public class AdminController {
         return userView(userMapper.selectById(id));
     }
 
+    /** 全部会员档位，含已下架。 */
     @GetMapping("/plans")
     public List<MemberPlan> plans() {
         return membershipService.listAll();
     }
 
+    /** 更新会员档位的价格、额度与权益配置。 */
     @PutMapping("/plans/{code}")
     public MemberPlan updatePlan(@PathVariable String code, @RequestBody MemberPlan request) {
         MemberPlan plan = membershipService.require(code);
@@ -154,12 +159,14 @@ public class AdminController {
         return membershipService.require(code);
     }
 
+    /** 全部积分套餐，含已下架。 */
     @GetMapping("/credit-packages")
     public List<CreditPackage> packages() {
         return packageMapper.selectList(Wrappers.<CreditPackage>lambdaQuery()
                 .orderByAsc(CreditPackage::getSortOrder));
     }
 
+    /** 新增积分套餐。 */
     @PostMapping("/credit-packages")
     public CreditPackage createPackage(@RequestBody CreditPackage request) {
         if (request.getCode() == null || request.getCode().isBlank()) {
@@ -173,6 +180,7 @@ public class AdminController {
         return request;
     }
 
+    /** 更新积分套餐。 */
     @PutMapping("/credit-packages/{id}")
     public CreditPackage updatePackage(@PathVariable Long id, @RequestBody CreditPackage request) {
         CreditPackage item = packageMapper.selectById(id);
@@ -186,6 +194,7 @@ public class AdminController {
         return packageMapper.selectById(id);
     }
 
+    /** 删除积分套餐。 */
     @DeleteMapping("/credit-packages/{id}")
     public Map<String, Object> deletePackage(@PathVariable Long id) {
         packageMapper.deleteById(id);
@@ -193,11 +202,13 @@ public class AdminController {
         return Map.of("ok", true);
     }
 
+    /** 最近订单列表，limit 最大 200。 */
     @GetMapping("/orders")
     public List<PaymentOrder> orders(@RequestParam(defaultValue = "50") int limit) {
         return paymentService.listAllOrders(limit);
     }
 
+    /** 最近审计日志，limit 最大 200。 */
     @GetMapping("/audit")
     public List<AuditLog> audit(@RequestParam(defaultValue = "100") int limit) {
         return auditMapper.selectList(Wrappers.<AuditLog>lambdaQuery()
@@ -205,6 +216,7 @@ public class AdminController {
                 .last("LIMIT " + Math.max(1, Math.min(200, limit))));
     }
 
+    /** Outbox 死信事件列表。 */
     @GetMapping("/outbox/dead")
     public List<EventOutbox> deadEvents(@RequestParam(defaultValue = "50") int limit) {
         return outboxMapper.selectList(Wrappers.<EventOutbox>lambdaQuery()
@@ -213,6 +225,7 @@ public class AdminController {
                 .last("LIMIT " + Math.max(1, Math.min(200, limit))));
     }
 
+    /** 重试死信事件：重置为待投递并清空失败计数。 */
     @PostMapping("/outbox/{id}/retry")
     public Map<String, Object> retryEvent(@PathVariable Long id) {
         EventOutbox event = outboxMapper.selectById(id);

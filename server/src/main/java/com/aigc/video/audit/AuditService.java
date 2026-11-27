@@ -17,6 +17,7 @@ public class AuditService {
 
     private final AuditLogMapper auditMapper;
 
+    /** 记录一条审计日志，detail 超长时截断到 500 字符。 */
     public void record(Long userId, String action, String targetType, Object targetId, String detail) {
         AuditLog log = new AuditLog();
         log.setUserId(userId);

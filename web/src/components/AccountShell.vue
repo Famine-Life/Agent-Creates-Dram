@@ -1,4 +1,5 @@
 <script setup>
+// 账户页外壳：统一顶栏、导航、积分与会员信息和退出登录入口，页面内容通过默认插槽渲染
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { authState, isAdmin, logout } from '../store/auth'
@@ -13,6 +14,7 @@ const router = useRouter()
 const credits = computed(() => authState.user?.availableCredits ?? 0)
 const member = computed(() => authState.user?.memberName || authState.user?.memberCode || '免费版')
 
+// 退出登录：服务端注销失败也要清理本地画布状态，并回到首页
 async function handleLogout() {
   try {
     await logout()

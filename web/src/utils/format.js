@@ -1,4 +1,9 @@
-/** 页面共用的展示格式化：金额、时间与业务枚举文案 */
+/**
+ * 页面共用的展示格式化与业务枚举文案。
+ * - formatCents 入参单位为“分”，输出人民币金额；
+ * - formatDate / formatDay 只截断后端返回的 ISO 文本，不做时区换算；
+ * - 枚举映射缺失时回退为原始值或默认文案，避免表格出现空白。
+ */
 
 export function formatCents(cents) {
   if (cents == null || Number.isNaN(Number(cents))) return '-'

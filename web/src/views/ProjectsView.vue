@@ -1,4 +1,5 @@
 <script setup>
+// 我的项目：项目的列表、新建、重命名与删除，删除前校验项目内是否仍有画布
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'

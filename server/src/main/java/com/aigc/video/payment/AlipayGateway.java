@@ -34,12 +34,14 @@ public class AlipayGateway {
     private final PaymentProperties properties;
     private final ObjectMapper objectMapper;
 
+    /** 应用配置齐全时视为启用支付宝渠道。 */
     public boolean enabled() {
         PaymentProperties.Alipay ali = properties.getAlipay();
         return notBlank(ali.getAppId()) && notBlank(ali.getPrivateKey())
                 && notBlank(ali.getAlipayPublicKey()) && notBlank(ali.getNotifyUrl());
     }
 
+    /** 构造并签名自动提交的电脑网站支付表单 HTML。 */
     public String pagePay(PaymentOrder order) {
         PaymentProperties.Alipay ali = properties.getAlipay();
         requireEnabled();
@@ -75,6 +77,7 @@ public class AlipayGateway {
         return html.toString();
     }
 
+    /** 校验异步通知签名并解析订单号、交易号、金额与支付状态。 */
     public NotifyResult parseNotify(Map<String, String> params) {
         PaymentProperties.Alipay ali = properties.getAlipay();
         requireEnabled();
@@ -171,6 +174,7 @@ public class AlipayGateway {
         return value != null && !value.isBlank();
     }
 
+    /** 异步通知解析结果。 */
     public record NotifyResult(String orderNo, String thirdPartyTradeNo, int amountCents, boolean success) {
     }
 }

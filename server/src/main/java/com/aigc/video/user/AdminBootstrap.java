@@ -63,6 +63,7 @@ public class AdminBootstrap implements ApplicationRunner {
     @Value("${aigc.security.admin-email:admin@local}")
     private String adminEmail;
 
+    /** 启动初始化入口：播种会员与套餐、确保管理员并迁移旧数据。 */
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
@@ -75,6 +76,7 @@ public class AdminBootstrap implements ApplicationRunner {
                 admin.getUsername(), migrated, grouped);
     }
 
+    /** 确保管理员存在，补齐管理员角色、钱包与初始积分。 */
     private AppUser ensureAdmin() {
         String username = adminUsername == null || adminUsername.isBlank() ? "admin" : adminUsername.trim();
         String lower = username.toLowerCase();
@@ -115,6 +117,7 @@ public class AdminBootstrap implements ApplicationRunner {
         return admin;
     }
 
+    /** 把历史无归属用户的业务数据统一归到管理员名下。 */
     private int backfill(Long adminId) {
         int count = 0;
         count += workspaceMapper.update(null, Wrappers.<com.aigc.video.domain.Workspace>lambdaUpdate()
@@ -135,6 +138,7 @@ public class AdminBootstrap implements ApplicationRunner {
         return count;
     }
 
+    /** 播种默认积分充值套餐，已存在则保留后台修改。 */
     private void seedPackages() {
         seedPackage("CREDITS_100", "100 积分", 100, 990, 0);
         seedPackage("CREDITS_500", "500 积分", 500, 3990, 1);

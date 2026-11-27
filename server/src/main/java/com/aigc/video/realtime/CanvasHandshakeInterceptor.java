@@ -13,6 +13,7 @@ import java.util.Map;
 @Component
 public class CanvasHandshakeInterceptor implements HandshakeInterceptor {
 
+    /** 从安全上下文解析当前用户并写入连接属性，未登录直接拒绝握手。 */
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                    WebSocketHandler wsHandler, Map<String, Object> attributes) {

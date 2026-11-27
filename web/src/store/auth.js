@@ -1,3 +1,10 @@
+/**
+ * 登录会话状态：缓存当前用户摘要，供路由守卫、账户壳与各业务页面共用。
+ * 关键约定：
+ * - 服务端 session 是唯一数据源，登录、登出、验证邮箱后都通过 ensureSession(true) 重新拉取；
+ * - ensureSession 并发调用共享同一次请求，避免重复请求 session；
+ * - 登出即使服务端不可达也会清理本地状态，保证用户能退出。
+ */
 import { computed, reactive } from 'vue'
 import { api } from '../api'
 

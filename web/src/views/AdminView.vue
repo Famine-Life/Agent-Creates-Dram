@@ -1,4 +1,5 @@
 <script setup>
+// 管理后台：按标签维护用户、会员档位、积分商品、订单、审计日志与死信队列
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import AccountShell from '../components/AccountShell.vue'
@@ -33,6 +34,7 @@ const userError = ref('')
 const newPackage = ref({ code: '', name: '', credits: 100, priceCents: 1000, enabled: true, sortOrder: 0 })
 const creatingPackage = ref(false)
 
+// 各标签数据独立加载：单个接口失败只提示错误，不阻塞其他管理面板
 function firstError(results) {
   const failed = results.find((item) => item.status === 'rejected')
   return failed ? failed.reason?.message : ''
@@ -110,6 +112,7 @@ async function loadAll() {
   loading.value = false
 }
 
+// 用户编辑：只有选择了会员档位才一并提交开通时长，避免误改现有会员
 function openUserEditor(user) {
   userError.value = ''
   editingUser.value = {

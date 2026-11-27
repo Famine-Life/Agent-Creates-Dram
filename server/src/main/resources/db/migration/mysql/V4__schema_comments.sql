@@ -1,0 +1,178 @@
+-- V4 迁移仅补充表与字段的中文注释，不改变任何类型、可空性、默认值、索引或约束。
+
+-- ===== 既有业务表：多用户/项目分组新增字段 =====
+
+ALTER TABLE workspace MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+ALTER TABLE workspace MODIFY COLUMN project_id BIGINT NULL COMMENT '所属项目 ID，NULL 表示未归入项目';
+
+ALTER TABLE canvas MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+
+ALTER TABLE generation_task MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+ALTER TABLE generation_task MODIFY COLUMN billing_op_id VARCHAR(64) NULL COMMENT '计费操作 ID，用于关联积分流水';
+ALTER TABLE generation_task MODIFY COLUMN credit_cost INT NULL COMMENT '本次生成消耗的积分数量';
+
+ALTER TABLE prompt_record MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+
+ALTER TABLE canvas_image MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+
+ALTER TABLE canvas_node MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+
+ALTER TABLE task_image_ref MODIFY COLUMN user_id BIGINT NULL COMMENT '所属用户 ID，NULL 表示历史数据未归属';
+
+-- ===== 多用户会员制新增表 =====
+
+ALTER TABLE app_user COMMENT = '平台用户，含角色、邮箱验证、会员等级';
+ALTER TABLE app_user MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE app_user MODIFY COLUMN username VARCHAR(64) NOT NULL COMMENT '用户名，保留用户输入的原始大小写';
+ALTER TABLE app_user MODIFY COLUMN username_lower VARCHAR(64) NOT NULL COMMENT '用户名小写形式，用于唯一约束与登录匹配';
+ALTER TABLE app_user MODIFY COLUMN email VARCHAR(190) NOT NULL COMMENT '邮箱，保留用户输入的原始大小写';
+ALTER TABLE app_user MODIFY COLUMN email_lower VARCHAR(190) NOT NULL COMMENT '邮箱小写形式，用于唯一约束与登录匹配';
+ALTER TABLE app_user MODIFY COLUMN password_hash VARCHAR(100) NOT NULL COMMENT '密码哈希，不保存明文';
+ALTER TABLE app_user MODIFY COLUMN role VARCHAR(16) NOT NULL COMMENT '角色：USER 普通用户 / ADMIN 管理员';
+ALTER TABLE app_user MODIFY COLUMN status VARCHAR(16) NOT NULL COMMENT '状态：ACTIVE 正常 / DISABLED 禁用';
+ALTER TABLE app_user MODIFY COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0 COMMENT '邮箱是否已验证：0 未验证 / 1 已验证';
+ALTER TABLE app_user MODIFY COLUMN member_code VARCHAR(24) NOT NULL DEFAULT 'FREE' COMMENT '当前会员档位：FREE / PRO / STUDIO';
+ALTER TABLE app_user MODIFY COLUMN member_expires_at DATETIME NULL COMMENT '会员到期时间，NULL 表示无期限或非会员';
+ALTER TABLE app_user MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+ALTER TABLE app_user MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+ALTER TABLE app_user MODIFY COLUMN last_login_at DATETIME NULL COMMENT '最后登录时间';
+
+ALTER TABLE auth_token COMMENT = '邮箱验证与找回密码 Token，只保存哈希';
+ALTER TABLE auth_token MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE auth_token MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID';
+ALTER TABLE auth_token MODIFY COLUMN purpose VARCHAR(32) NOT NULL COMMENT '用途：VERIFY_EMAIL 邮箱验证 / RESET_PASSWORD 找回密码';
+ALTER TABLE auth_token MODIFY COLUMN token_hash VARCHAR(64) NOT NULL COMMENT 'Token 的哈希值，明文不落库';
+ALTER TABLE auth_token MODIFY COLUMN expires_at DATETIME NOT NULL COMMENT '过期时间';
+ALTER TABLE auth_token MODIFY COLUMN used_at DATETIME NULL COMMENT '使用时间，NULL 表示尚未使用';
+ALTER TABLE auth_token MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+
+ALTER TABLE mcp_token COMMENT = '用户级 MCP Token，明文仅创建时返回一次';
+ALTER TABLE mcp_token MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE mcp_token MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID';
+ALTER TABLE mcp_token MODIFY COLUMN name VARCHAR(64) NOT NULL COMMENT 'Token 名称，便于用户区分';
+ALTER TABLE mcp_token MODIFY COLUMN token_hash VARCHAR(64) NOT NULL COMMENT 'Token 的哈希值，明文不落库';
+ALTER TABLE mcp_token MODIFY COLUMN token_prefix VARCHAR(16) NOT NULL COMMENT 'Token 前缀，用于列表展示';
+ALTER TABLE mcp_token MODIFY COLUMN expires_at DATETIME NULL COMMENT '过期时间，NULL 表示不过期';
+ALTER TABLE mcp_token MODIFY COLUMN revoked_at DATETIME NULL COMMENT '吊销时间，NULL 表示未吊销';
+ALTER TABLE mcp_token MODIFY COLUMN last_used_at DATETIME NULL COMMENT '最后使用时间';
+ALTER TABLE mcp_token MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+
+ALTER TABLE member_plan COMMENT = '会员档位与权益，首次启动播种，后台可修改';
+ALTER TABLE member_plan MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE member_plan MODIFY COLUMN code VARCHAR(24) NOT NULL COMMENT '档位编码：FREE / PRO / STUDIO';
+ALTER TABLE member_plan MODIFY COLUMN name VARCHAR(64) NOT NULL COMMENT '档位名称';
+ALTER TABLE member_plan MODIFY COLUMN description VARCHAR(255) NULL COMMENT '档位说明';
+ALTER TABLE member_plan MODIFY COLUMN price_cents INT NOT NULL DEFAULT 0 COMMENT '订阅价格，单位分';
+ALTER TABLE member_plan MODIFY COLUMN duration_days INT NOT NULL DEFAULT 30 COMMENT '会员有效天数';
+ALTER TABLE member_plan MODIFY COLUMN daily_credits INT NOT NULL DEFAULT 0 COMMENT '每日赠送积分';
+ALTER TABLE member_plan MODIFY COLUMN max_concurrent INT NOT NULL DEFAULT 1 COMMENT '最大并发生成数';
+ALTER TABLE member_plan MODIFY COLUMN max_resolution VARCHAR(16) NOT NULL DEFAULT '720P' COMMENT '允许的最高清晰度，如 720P / 1080P';
+ALTER TABLE member_plan MODIFY COLUMN dispatch_weight INT NOT NULL DEFAULT 1 COMMENT '调度权重，值越大越优先';
+ALTER TABLE member_plan MODIFY COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：0 停用 / 1 启用';
+ALTER TABLE member_plan MODIFY COLUMN sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值，越小越靠前';
+ALTER TABLE member_plan MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+
+ALTER TABLE credit_package COMMENT = '积分充值商品';
+ALTER TABLE credit_package MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE credit_package MODIFY COLUMN code VARCHAR(32) NOT NULL COMMENT '商品编码';
+ALTER TABLE credit_package MODIFY COLUMN name VARCHAR(64) NOT NULL COMMENT '商品名称';
+ALTER TABLE credit_package MODIFY COLUMN credits INT NOT NULL COMMENT '包含的积分数量';
+ALTER TABLE credit_package MODIFY COLUMN price_cents INT NOT NULL COMMENT '售价，单位分';
+ALTER TABLE credit_package MODIFY COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用：0 停用 / 1 启用';
+ALTER TABLE credit_package MODIFY COLUMN sort_order INT NOT NULL DEFAULT 0 COMMENT '排序值，越小越靠前';
+ALTER TABLE credit_package MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+
+ALTER TABLE wallet COMMENT = '积分钱包；可用与冻结分列，更新使用原子条件';
+ALTER TABLE wallet MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE wallet MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID，一个用户一条钱包记录';
+ALTER TABLE wallet MODIFY COLUMN available_credits INT NOT NULL DEFAULT 0 COMMENT '可用积分余额';
+ALTER TABLE wallet MODIFY COLUMN frozen_credits INT NOT NULL DEFAULT 0 COMMENT '冻结积分，生成中预扣';
+ALTER TABLE wallet MODIFY COLUMN version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号';
+ALTER TABLE wallet MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+
+ALTER TABLE credit_ledger COMMENT = '不可变积分流水，唯一键保证一次业务只记一次';
+ALTER TABLE credit_ledger MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE credit_ledger MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID';
+ALTER TABLE credit_ledger MODIFY COLUMN type VARCHAR(24) NOT NULL COMMENT '流水类型：RESERVE 预扣 / CAPTURE 扣减 / RELEASE 释放 / RECHARGE 充值 / MEMBER_GRANT 会员赠送 / ADJUST 调整 / INSUFFICIENT 余额不足';
+ALTER TABLE credit_ledger MODIFY COLUMN biz_id VARCHAR(64) NOT NULL COMMENT '业务单据 ID，与 user_id、type 组合唯一';
+ALTER TABLE credit_ledger MODIFY COLUMN amount INT NOT NULL COMMENT '变动积分数量，正数增加、负数减少';
+ALTER TABLE credit_ledger MODIFY COLUMN available_after INT NULL COMMENT '变动后的可用积分';
+ALTER TABLE credit_ledger MODIFY COLUMN frozen_after INT NULL COMMENT '变动后的冻结积分';
+ALTER TABLE credit_ledger MODIFY COLUMN status VARCHAR(16) NOT NULL COMMENT '流水状态：FROZEN 冻结中 / SETTLED 已结算 / FAILED 失败';
+ALTER TABLE credit_ledger MODIFY COLUMN note VARCHAR(255) NULL COMMENT '备注';
+ALTER TABLE credit_ledger MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+
+ALTER TABLE usage_counter COMMENT = '按日/小时的调用与积分用量';
+ALTER TABLE usage_counter MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE usage_counter MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID';
+ALTER TABLE usage_counter MODIFY COLUMN period_type VARCHAR(8) NOT NULL COMMENT '统计周期类型：DAY 按日 / HOUR 按小时';
+ALTER TABLE usage_counter MODIFY COLUMN period_key VARCHAR(16) NOT NULL COMMENT '周期标识，如 2026-01-01 或 2026-01-01T10';
+ALTER TABLE usage_counter MODIFY COLUMN calls INT NOT NULL DEFAULT 0 COMMENT '周期内调用次数';
+ALTER TABLE usage_counter MODIFY COLUMN credits INT NOT NULL DEFAULT 0 COMMENT '周期内消耗积分';
+ALTER TABLE usage_counter MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+
+ALTER TABLE payment_order COMMENT = '积分/会员订单；状态 PENDING / PAYING / PAID / CLOSED';
+ALTER TABLE payment_order MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE payment_order MODIFY COLUMN order_no VARCHAR(40) NOT NULL COMMENT '订单号，业务唯一';
+ALTER TABLE payment_order MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '下单用户 ID';
+ALTER TABLE payment_order MODIFY COLUMN product_type VARCHAR(16) NOT NULL COMMENT '商品类型：CREDITS 积分包 / MEMBERSHIP 会员';
+ALTER TABLE payment_order MODIFY COLUMN product_code VARCHAR(32) NOT NULL COMMENT '商品编码，对应积分包或会员档位';
+ALTER TABLE payment_order MODIFY COLUMN product_snapshot LONGTEXT NULL COMMENT '下单时的商品快照 JSON';
+ALTER TABLE payment_order MODIFY COLUMN amount_cents INT NOT NULL COMMENT '订单金额，单位分';
+ALTER TABLE payment_order MODIFY COLUMN credits INT NULL COMMENT '购买获得的积分数量，会员订单可为空';
+ALTER TABLE payment_order MODIFY COLUMN plan_code VARCHAR(24) NULL COMMENT '会员档位编码，积分订单为空';
+ALTER TABLE payment_order MODIFY COLUMN status VARCHAR(16) NOT NULL COMMENT '订单状态：PENDING 待支付 / PAYING 支付中 / PAID 已支付 / CLOSED 已关闭';
+ALTER TABLE payment_order MODIFY COLUMN channel VARCHAR(16) NOT NULL COMMENT '支付渠道标识，如 wechat / alipay';
+ALTER TABLE payment_order MODIFY COLUMN third_party_trade_no VARCHAR(64) NULL COMMENT '第三方支付交易号';
+ALTER TABLE payment_order MODIFY COLUMN expires_at DATETIME NULL COMMENT '订单过期时间';
+ALTER TABLE payment_order MODIFY COLUMN paid_at DATETIME NULL COMMENT '支付完成时间';
+ALTER TABLE payment_order MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+ALTER TABLE payment_order MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+ALTER TABLE payment_order MODIFY COLUMN version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号';
+
+ALTER TABLE payment_notify_log COMMENT = '支付回调验签与处理结果，不记录密钥';
+ALTER TABLE payment_notify_log MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE payment_notify_log MODIFY COLUMN order_no VARCHAR(40) NULL COMMENT '订单号，无法解析时可为空';
+ALTER TABLE payment_notify_log MODIFY COLUMN channel VARCHAR(16) NULL COMMENT '支付渠道标识，如 wechat / alipay';
+ALTER TABLE payment_notify_log MODIFY COLUMN signature_valid TINYINT(1) NULL COMMENT '回调验签是否通过：0 失败 / 1 通过';
+ALTER TABLE payment_notify_log MODIFY COLUMN result VARCHAR(32) NULL COMMENT '处理结果，如 SUCCESS / DUPLICATE / AMOUNT_MISMATCH / INVALID 等';
+ALTER TABLE payment_notify_log MODIFY COLUMN payload_hash VARCHAR(64) NULL COMMENT '回调报文哈希，用于去重';
+ALTER TABLE payment_notify_log MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+
+ALTER TABLE audit_log COMMENT = '用户与管理操作审计，不记录敏感凭据';
+ALTER TABLE audit_log MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE audit_log MODIFY COLUMN user_id BIGINT NULL COMMENT '操作人用户 ID，系统操作可为空';
+ALTER TABLE audit_log MODIFY COLUMN action VARCHAR(48) NOT NULL COMMENT '操作类型，如 LOGIN / ORDER_PAID / ADMIN_OUTBOX_RETRY';
+ALTER TABLE audit_log MODIFY COLUMN target_type VARCHAR(32) NULL COMMENT '目标对象类型，如 payment_order / event_outbox';
+ALTER TABLE audit_log MODIFY COLUMN target_id VARCHAR(64) NULL COMMENT '目标对象 ID';
+ALTER TABLE audit_log MODIFY COLUMN ip VARCHAR(64) NULL COMMENT '客户端 IP';
+ALTER TABLE audit_log MODIFY COLUMN detail VARCHAR(512) NULL COMMENT '操作详情，不含敏感凭据';
+ALTER TABLE audit_log MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+
+ALTER TABLE event_outbox COMMENT = '事务 Outbox：任务与计费在同一事务登记事件';
+ALTER TABLE event_outbox MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE event_outbox MODIFY COLUMN event_id VARCHAR(64) NOT NULL COMMENT '事件 ID，全局唯一';
+ALTER TABLE event_outbox MODIFY COLUMN aggregate_type VARCHAR(32) NOT NULL COMMENT '聚合类型，如 TASK / ORDER';
+ALTER TABLE event_outbox MODIFY COLUMN aggregate_id BIGINT NOT NULL COMMENT '聚合根 ID';
+ALTER TABLE event_outbox MODIFY COLUMN user_id BIGINT NULL COMMENT '事件所属用户 ID';
+ALTER TABLE event_outbox MODIFY COLUMN event_type VARCHAR(48) NOT NULL COMMENT '事件类型';
+ALTER TABLE event_outbox MODIFY COLUMN payload LONGTEXT NULL COMMENT '事件载荷 JSON';
+ALTER TABLE event_outbox MODIFY COLUMN status VARCHAR(16) NOT NULL COMMENT '投递状态：PENDING 待投递 / PROCESSING 投递中 / PROCESSED 已投递 / DEAD 死信';
+ALTER TABLE event_outbox MODIFY COLUMN attempts INT NOT NULL DEFAULT 0 COMMENT '已尝试投递次数';
+ALTER TABLE event_outbox MODIFY COLUMN next_attempt_at DATETIME NULL COMMENT '下次重试时间';
+ALTER TABLE event_outbox MODIFY COLUMN last_error VARCHAR(512) NULL COMMENT '最后一次投递错误信息';
+ALTER TABLE event_outbox MODIFY COLUMN created_at DATETIME NULL COMMENT '创建时间';
+ALTER TABLE event_outbox MODIFY COLUMN updated_at DATETIME NULL COMMENT '更新时间';
+
+ALTER TABLE event_inbox COMMENT = '消费幂等表';
+ALTER TABLE event_inbox MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE event_inbox MODIFY COLUMN event_id VARCHAR(64) NOT NULL COMMENT '已消费的事件 ID';
+ALTER TABLE event_inbox MODIFY COLUMN consumer VARCHAR(48) NOT NULL COMMENT '消费者标识';
+ALTER TABLE event_inbox MODIFY COLUMN processed_at DATETIME NULL COMMENT '处理完成时间';
+
+ALTER TABLE project COMMENT = '用户项目，一个项目下可包含多张画布';
+ALTER TABLE project MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增';
+ALTER TABLE project MODIFY COLUMN user_id BIGINT NOT NULL COMMENT '所属用户 ID';
+ALTER TABLE project MODIFY COLUMN name VARCHAR(128) NOT NULL COMMENT '项目名称';
+ALTER TABLE project MODIFY COLUMN created_at TIMESTAMP NULL COMMENT '创建时间';
+ALTER TABLE project MODIFY COLUMN updated_at TIMESTAMP NULL COMMENT '更新时间';

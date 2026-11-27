@@ -18,6 +18,7 @@ public class RabbitTaskEventPublisher {
     @Value("${aigc.mq.queue:aigc.task.dispatch}")
     private String queue;
 
+    /** 将事件对应的聚合 ID 发送到任务队列。 */
     public void publish(EventOutbox event) {
         rabbitTemplate.convertAndSend(queue, String.valueOf(event.getAggregateId()));
     }

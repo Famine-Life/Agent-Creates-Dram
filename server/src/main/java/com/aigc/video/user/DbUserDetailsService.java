@@ -16,6 +16,7 @@ public class DbUserDetailsService implements UserDetailsService {
 
     private final AppUserMapper userMapper;
 
+    /** 按用户名或邮箱（忽略大小写）加载登录用户。 */
     @Override
     public UserDetails loadUserByUsername(String account) throws UsernameNotFoundException {
         String key = account == null ? "" : account.trim().toLowerCase();

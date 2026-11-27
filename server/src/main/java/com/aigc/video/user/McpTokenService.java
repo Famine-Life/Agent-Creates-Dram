@@ -21,6 +21,7 @@ public class McpTokenService {
     private final McpTokenMapper tokenMapper;
     private final AppUserMapper userMapper;
 
+    /** 创建 Token，明文只保存在返回对象中。 */
     @Transactional
     public CreatedToken create(Long userId, String name, Integer expiresInDays) {
         String raw = "aigc_" + AuthService.randomToken();
@@ -38,12 +39,14 @@ public class McpTokenService {
                 token.getExpiresAt(), raw);
     }
 
+    /** 用户全部 Token，只含哈希与前缀，不含明文。 */
     public List<McpToken> list(Long userId) {
         return tokenMapper.selectList(Wrappers.<McpToken>lambdaQuery()
                 .eq(McpToken::getUserId, userId)
                 .orderByDesc(McpToken::getId));
     }
 
+    /** 吊销指定 Token，需校验归属。 */
     @Transactional
     public void revoke(Long userId, Long id) {
         McpToken token = tokenMapper.selectOne(Wrappers.<McpToken>lambdaQuery()
@@ -81,6 +84,7 @@ public class McpTokenService {
         return user;
     }
 
+    /** 创建结果，token 字段为明文，仅在本次响应返回。 */
     public record CreatedToken(Long id, String name, String prefix, LocalDateTime expiresAt, String token) {
     }
 }

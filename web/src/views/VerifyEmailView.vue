@@ -1,4 +1,5 @@
 <script setup>
+// 邮箱验证：用邮件中的令牌完成验证，并刷新当前会话以同步验证状态
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { authState, ensureSession, verifyEmail } from '../store/auth'
@@ -9,6 +10,7 @@ const busy = ref(false)
 const error = ref('')
 const done = ref(false)
 
+// 提交验证：成功后若已登录则强制刷新会话，让页面立即拿到最新账户信息
 async function submit() {
   if (busy.value) return
   if (!token.value.trim()) {

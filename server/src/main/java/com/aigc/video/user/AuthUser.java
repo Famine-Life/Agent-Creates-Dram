@@ -9,11 +9,17 @@ import java.util.List;
 
 /** 登录主体，携带用户 ID 供租户校验使用。 */
 public record AuthUser(
+        /** 用户 ID，用于租户与归属校验 */
         Long id,
+        /** 用户名 */
         String username,
+        /** 密码哈希 */
         String password,
+        /** 角色，映射为 ROLE_ 权限 */
         String role,
+        /** 账号是否可用 */
         boolean enabled,
+        /** 邮箱是否已验证 */
         boolean emailVerified
 ) implements UserDetails {
 

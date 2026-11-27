@@ -12,18 +12,25 @@ import java.time.LocalDateTime;
 @TableName("payment_notify_log")
 public class PaymentNotifyLog {
 
+    /** 主键 */
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 平台订单号 */
     private String orderNo;
 
+    /** 支付渠道：wechat、alipay 或 mock */
     private String channel;
 
+    /** 验签是否通过 */
     private Boolean signatureValid;
 
+    /** 处理结果，如 SUCCESS、AMOUNT_MISMATCH */
     private String result;
 
+    /** 报文摘要，避免明文存储敏感内容 */
     private String payloadHash;
 
+    /** 记录时间 */
     private LocalDateTime createdAt;
 }

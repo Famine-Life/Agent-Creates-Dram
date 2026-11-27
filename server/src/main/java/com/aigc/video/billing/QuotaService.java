@@ -22,15 +22,18 @@ public class QuotaService {
 
     private final UsageCounterMapper usageMapper;
 
+    /** 今日日期键，格式 yyyyMMdd。 */
     public String today() {
         return LocalDate.now().format(DAY);
     }
 
+    /** 当前小时键，格式 yyyyMMddHH。 */
     public String thisHour() {
         LocalDateTime now = LocalDateTime.now();
         return now.toLocalDate().format(DAY) + String.format("%02d", now.getHour());
     }
 
+    /** 查询用户今日的用量计数，不存在返回 null。 */
     public UsageCounter todayCounter(Long userId) {
         return usageMapper.selectOne(Wrappers.<UsageCounter>lambdaQuery()
                 .eq(UsageCounter::getUserId, userId)
@@ -38,6 +41,7 @@ public class QuotaService {
                 .eq(UsageCounter::getPeriodKey, today()).last("LIMIT 1"));
     }
 
+    /** 用户今日已消耗的积分。 */
     public int todayCredits(Long userId) {
         UsageCounter counter = todayCounter(userId);
         return counter == null || counter.getCredits() == null ? 0 : counter.getCredits();
@@ -55,6 +59,7 @@ public class QuotaService {
         }
     }
 
+    /** 累加当日调用次数与积分，无记录时补建并忽略并发唯一键冲突。 */
     public void record(Long userId, int credits) {
         usageMapper.update(null, Wrappers.<UsageCounter>lambdaUpdate()
                 .eq(UsageCounter::getUserId, userId)

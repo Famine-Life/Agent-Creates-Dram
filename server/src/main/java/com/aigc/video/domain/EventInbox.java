@@ -12,12 +12,16 @@ import java.time.LocalDateTime;
 @TableName("event_inbox")
 public class EventInbox {
 
+    /** 主键 */
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 事件 ID，与消费者共同构成幂等键 */
     private String eventId;
 
+    /** 消费者名称 */
     private String consumer;
 
+    /** 处理完成时间 */
     private LocalDateTime processedAt;
 }

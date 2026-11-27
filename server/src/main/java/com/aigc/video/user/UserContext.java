@@ -10,6 +10,7 @@ public final class UserContext {
     private UserContext() {
     }
 
+    /** 读取当前安全上下文中的登录用户，未登录返回 null。 */
     public static AuthUser current() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -19,6 +20,7 @@ public final class UserContext {
         return principal instanceof AuthUser user ? user : null;
     }
 
+    /** 要求已登录，否则抛出未授权异常。 */
     public static AuthUser require() {
         AuthUser user = current();
         if (user == null) {
@@ -27,15 +29,18 @@ public final class UserContext {
         return user;
     }
 
+    /** 当前用户 ID，未登录返回 null。 */
     public static Long currentUserId() {
         AuthUser user = current();
         return user == null ? null : user.id();
     }
 
+    /** 要求已登录并返回用户 ID。 */
     public static Long requireUserId() {
         return require().id();
     }
 
+    /** 当前用户是否为管理员。 */
     public static boolean isAdmin() {
         AuthUser user = current();
         return user != null && "ADMIN".equals(user.role());

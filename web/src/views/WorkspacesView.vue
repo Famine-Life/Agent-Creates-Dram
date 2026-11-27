@@ -1,4 +1,5 @@
 <script setup>
+// 项目画布：列出项目下的画布，支持新建、重命名、复制与删除
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
@@ -15,6 +16,7 @@ const workspaces = ref([])
 const loading = ref(true)
 const busy = ref(false)
 
+// 加载失败时退回首页，避免停留在无效的项目地址
 async function load() {
   loading.value = true
   try {

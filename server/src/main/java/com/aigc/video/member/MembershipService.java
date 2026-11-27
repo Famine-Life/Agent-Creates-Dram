@@ -24,6 +24,7 @@ public class MembershipService {
     private final MemberPlanMapper planMapper;
     private final AppUserMapper userMapper;
 
+    /** 在售会员档位，按排序值升序。 */
     public List<MemberPlan> listEnabled() {
         return planMapper.selectList(Wrappers.<MemberPlan>lambdaQuery()
                 .eq(MemberPlan::getEnabled, true)
@@ -31,11 +32,13 @@ public class MembershipService {
                 .orderByAsc(MemberPlan::getId));
     }
 
+    /** 全部会员档位，含已下架。 */
     public List<MemberPlan> listAll() {
         return planMapper.selectList(Wrappers.<MemberPlan>lambdaQuery()
                 .orderByAsc(MemberPlan::getSortOrder));
     }
 
+    /** 按编码获取会员档位，不存在时抛出参数异常。 */
     public MemberPlan require(String code) {
         MemberPlan plan = code == null ? null : planMapper.selectOne(Wrappers.<MemberPlan>lambdaQuery()
                 .eq(MemberPlan::getCode, code).last("LIMIT 1"));
@@ -75,6 +78,7 @@ public class MembershipService {
         return plan;
     }
 
+    /** 按用户 ID 解析当前生效的会员档位。 */
     public MemberPlan resolveByUserId(Long userId) {
         AppUser user = userId == null ? null : userMapper.selectById(userId);
         return resolve(user);
@@ -96,6 +100,7 @@ public class MembershipService {
         return index < 0 ? 1 : index;
     }
 
+    /** 升级或续费会员，尚在有效期内则从原到期时间顺延。 */
     @Transactional
     public void upgrade(Long userId, String planCode, int days) {
         MemberPlan plan = require(planCode);

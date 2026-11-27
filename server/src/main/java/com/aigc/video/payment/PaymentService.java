@@ -50,6 +50,7 @@ public class PaymentService {
     private final AlipayGateway alipayGateway;
     private final ObjectMapper objectMapper;
 
+    /** 创建积分/会员订单，并按渠道返回 Mock 标记、微信二维码或支付宝表单。 */
     @Transactional
     public PayInfo createOrder(Long userId, String productType, String productCode, String channel) {
         AppUser user = userMapper.selectById(userId);
@@ -123,6 +124,7 @@ public class PaymentService {
         return info;
     }
 
+    /** 当前用户最近的订单，limit 最大 100。 */
     public List<PaymentOrder> listOrders(Long userId, int limit) {
         return orderMapper.selectList(Wrappers.<PaymentOrder>lambdaQuery()
                 .eq(PaymentOrder::getUserId, userId)
@@ -130,12 +132,14 @@ public class PaymentService {
                 .last("LIMIT " + Math.max(1, Math.min(100, limit))));
     }
 
+    /** 全部订单，供后台查看，limit 最大 200。 */
     public List<PaymentOrder> listAllOrders(int limit) {
         return orderMapper.selectList(Wrappers.<PaymentOrder>lambdaQuery()
                 .orderByDesc(PaymentOrder::getId)
                 .last("LIMIT " + Math.max(1, Math.min(200, limit))));
     }
 
+    /** 查询当前用户的订单，不存在时抛 404。 */
     public PaymentOrder getOrder(Long userId, String orderNo) {
         PaymentOrder order = orderMapper.selectOne(Wrappers.<PaymentOrder>lambdaQuery()
                 .eq(PaymentOrder::getOrderNo, orderNo)
@@ -147,6 +151,7 @@ public class PaymentService {
         return order;
     }
 
+    /** Mock 渠道模拟支付，复用统一的到账逻辑。 */
     @Transactional
     public PaymentOrder mockPay(Long userId, String orderNo) {
         PaymentOrder order = getOrder(userId, orderNo);
@@ -160,6 +165,7 @@ public class PaymentService {
         return getOrder(userId, orderNo);
     }
 
+    /** 关闭未支付订单，已支付订单不允许关闭。 */
     @Transactional
     public PaymentOrder close(Long userId, String orderNo) {
         PaymentOrder order = getOrder(userId, orderNo);
@@ -221,6 +227,7 @@ public class PaymentService {
         return "SUCCESS";
     }
 
+    /** 记录异步通知的验签与处理结果。 */
     public void logNotify(String orderNo, String channel, boolean signatureValid, String result) {
         PaymentNotifyLog entry = new PaymentNotifyLog();
         entry.setOrderNo(orderNo);
@@ -231,6 +238,7 @@ public class PaymentService {
         notifyLogMapper.insert(entry);
     }
 
+    /** 定时关闭超时未支付的订单。 */
     @Scheduled(fixedDelayString = "${aigc.payment.expire-interval-ms:60000}")
     public void closeExpired() {
         orderMapper.update(null, Wrappers.<PaymentOrder>lambdaUpdate()
@@ -255,15 +263,24 @@ public class PaymentService {
 
     /** 下单返回给前端的支付信息。 */
     public static class PayInfo {
+        /** 平台订单号 */
         public String orderNo;
+        /** 订单状态 */
         public String status;
+        /** 支付渠道 */
         public String channel;
+        /** 应付金额（分） */
         public int amountCents;
+        /** 是否为 Mock 支付 */
         public boolean mock;
+        /** 微信 Native 支付二维码链接 */
         public String codeUrl;
+        /** 支付宝支付表单 HTML */
         public String formHtml;
+        /** 订单过期时间 */
         public LocalDateTime expiresAt;
 
+        /** 转为前端可直接消费的 Map。 */
         public Map<String, Object> toMap() {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("orderNo", orderNo);

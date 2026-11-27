@@ -13,6 +13,7 @@ public class RabbitTaskEventConsumer {
 
     private final TaskWakeupQueue wakeupQueue;
 
+    /** 收到任务 ID 后放入本地唤醒队列；非法消息直接丢弃以免阻塞队列。 */
     @RabbitListener(queues = "${aigc.mq.queue:aigc.task.dispatch}")
     public void onMessage(String taskId) {
         try {

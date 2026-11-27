@@ -38,21 +38,25 @@ public class AccountController {
     private final CreditPackageMapper packageMapper;
     private final AuditService auditService;
 
+    /** 当前用户的账户摘要：会员、余额与当日用量。 */
     @GetMapping
     public AccountSummary summary() {
         return accountService.summary(UserContext.requireUserId());
     }
 
+    /** 最近的积分流水，limit 默认 50、最大 200。 */
     @GetMapping("/ledgers")
     public List<CreditLedger> ledgers(@RequestParam(defaultValue = "50") int limit) {
         return accountService.ledgers(UserContext.requireUserId(), limit);
     }
 
+    /** 在售会员档位列表。 */
     @GetMapping("/plans")
     public List<MemberPlan> plans() {
         return membershipService.listEnabled();
     }
 
+    /** 在售积分充值套餐。 */
     @GetMapping("/packages")
     public List<CreditPackage> packages() {
         return packageMapper.selectList(Wrappers.<CreditPackage>lambdaQuery()
@@ -60,6 +64,7 @@ public class AccountController {
                 .orderByAsc(CreditPackage::getSortOrder));
     }
 
+    /** 当前用户的 MCP Token 列表，只展示前缀不含明文。 */
     @GetMapping("/mcp-tokens")
     public List<Map<String, Object>> mcpTokens() {
         return mcpTokenService.list(UserContext.requireUserId()).stream()
@@ -67,6 +72,7 @@ public class AccountController {
                 .toList();
     }
 
+    /** 创建 MCP Token，明文仅在本次响应中返回一次。 */
     @PostMapping("/mcp-tokens")
     public McpTokenService.CreatedToken createMcpToken(@RequestBody(required = false) AuthDtos.McpTokenRequest request) {
         Long userId = UserContext.requireUserId();
@@ -77,6 +83,7 @@ public class AccountController {
         return created;
     }
 
+    /** 吊销当前用户名下的指定 MCP Token。 */
     @DeleteMapping("/mcp-tokens/{id}")
     public Map<String, Object> revokeMcpToken(@PathVariable Long id) {
         Long userId = UserContext.requireUserId();

@@ -1,4 +1,5 @@
 <script setup>
+// 我的账户：展示积分余额、会员权益、积分流水与订单记录，并提示未验证邮箱
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
 import AccountShell from '../components/AccountShell.vue'
@@ -34,6 +35,7 @@ const verifyRoute = computed(() => {
   }
 })
 
+// 并行拉取积分流水与订单，再刷新会话中的账户摘要，保证余额显示最新
 async function load() {
   loading.value = true
   try {
@@ -48,6 +50,7 @@ async function load() {
   }
 }
 
+// 重新发送验证邮件；开发环境下接口会返回可直接打开的验证链接
 async function resend() {
   if (resending.value || !user.value.email) return
   resending.value = true

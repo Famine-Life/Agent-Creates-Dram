@@ -24,6 +24,7 @@ public class OutboxWorker {
     private final TaskWakeupQueue wakeupQueue;
     private final ObjectProvider<RabbitTaskEventPublisher> rabbitPublisher;
 
+    /** 周期扫描待投递事件，投递本地唤醒队列与 RabbitMQ，失败按指数退避重试。 */
     @Scheduled(initialDelay = 3000, fixedDelayString = "${aigc.mq.outbox-interval-ms:1000}")
     public void tick() {
         List<EventOutbox> events = outboxMapper.selectList(Wrappers.<EventOutbox>lambdaQuery()

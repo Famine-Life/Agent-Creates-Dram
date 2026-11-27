@@ -1,3 +1,10 @@
+/**
+ * 路由表与登录态守卫。
+ * - meta.public 标记公开路由：首页、重置密码、验证邮箱，未登录也可访问；
+ * - 其余路由先 await ensureSession()，未登录时回首页并带上 tab=login 与原始 redirect；
+ * - meta.admin 路由还要求管理员角色，普通用户直接回首页；
+ * - 未匹配路径统一重定向到首页。
+ */
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { authState, ensureSession, isAdmin } from './store/auth'
 

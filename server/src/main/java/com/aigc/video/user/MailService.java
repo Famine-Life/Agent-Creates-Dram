@@ -25,10 +25,12 @@ public class MailService {
     @Value("${spring.mail.host:}")
     private String host;
 
+    /** 未配置 SMTP 时降级为日志输出。 */
     public boolean logMode() {
         return !"smtp".equalsIgnoreCase(type) || host == null || host.isBlank();
     }
 
+    /** 发送邮件；日志模式只打印内容，便于本地联调。 */
     public void send(String to, String subject, String content) {
         if (logMode()) {
             log.info("[邮件-log] to={} subject={}\n{}", to, subject, content);

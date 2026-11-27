@@ -15,6 +15,7 @@ public class OutboxService {
 
     private final EventOutboxMapper outboxMapper;
 
+    /** 追加一条待投递事件，需与业务写入处于同一事务。 */
     public void append(String eventType, String aggregateType, Long aggregateId, Long userId, String payload) {
         EventOutbox event = new EventOutbox();
         event.setEventId(UUID.randomUUID().toString());

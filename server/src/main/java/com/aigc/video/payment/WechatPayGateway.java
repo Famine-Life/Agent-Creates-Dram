@@ -36,12 +36,14 @@ public class WechatPayGateway {
     private final PaymentProperties properties;
     private final ObjectMapper objectMapper;
 
+    /** 商户配置齐全时视为启用微信支付。 */
     public boolean enabled() {
         PaymentProperties.Wechat wx = properties.getWechat();
         return notBlank(wx.getAppId()) && notBlank(wx.getMchId()) && notBlank(wx.getSerialNo())
                 && notBlank(wx.getPrivateKeyPath()) && notBlank(wx.getNotifyUrl());
     }
 
+    /** 调用 Native 下单接口，返回用于生成二维码的 code_url。 */
     public String createNative(PaymentOrder order) {
         PaymentProperties.Wechat wx = properties.getWechat();
         requireEnabled();
@@ -191,6 +193,7 @@ public class WechatPayGateway {
         return value != null && !value.isBlank();
     }
 
+    /** 回调解析结果。 */
     public record NotifyResult(String orderNo, String thirdPartyTradeNo, int amountCents, boolean success) {
     }
 }

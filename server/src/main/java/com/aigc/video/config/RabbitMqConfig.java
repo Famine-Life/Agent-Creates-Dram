@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(prefix = "aigc.mq", name = "type", havingValue = "rabbitmq")
 public class RabbitMqConfig {
 
+    /** 声明持久化任务队列，队列名可由 aigc.mq.queue 覆盖。 */
     @Bean
     Queue taskDispatchQueue(org.springframework.core.env.Environment environment) {
         String queue = environment.getProperty("aigc.mq.queue", "aigc.task.dispatch");

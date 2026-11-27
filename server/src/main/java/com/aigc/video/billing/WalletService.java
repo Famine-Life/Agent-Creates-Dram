@@ -23,6 +23,7 @@ public class WalletService {
     private final WalletMapper walletMapper;
     private final CreditLedgerMapper ledgerMapper;
 
+    /** 获取钱包，不存在时创建，并发创建冲突则回读已有记录。 */
     public Wallet ensureWallet(Long userId) {
         Wallet wallet = walletMapper.selectOne(Wrappers.<Wallet>lambdaQuery()
                 .eq(Wallet::getUserId, userId).last("LIMIT 1"));
@@ -44,6 +45,7 @@ public class WalletService {
         }
     }
 
+    /** 获取用户钱包。 */
     public Wallet walletOf(Long userId) {
         return ensureWallet(userId);
     }
@@ -142,6 +144,7 @@ public class WalletService {
                 CreditLedger.STATUS_SETTLED, note);
     }
 
+    /** 校验可用余额是否足够，不足时抛出支付异常。 */
     public void requireBalance(Long userId, int amount) {
         Wallet wallet = walletOf(userId);
         if (wallet.getAvailableCredits() == null || wallet.getAvailableCredits() < amount) {

@@ -1,8 +1,12 @@
 <script setup>
+// 访客首页：登录、注册、修改密码三合一表单，左侧展示会员套餐与升级引导
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { forgotPassword, login, register } from '../store/auth'
 
+/* ---------------------------------------------------------------- 标签切换 */
+
+// 当前标签与地址栏 ?tab= 保持同步，刷新或分享链接后仍停留在对应表单
 const TABS = ['login', 'register', 'reset']
 
 const route = useRoute()

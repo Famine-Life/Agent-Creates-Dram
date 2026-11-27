@@ -13,6 +13,7 @@ public class TaskWakeupQueue {
 
     private final Set<Long> pending = new LinkedHashSet<>();
 
+    /** 加入唤醒集合，超出上限时淘汰最早加入的任务。 */
     public synchronized void offer(Long taskId) {
         if (taskId == null) {
             return;
@@ -23,6 +24,7 @@ public class TaskWakeupQueue {
         pending.add(taskId);
     }
 
+    /** 取出一个待唤醒任务 ID，队列为空返回 null。 */
     public synchronized Long poll() {
         if (pending.isEmpty()) {
             return null;
@@ -32,6 +34,7 @@ public class TaskWakeupQueue {
         return first;
     }
 
+    /** 取出并清空全部待唤醒任务。 */
     public synchronized Set<Long> drain() {
         Set<Long> copy = new LinkedHashSet<>(pending);
         pending.clear();

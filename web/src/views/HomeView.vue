@@ -1,4 +1,5 @@
 <script setup>
+// 首页入口：按登录态决定展示项目列表还是访客认证与会员宣传
 import { authState } from '../store/auth'
 import ProjectsView from './ProjectsView.vue'
 import GuestLanding from '../components/GuestLanding.vue'

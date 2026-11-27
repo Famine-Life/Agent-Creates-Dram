@@ -22,17 +22,20 @@ public class BillingService {
     private final MembershipService membershipService;
     private final AppUserMapper userMapper;
 
+    /** 按模型配置与时长计算视频积分，以 5 秒为基准线性折算。 */
     public int videoCost(String modelKey, Integer duration) {
         int base = properties.getVideoCosts().getOrDefault(modelKey, properties.getFallbackVideoCost());
         int seconds = duration == null || duration <= 0 ? 5 : duration;
         return Math.max(1, (int) Math.ceil(base * seconds / 5.0));
     }
 
+    /** 按模型单价与图片张数计算积分。 */
     public int imageCost(String modelKey, int count) {
         int base = properties.getImageCosts().getOrDefault(modelKey, properties.getFallbackImageCost());
         return Math.max(1, base * Math.max(1, count));
     }
 
+    /** 文本生成的积分单价，配置为负时按 0 处理。 */
     public int textCost() {
         return Math.max(0, properties.getTextCost());
     }
@@ -58,10 +61,12 @@ public class BillingService {
         return new BillingTicket(bizId, cost, modelKey);
     }
 
+    /** 生成业务操作 ID，作为钱包冻结与流水的幂等键。 */
     public String newOperationId(Long aggregateId) {
         return "gen-" + aggregateId + "-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
+    /** 生成成功：冻结积分转实扣，并计入当日额度。 */
     public void settleSuccess(Long userId, String operationId, int credits) {
         if (userId == null || operationId == null) {
             return;
@@ -71,6 +76,7 @@ public class BillingService {
         quotaService.record(userId, Math.max(0, credits));
     }
 
+    /** 生成失败：退回本次冻结的积分。 */
     public void settleFailure(Long userId, String operationId, String note) {
         if (userId == null || operationId == null) {
             return;
@@ -78,6 +84,7 @@ public class BillingService {
         walletService.release(userId, operationId, note == null ? "生成失败，退回预留积分" : note);
     }
 
+    /** 预占凭证：记录操作 ID、消耗积分与所用模型。 */
     public record BillingTicket(String operationId, int cost, String modelKey) {
     }
 }
