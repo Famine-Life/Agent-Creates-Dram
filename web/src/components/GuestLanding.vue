@@ -1,5 +1,5 @@
 <script setup>
-// 访客首页：登录、注册、修改密码三合一表单，左侧展示会员套餐与升级引导
+// 访客首页：登录、注册、修改密码三合一表单，左侧展示 Agent 驱动的创作流程与会员套餐
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { forgotPassword, login, register } from '../store/auth'
@@ -152,53 +152,127 @@ async function submitReset() {
 
 <template>
   <main class="landing">
+    <div class="landing-bg" aria-hidden="true">
+      <span class="orb orb-a"></span>
+      <span class="orb orb-b"></span>
+      <span class="grid"></span>
+    </div>
+
     <div class="landing-layout">
-      <section class="promo">
-        <div class="promo-inner">
-          <div class="promo-tags">
-            <span class="promo-tag plan">会员升级</span>
-            <span class="promo-tag">额度 · 并发 · 分辨率</span>
+      <!-- ---------------------------------------------------- 左侧：Agent 指挥台 -->
+      <section class="hero">
+        <header class="hero-brand">
+          <span class="logo">◈</span>
+          <div>
+            <strong>Agent造剧</strong>
+            <span>Agent 驱动的视频与漫剧工作台</span>
           </div>
-          <h2>升级会员<br />解锁更高<span>额度与并发</span></h2>
-          <p class="promo-desc">
-            免费版每日 50 积分，专业版 500 积分与双并发，工作室版 3000 积分、5 并发与 4K 权益。
-            登录后可在「会员与充值」随时升级。
-          </p>
+        </header>
 
-          <ul class="promo-plans">
-            <li class="promo-plan">
-              <div class="plan-line">
-                <span class="plan-name">免费版</span>
-                <span class="plan-price">¥0<small>/月</small></span>
-              </div>
-              <div class="plan-spec">每日 50 积分 · 1 并发 · 720P</div>
-            </li>
-            <li class="promo-plan featured">
-              <div class="plan-line">
-                <span class="plan-name">专业版 <em>推荐</em></span>
-                <span class="plan-price">¥29.9<small>/月</small></span>
-              </div>
-              <div class="plan-spec">每日 500 积分 · 2 并发 · 1080P</div>
-            </li>
-            <li class="promo-plan">
-              <div class="plan-line">
-                <span class="plan-name">工作室版</span>
-                <span class="plan-price">¥99.9<small>/月</small></span>
-              </div>
-              <div class="plan-spec">每日 3000 积分 · 5 并发 · 4K</div>
-            </li>
-          </ul>
-
-          <button class="btn primary promo-cta" type="button" @click="setTab('register')">
-            免费注册，立即体验
-          </button>
-          <p class="promo-note">注册后可先体验免费版，随时在账户中升级。</p>
+        <div class="hero-tags">
+          <span class="tag hot">Agent CLI</span>
+          <span class="tag">分镜视频</span>
+          <span class="tag">可编辑画布</span>
         </div>
+
+        <h1>
+          专注你的创作<br />
+          <span>让Agent帮你编排画布</span>
+        </h1>
+        <p class="hero-desc">
+          Codex、Claude Code、WorkBuddy 等 Agent 通过 CLI 把创意拆成脚本、参考图与分镜视频，
+          直接落到同一张画布。你只管检查、调整，推进下一轮。
+        </p>
+
+        <!-- Agent 对话 → 流水线演示 -->
+        <div class="agent-flow" aria-hidden="true">
+          <div class="agent-cmd">
+            <span class="cmd-avatar">✳</span>
+            <p>帮我制作一集古风漫剧：整理脚本和分镜，准备角色参考图，提交视频生成并关联到同一张画布。</p>
+            <span class="cmd-badge">Agent</span>
+          </div>
+
+          <ol class="pipeline">
+            <li class="pipe-step step-script">
+              <span class="pipe-ic">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 2.5h5l3 3v8H4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+                  <path d="M9 2.5v3h3M6 8h4M6 10.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+              </span>
+              <div class="pipe-body">
+                <strong>脚本节点</strong>
+                <em>古风漫剧 · 8 个分镜</em>
+              </div>
+              <span class="chip done">已完成</span>
+            </li>
+            <li class="pipe-step step-image">
+              <span class="pipe-ic">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <rect x="2.5" y="3" width="11" height="10" rx="1.6" stroke="currentColor" stroke-width="1.2" />
+                  <circle cx="6" cy="6.5" r="1.2" stroke="currentColor" stroke-width="1.2" />
+                  <path d="m4 11 3-3 2.2 2.2L11 8l2 2.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <div class="pipe-body">
+                <strong>参考图节点</strong>
+                <em>角色定妆 · 3 张图片</em>
+              </div>
+              <span class="chip done">已关联</span>
+            </li>
+            <li class="pipe-step step-video">
+              <span class="pipe-ic">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <rect x="2.5" y="3" width="11" height="10" rx="2" stroke="currentColor" stroke-width="1.2" />
+                  <path d="M6.8 6.2v3.6l3-1.8z" fill="currentColor" />
+                </svg>
+              </span>
+              <div class="pipe-body">
+                <strong>分镜视频</strong>
+                <em>Seedance · 3 / 8 生成中</em>
+              </div>
+              <span class="chip run"><i></i>生成中</span>
+            </li>
+          </ol>
+        </div>
+
+        <ul class="caps">
+          <li><b>CLI 编排</b>批量建节点</li>
+          <li><b>画布可编辑</b>随时接管</li>
+          <li><b>多模型接入</b>可私有化</li>
+        </ul>
+
+        <div class="plans">
+          <div class="plan">
+            <span>免费版</span>
+            <b>¥0</b>
+            <em>50 积分/日 · 720P</em>
+          </div>
+          <div class="plan featured">
+            <span>专业版</span>
+            <b>¥29.9<small>/月</small></b>
+            <em>500 积分 · 2 并发</em>
+          </div>
+          <div class="plan">
+            <span>工作室版</span>
+            <b>¥99.9<small>/月</small></b>
+            <em>3000 积分 · 4K</em>
+          </div>
+        </div>
+
+        <button class="btn primary hero-cta" type="button" @click="setTab('register')">
+          免费注册，立即体验
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <p class="hero-note">免费版每日 50 积分，随时在「会员与充值」升级；支持私有化部署。</p>
       </section>
 
+      <!-- ---------------------------------------------------- 右侧：认证卡 -->
       <section class="auth-card">
         <header class="auth-card-head">
-          <h1>{{ head.title }}</h1>
+          <h2>{{ head.title }}</h2>
           <p>{{ head.sub }}</p>
         </header>
 
@@ -381,200 +455,478 @@ async function submitReset() {
 
 <style scoped>
 .landing {
+  /* 落地页固定为暗黑霓虹紫基调，不随全局明暗主题切换 */
+  color-scheme: dark;
+  --bg: #0a0b0d;
+  --panel: #12161c;
+  --card: #1b1f27;
+  --surface: #171b22;
+  --sunken: #14181e;
+  --raised: #252b35;
+  --border: #2e343e;
+  --line-strong: #2a303a;
+  --text: #eef0f4;
+  --text-soft: #c3c8d1;
+  --text-strong: #dadde4;
+  --muted: #9aa1ad;
+  --brand: #7c6bff;
+  --brand-soft: rgba(124, 107, 255, 0.14);
+  --accent-text: #c9c0ff;
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 32px 20px 56px;
-  background: var(--bg);
+  padding: 44px 20px 64px;
+  overflow: hidden;
+  background: #08090c;
+}
+
+/* ---------------------------------------------------------------- 环境光背景 */
+
+.landing-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.55;
+}
+
+.orb-a {
+  width: 640px;
+  height: 640px;
+  top: -220px;
+  left: -180px;
+  background: radial-gradient(circle, rgba(124, 107, 255, 0.45), transparent 66%);
+  animation: drift 20s ease-in-out infinite;
+}
+
+.orb-b {
+  width: 560px;
+  height: 560px;
+  right: -180px;
+  bottom: -220px;
+  background: radial-gradient(circle, rgba(79, 179, 217, 0.3), transparent 66%);
+  animation: drift 26s ease-in-out infinite reverse;
+}
+
+.landing-bg .grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(124, 107, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 107, 255, 0.06) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(circle at 50% 24%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 24%, #000 0%, transparent 72%);
 }
 
 .landing-layout {
-  width: min(1216px, 100%);
+  position: relative;
+  z-index: 1;
+  width: min(1180px, 100%);
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 28px;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 44px;
   align-items: center;
 }
 
-/* ---------------------------------------------------------------- 左侧会员宣传 */
+/* ---------------------------------------------------------------- 左侧 Hero */
 
-.promo {
-  position: relative;
-  min-height: 520px;
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background:
-    radial-gradient(900px 420px at 18% 8%, rgba(124, 107, 255, 0.28), transparent 60%),
-    radial-gradient(700px 380px at 92% 88%, rgba(79, 179, 217, 0.16), transparent 62%),
-    linear-gradient(160deg, #14161c 0%, #0c0e12 100%);
+.hero {
+  min-width: 0;
 }
 
-.promo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle, rgba(124, 107, 255, 0.22) 1px, transparent 1px);
-  background-size: 24px 24px;
-  opacity: 0.5;
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 85%);
-  mask-image: linear-gradient(180deg, #000 0%, transparent 85%);
-}
-
-.promo-inner {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 26px;
-}
-
-.promo-tags {
+.hero-brand {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.promo-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1.5px 6px;
-  border-radius: 5px;
-  border: 1px solid #2a2f38;
-  background: #1c2027;
-  color: #8d939e;
-  font-size: 9.5px;
-  line-height: 1.5;
-}
-
-.promo-tag.plan {
-  color: #c6bfff;
-  background: rgba(124, 107, 255, 0.12);
-  border-color: rgba(124, 107, 255, 0.3);
-}
-
-.promo h2 {
-  margin: 22px 0 8px;
-  color: #e9ebef;
-  font-size: 26px;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
-
-.promo h2 span {
-  color: #b9aeff;
-}
-
-.promo-desc {
-  margin: 0;
-  max-width: 400px;
-  color: #8d939e;
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.promo-plans {
-  list-style: none;
-  margin: 18px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.promo-plan {
-  padding: 10px 12px;
-  border-radius: 11px;
-  border: 1px solid rgba(124, 107, 255, 0.16);
-  background: rgba(17, 19, 23, 0.72);
-}
-
-.promo-plan.featured {
-  border-color: rgba(124, 107, 255, 0.45);
-  background: rgba(124, 107, 255, 0.1);
-}
-
-.plan-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
   gap: 10px;
 }
 
-.plan-name {
-  color: #e9ebef;
-  font-size: 12.5px;
-  font-weight: 600;
+.hero-brand strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #f4f5fa;
+  text-shadow: 0 0 14px rgba(124, 107, 255, 0.35);
 }
 
-.plan-name em {
-  margin-left: 5px;
-  padding: 1px 5px;
+.hero-brand span {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+.tag {
+  padding: 3px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(240, 180, 41, 0.4);
-  background: rgba(240, 180, 41, 0.14);
-  color: #f0c46a;
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 500;
+  border: 1px solid var(--border);
+  background: rgba(124, 107, 255, 0.06);
+  color: #c2c8d8;
+  font-size: 12.5px;
+  letter-spacing: 0.3px;
 }
 
-.plan-price {
-  color: #e9ebef;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+.tag.hot {
+  border-color: rgba(124, 107, 255, 0.42);
+  background: rgba(124, 107, 255, 0.14);
+  color: #c6bfff;
+}
+
+.hero h1 {
+  margin: 14px 0 0;
+  font-size: clamp(30px, 3.2vw, 42px);
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text);
+}
+
+.hero h1 span {
+  background: linear-gradient(100deg, #b9aeff 0%, #7c6bff 45%, #6fd0ea 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-desc {
+  margin: 14px 0 0;
+  max-width: 500px;
+  color: var(--text-soft);
   font-size: 14px;
+  line-height: 1.8;
 }
 
-.plan-price small {
-  margin-left: 1px;
-  color: #5f6672;
-  font-family: inherit;
-  font-size: 9.5px;
+/* ---------------- Agent 对话与流水线 ---------------- */
+
+.agent-flow {
+  margin-top: 20px;
+  max-width: 500px;
 }
 
-.plan-spec {
-  margin-top: 4px;
-  color: #8d939e;
+.agent-cmd {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(124, 107, 255, 0.3);
+  background: linear-gradient(155deg, rgba(124, 107, 255, 0.16), rgba(17, 19, 23, 0.7));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.cmd-avatar {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(124, 107, 255, 0.22);
+  color: #c6bfff;
+  font-size: 11px;
+  animation: avatarPulse 3s ease-in-out infinite;
+}
+
+.agent-cmd p {
+  margin: 1px 0 0;
+  color: #e6e9f0;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.cmd-badge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 107, 255, 0.35);
+  background: rgba(124, 107, 255, 0.12);
+  color: #b9aeff;
   font-size: 10.5px;
+  letter-spacing: 0.4px;
 }
 
-.promo-cta {
-  width: 100%;
-  height: 36px;
-  margin-top: 16px;
+.pipeline {
+  position: relative;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pipeline::before {
+  content: '';
+  position: absolute;
+  left: 21px;
+  top: 18px;
+  bottom: 18px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(70, 211, 154, 0.5), rgba(124, 107, 255, 0.4), rgba(240, 180, 41, 0.45));
+}
+
+.pipe-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px 10px 10px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  opacity: 0;
+  transform: translateY(8px);
+  animation: stepIn 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+.step-script {
+  animation-delay: 0.15s;
+}
+
+.step-image {
+  animation-delay: 0.35s;
+}
+
+.step-video {
+  animation-delay: 0.55s;
+}
+
+.pipe-ic {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 107, 255, 0.28);
+  background: var(--panel);
+  color: #b9aeff;
+}
+
+.step-script .pipe-ic {
+  border-color: rgba(70, 211, 154, 0.32);
+  color: #7fe0b5;
+}
+
+.step-video .pipe-ic {
+  border-color: rgba(240, 180, 41, 0.32);
+  color: #f0c46a;
+}
+
+.pipe-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pipe-body strong {
+  font-size: 13.5px;
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(124, 107, 255, 0.28);
+  color: var(--text);
 }
 
-.promo-note {
-  margin: 8px 0 0;
-  color: #5f6672;
-  font-size: 10px;
-  text-align: center;
+.pipe-body em {
+  font-style: normal;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.chip {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.chip.done {
+  border: 1px solid rgba(70, 211, 154, 0.3);
+  background: rgba(70, 211, 154, 0.1);
+  color: #9fe3c4;
+}
+
+.chip.run {
+  border: 1px solid rgba(240, 180, 41, 0.32);
+  background: rgba(240, 180, 41, 0.1);
+  color: #f0c46a;
+}
+
+.chip.run i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #f0b429;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+/* ---------------- 能力标签与套餐 ---------------- */
+
+.caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.caps li {
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.caps b {
+  margin-right: 4px;
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 18px;
+  max-width: 500px;
+}
+
+.plan {
+  padding: 9px 11px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.plan.featured {
+  border-color: rgba(124, 107, 255, 0.5);
+  background: linear-gradient(155deg, rgba(124, 107, 255, 0.18), rgba(124, 107, 255, 0.05));
+  box-shadow: 0 8px 26px rgba(124, 107, 255, 0.16);
+}
+
+.plan span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.plan b {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.plan b small {
+  margin-left: 1px;
+  color: var(--text-soft);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.plan em {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.hero-cta {
+  height: 44px;
+  margin-top: 20px;
+  padding: 0 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  background: linear-gradient(120deg, #8b7cff, #6a55e8);
+  border-color: transparent;
+  box-shadow: 0 10px 30px rgba(124, 107, 255, 0.34);
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.hero-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 36px rgba(124, 107, 255, 0.44);
+  background: linear-gradient(120deg, #9a8dff, #7561f0);
+}
+
+.hero-note {
+  margin: 12px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+/* 暗色登录卡：提升字段标签对比度（仅作用于本组件） */
+.field-label {
+  font-size: 12.5px;
+  color: #d8dcea;
+}
+.field-label em {
+  color: #aeb4c6;
 }
 
 /* ---------------------------------------------------------------- 右侧认证卡 */
 
 .auth-card {
+  position: relative;
   width: 100%;
   max-width: 430px;
   margin-left: auto;
-  border-radius: 18px;
+  border-radius: 20px;
   border: 1px solid var(--line-strong);
-  background: var(--panel);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 38%),
+    var(--panel);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   overflow: hidden;
   color: var(--text);
 }
 
-.auth-card-head {
-  padding: 22px 24px 0;
+.auth-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand), #6fd0ea, transparent);
+  opacity: 0.85;
 }
 
-.auth-card-head h1 {
+.auth-card-head {
+  padding: 24px 24px 0;
+}
+
+.auth-card-head h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
@@ -635,6 +987,7 @@ async function submitReset() {
   border-color: var(--border);
   background: var(--surface);
   font-size: 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .auth-card :deep(.field input:focus) {
@@ -753,21 +1106,70 @@ async function submitReset() {
   color: var(--accent-text);
 }
 
-/* ---------------------------------------------------------------- 响应式 */
+/* ---------------------------------------------------------------- 动效 */
 
-@media (max-width: 900px) {
-  .promo h2 {
-    font-size: 22px;
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(40px, 26px, 0) scale(1.06);
   }
 }
 
-@media (max-width: 768px) {
+@keyframes stepIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes avatarPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(124, 107, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(124, 107, 255, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb,
+  .cmd-avatar,
+  .chip.run i {
+    animation: none;
+  }
+
+  .pipe-step {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- 响应式 */
+
+@media (max-width: 980px) {
   .landing {
-    padding: 20px 16px 40px;
+    padding: 28px 18px 48px;
   }
 
   .landing-layout {
     grid-template-columns: 1fr;
+    gap: 28px;
+    width: min(560px, 100%);
   }
 
   .auth-card {
@@ -776,9 +1178,8 @@ async function submitReset() {
     margin: 0 auto;
   }
 
-  .promo {
+  .hero {
     order: 2;
-    min-height: 0;
   }
 }
 
@@ -795,8 +1196,40 @@ async function submitReset() {
     padding: 16px 18px 20px;
   }
 
-  .promo-inner {
-    padding: 20px;
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .hero-desc {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .plans {
+    grid-template-columns: 1fr;
+  }
+
+  .plan {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .plan span {
+    flex: 1 1 auto;
+  }
+
+  .plan b {
+    margin: 0;
+  }
+
+  .plan em {
+    margin: 0;
+  }
+
+  .hero-cta {
+    width: 100%;
   }
 }
 </style>
