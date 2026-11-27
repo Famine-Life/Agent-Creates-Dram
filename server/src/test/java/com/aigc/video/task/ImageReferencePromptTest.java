@@ -6,6 +6,10 @@ import com.aigc.video.api.dto.ImageRequest;
 import com.aigc.video.api.dto.ShotRequest;
 import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.common.BadRequestException;
+import com.aigc.video.mapper.AppUserMapper;
+import com.aigc.video.support.TestSecurity;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:image-ref-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1"
+        "spring.datasource.url=jdbc:h2:mem:image-ref-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1",
+        "aigc.storage.type=local"
 })
 class ImageReferencePromptTest {
 
@@ -26,6 +31,18 @@ class ImageReferencePromptTest {
 
     @Autowired
     private TaskService taskService;
+    @Autowired
+    private AppUserMapper userMapper;
+
+    @BeforeEach
+    void login() {
+        TestSecurity.loginAdmin(userMapper);
+    }
+
+    @AfterEach
+    void logout() {
+        TestSecurity.clear();
+    }
 
     @Test
     void writesDescriptionAtTheActualReferencePositionAndRetriesWithoutDuplicates() {

@@ -45,6 +45,7 @@ public class McpShotTools {
 
     private final TaskService taskService;
     private final ObjectMapper objectMapper;
+    private final McpToolSupport support;
 
     @Tool(name = "push_shot",
             description = "把单个分镜/镜头提示词推送到视频画布并创建视频生成节点（传 draft=true 时只建草稿不生成）。"
@@ -64,7 +65,7 @@ public class McpShotTools {
             @ToolParam(required = false, description = "工作空间 ID，默认 1") Long workspaceId) {
         ShotRequest request = new ShotRequest(prompt, title, groupId, shotIndex, imageUrls, imageIds,
                 model, ratio, duration, resolution, draft);
-        TaskNode node = taskService.createShot(McpToolSupport.workspace(workspaceId), request);
+        TaskNode node = taskService.createShot(support.workspace(workspaceId), request);
         return McpToolSupport.toJson(objectMapper, node);
     }
 
@@ -81,7 +82,7 @@ public class McpShotTools {
         if (perRow < 1 || perRow > 12) {
             throw new BadRequestException("columns 必须是 1-12 的整数");
         }
-        Long id = McpToolSupport.workspace(workspaceId);
+        Long id = support.workspace(workspaceId);
         List<TaskNode> nodes = taskService.createStoryboard(id, new StoryboardRequest(shots, groupId));
         if (!nodes.isEmpty()) {
             try {

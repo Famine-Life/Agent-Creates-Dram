@@ -16,8 +16,12 @@ import com.aigc.video.mapper.GenerationTaskMapper;
 import com.aigc.video.mapper.PromptRecordMapper;
 import com.aigc.video.mapper.TaskImageRefMapper;
 import com.aigc.video.mapper.WorkspaceMapper;
+import com.aigc.video.mapper.AppUserMapper;
+import com.aigc.video.support.TestSecurity;
 import com.aigc.video.task.TaskService;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -57,6 +61,18 @@ class WorkspaceServiceTest {
     private CanvasNodeMapper nodeMapper;
     @Autowired
     private TaskImageRefMapper refMapper;
+    @Autowired
+    private AppUserMapper userMapper;
+
+    @BeforeEach
+    void login() {
+        TestSecurity.loginAdmin(userMapper);
+    }
+
+    @AfterEach
+    void logout() {
+        TestSecurity.clear();
+    }
 
     @Test
     void renamesAndCopiesAggregate() {

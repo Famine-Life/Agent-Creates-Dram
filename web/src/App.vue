@@ -1,5 +1,6 @@
 <script setup>
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -52,13 +53,37 @@ import {
   retryTasks,
   cancelTasks,
   removeTasks,
+  resetCanvas,
   toast
 } from './store/canvas'
 import { api } from './api'
 import { historyBusy, historyTransaction, missingHistoryTarget, recordHistory, undoLatest, withoutHistory } from './store/history'
+import { authState, logout as authLogout, refreshAccount } from './store/auth'
 import { theme, toggleTheme } from './theme'
 
-const emit = defineEmits(['logout'])
+const route = useRoute()
+const router = useRouter()
+const accountMenu = ref(false)
+
+/** 把当前画布 ID 同步到路由，保证地址可分享、刷新后仍打开同一画布 */
+function syncCanvasRoute(workspaceId) {
+  if (route.name === 'canvas' && Number(route.params.workspaceId) === Number(workspaceId)) return
+  router.replace({ name: 'canvas', params: { workspaceId } }).catch(() => {})
+}
+
+/** 退出登录：断开实时连接、清空画布与本地缓存后回到登录页 */
+async function handleLogout() {
+  accountMenu.value = false
+  clearTimeout(saveTimer)
+  ready = false
+  try {
+    await authLogout()
+  } catch (e) {
+    toast(`退出登录失败：${e.message}`)
+  }
+  resetCanvas()
+  router.push({ name: 'home' })
+}
 
 const SHOT_W = 320
 const SHOT_H = 220
@@ -1773,6 +1798,7 @@ async function openCanvas(workspaceId) {
 
   state.workspaceId = workspaceId
   localStorage.setItem('aigc.workspace.id', String(workspaceId))
+  syncCanvasRoute(workspaceId)
   state.loading = true
   state.selectedTaskId = null
   state.selectedImageId = null
@@ -1816,7 +1842,9 @@ async function openCanvas(workspaceId) {
 async function addCanvas() {
   if (deletingCanvas.value) return
   try {
-    const created = await createWorkspace()
+    // 与当前画布同项目新建，避免画布被建到默认项目
+    const currentProjectId = state.workspaces.find((item) => item.id === state.workspaceId)?.projectId
+    const created = await createWorkspace(currentProjectId)
     await openCanvas(created.id)
   } catch (e) {
     toast(`新增画布失败：${e.message}`)
@@ -1849,9 +1877,10 @@ async function copyCanvas(id) {
   }
 }
 
-/** 新窗口打开画布：通过 ?workspace= 让新标签页定位到指定画布 */
+/** 新窗口打开画布：复制当前路由到新标签页 */
 function openCanvasWindow(id) {
-  window.open(`${window.location.pathname}?workspace=${id}`, '_blank', 'noopener')
+  const { href } = router.resolve({ name: 'canvas', params: { workspaceId: id } })
+  window.open(href, '_blank', 'noopener')
 }
 
 /** 删除后刷新列表并切换；ready=false 时 openCanvas 不会再保存已删画布 */
@@ -1930,20 +1959,24 @@ async function bootstrap() {
   try {
     let workspaces = await loadWorkspaces()
     if (!workspaces.length) workspaces = [await createWorkspace()]
-    // “在新窗口打开”通过 ?workspace= 指定画布，优先于本地记忆
-    const requested = Number(new URLSearchParams(window.location.search).get('workspace'))
-    const target = workspaces.find((item) =>
-      item.id === (Number.isInteger(requested) && requested > 0 ? requested : state.workspaceId)
-    )
+    // 路由参数指定画布，兼容旧版 ?workspace= 分享链接与本地记忆
+    const routeRequested = Number(route.params.workspaceId)
+    const queryRequested = Number(new URLSearchParams(window.location.search).get('workspace'))
+    const requested = Number.isInteger(routeRequested) && routeRequested > 0
+      ? routeRequested
+      : (Number.isInteger(queryRequested) && queryRequested > 0 ? queryRequested : state.workspaceId)
+    const target = workspaces.find((item) => item.id === requested)
     const selected = target || workspaces[0]
     if (selected.id !== state.workspaceId) {
       state.workspaceId = selected.id
     }
     localStorage.setItem('aigc.workspace.id', String(selected.id))
+    syncCanvasRoute(selected.id)
     await loadAll()
     scheduleVirtualization(900)
     ready = true
     connectRealtime()
+    refreshAccount().catch(() => {})
     onMoveEnd(() => scheduleSave())
     // 等节点测量完成后再自适应视图，避免节点跑到屏幕外
     onNodesInitialized?.(() => setTimeout(applyInitialView, 80))
@@ -1953,6 +1986,17 @@ async function bootstrap() {
     toast(`加载失败：${e.message}`)
   }
 }
+
+// 浏览器前进 / 后退或手动修改路由时切换到对应画布
+watch(
+  () => route.params.workspaceId,
+  (value) => {
+    const workspaceId = Number(value)
+    if (!Number.isInteger(workspaceId) || workspaceId <= 0) return
+    if (workspaceId === state.workspaceId) return
+    openCanvas(workspaceId)
+  }
+)
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
@@ -1969,8 +2013,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', resetSpacePan)
   window.removeEventListener('paste', onPaste)
   window.removeEventListener('aigc:workspace-deleted', onWorkspaceDeleted)
-  disconnectRealtime()
+  // 离开画布（去账户页等）时把未落库的布局保存掉；退出登录时 ready 已为 false
   clearTimeout(saveTimer)
+  if (ready) saveSnapshotNow().catch(() => {})
+  disconnectRealtime()
 })
 </script>
 
@@ -2002,7 +2048,33 @@ onBeforeUnmount(() => {
         <button class="btn ghost theme-toggle" @click="toggleTheme">
           {{ theme === 'dark' ? '白天模式' : '夜间模式' }}
         </button>
-        <button class="btn ghost logout" @click="emit('logout')">退出登录</button>
+        <router-link
+          v-if="authState.user && !authState.user.emailVerified"
+          class="pill tone-error verify-hint"
+          to="/account"
+          title="完成邮箱验证后才能生成和充值"
+        >邮箱未验证</router-link>
+        <div v-if="authState.user" class="account-area">
+          <button class="account-chip" title="账户菜单" @click="accountMenu = !accountMenu">
+            <span class="account-credits">{{ authState.user.availableCredits ?? 0 }} 积分</span>
+            <span class="account-member">{{ authState.user.memberName || authState.user.memberCode || '免费版' }}</span>
+            <span class="account-caret">▾</span>
+          </button>
+          <div v-if="accountMenu" class="account-backdrop" @click="accountMenu = false"></div>
+          <div v-if="accountMenu" class="account-menu">
+            <div class="account-menu-head">
+              <strong>{{ authState.user.username }}</strong>
+              <span class="muted">{{ authState.user.email }}</span>
+            </div>
+            <router-link to="/" @click="accountMenu = false">我的项目</router-link>
+            <router-link to="/account" @click="accountMenu = false">我的账户</router-link>
+            <router-link to="/account/billing" @click="accountMenu = false">会员与充值</router-link>
+            <router-link to="/account/tokens" @click="accountMenu = false">MCP Token</router-link>
+            <router-link v-if="authState.user.role === 'ADMIN'" to="/admin" @click="accountMenu = false">管理后台</router-link>
+            <button class="account-menu-item" @click="handleLogout">退出登录</button>
+          </div>
+        </div>
+        <button v-else class="btn ghost logout" @click="handleLogout">退出登录</button>
       </div>
     </header>
 

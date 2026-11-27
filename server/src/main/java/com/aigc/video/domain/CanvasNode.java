@@ -23,6 +23,8 @@ public class CanvasNode {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private Long userId;
+
     private Long workspaceId;
 
     private String nodeType;

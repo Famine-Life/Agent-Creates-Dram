@@ -1,0 +1,3177 @@
+<!doctype html>
+<html lang="zh-CN" data-device="desktop">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AIGC Studio · 多用户会员制 UI 设计稿 v1.0</title>
+<style>
+  :root {
+    --bg: #0A0B0D;
+    --panel: #111317;
+    --panel-2: #171A1F;
+    --panel-3: #1C2027;
+    --border: #24282F;
+    --border-strong: #333944;
+    --text: #E9EBEF;
+    --muted: #8D939E;
+    --faint: #5F6672;
+    --accent: #7C6BFF;
+    --accent-soft: rgba(124, 107, 255, .14);
+    --success: #46D39A;
+    --warn: #F0B429;
+    --danger: #F2555A;
+    --info: #6EA8FE;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font-family: inherit; }
+  button { cursor: pointer; }
+  ::selection { background: rgba(124, 107, 255, .35); }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-thumb { background: #262B33; border-radius: 4px; }
+  a { color: #BDB4FF; }
+
+  .shell { min-height: 100vh; display: flex; flex-direction: column; }
+  .wrap { width: min(1216px, 100% - 40px); margin: 0 auto; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .spacer { flex: 1; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .mono { font-family: var(--mono); }
+  .tiny { font-size: 10.5px; }
+  .nowrap { white-space: nowrap; }
+
+  /* ---------- 按钮 ---------- */
+  .btn {
+    height: 32px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    font-size: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .15s, border-color .15s, transform .1s;
+    text-decoration: none;
+  }
+  .btn:hover { background: #1E222A; border-color: var(--border-strong); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 4px 16px rgba(124, 107, 255, .28); }
+  .btn.primary:hover { background: #8B7BFF; border-color: #8B7BFF; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 27px; padding: 0 9px; font-size: 11.5px; border-radius: 7px; }
+  .btn.xs { height: 23px; padding: 0 7px; font-size: 10.5px; border-radius: 6px; }
+  .btn.danger { color: var(--danger); border-color: rgba(242, 85, 90, .3); background: rgba(242, 85, 90, .08); }
+  .btn.danger:hover { background: rgba(242, 85, 90, .16); }
+  .btn.soft { color: #C6BFFF; border-color: rgba(124, 107, 255, .32); background: rgba(124, 107, 255, .1); }
+  .btn.soft:hover { background: rgba(124, 107, 255, .18); border-color: rgba(124, 107, 255, .5); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .link-btn { border: 0; background: transparent; color: #BDB4FF; font-size: 11px; padding: 0; }
+  .link-btn:hover { text-decoration: underline; }
+  .icon-btn {
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); display: grid; place-items: center; flex: 0 0 auto;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+  /* ---------- 胶囊 / 标签 ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; padding: 2.5px 7px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid transparent; line-height: 1.35;
+  }
+  .pill.ok { color: var(--success); background: rgba(70, 211, 154, .12); border-color: rgba(70, 211, 154, .24); }
+  .pill.run { color: var(--warn); background: rgba(240, 180, 41, .12); border-color: rgba(240, 180, 41, .26); }
+  .pill.fail { color: var(--danger); background: rgba(242, 85, 90, .12); border-color: rgba(242, 85, 90, .26); }
+  .pill.idle { color: var(--muted); background: #1A1D23; border-color: #2A2F38; }
+  .pill.info { color: var(--info); background: rgba(110, 168, 254, .12); border-color: rgba(110, 168, 254, .26); }
+  .pill.accent { color: #C6BFFF; background: var(--accent-soft); border-color: rgba(124, 107, 255, .36); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: 0 0 6px; }
+  .dot.ok { background: var(--success); }
+  .dot.run { background: var(--warn); box-shadow: 0 0 0 3px rgba(240, 180, 41, .12); }
+  .dot.fail { background: var(--danger); }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 9.5px; padding: 1.5px 6px; border-radius: 5px;
+    background: var(--panel-3); border: 1px solid var(--border); color: var(--muted);
+  }
+  .tag.plan { color: #C6BFFF; background: rgba(124, 107, 255, .12); border-color: rgba(124, 107, 255, .3); }
+  .tag.gold { color: #F0C46A; background: rgba(240, 180, 41, .12); border-color: rgba(240, 180, 41, .3); }
+
+  /* ---------- 顶部导航 ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    height: 56px; flex: 0 0 56px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 16px;
+    background: rgba(17, 19, 23, .96);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 9px;
+    background: var(--accent);
+    display: grid; place-items: center;
+    box-shadow: 0 4px 14px rgba(124, 107, 255, .35);
+  }
+  .brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: .2px; }
+  .brand-sub { font-size: 10.5px; color: var(--faint); margin-top: -1px; }
+  .divider-v { width: 1px; height: 22px; background: var(--border); flex: 0 0 1px; }
+
+  .nav-tabs { display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 0 2px; min-width: 0; }
+  .nav-spacer { flex: 1 1 auto; min-width: 6px; }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    height: 30px; padding: 0 9px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); font-size: 11.5px; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .nav-tab:hover { background: var(--panel-2); color: #C9CDD5; }
+  .nav-tab.active { background: rgba(124, 107, 255, .13); border-color: rgba(124, 107, 255, .34); color: #C6BFFF; }
+
+  .account-chip {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 5px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    cursor: pointer;
+  }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 7px; flex: 0 0 24px;
+    background: linear-gradient(135deg, #7C6BFF, #4FB3D9);
+    display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff;
+  }
+  .account-chip .credit { font-family: var(--mono); font-size: 11px; color: #E9EBEF; }
+  .account-chip .credit small { color: var(--faint); font-family: inherit; font-size: 9.5px; }
+  .account-chip .plan-name { font-size: 9.5px; color: #C6BFFF; }
+
+  .device-toggle {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .device-toggle button {
+    height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); font-size: 10.5px; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .device-toggle button.active { background: var(--panel-3); color: var(--text); }
+
+  /* ---------- 页面容器 ---------- */
+  .main { flex: 1; min-width: 0; width: 100%; max-width: 100%; }
+  .page { display: none; padding: 22px 0 64px; min-width: 0; max-width: 100%; }
+  .page.active { display: block; }
+
+  .page-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .page-head h1 { margin: 0; font-size: 19px; font-weight: 680; letter-spacing: .2px; }
+  .page-head .sub { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .page-head .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .eyebrow { font-size: 9.5px; color: var(--faint); letter-spacing: .8px; text-transform: uppercase; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .card-pad { padding: 16px; }
+  .card-head { display: flex; align-items: center; gap: 8px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
+  .card-head h2 { margin: 0; font-size: 13px; font-weight: 650; }
+  .card-head .sub { font-size: 10.5px; color: var(--faint); }
+  .card-head .spacer { flex: 1; }
+
+  .label { font-size: 9.5px; color: var(--faint); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 7px; }
+  .section-gap { margin-top: 16px; }
+
+  /* ---------- 表单 ---------- */
+  .field { margin-bottom: 13px; }
+  .field label { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .field label .hint { color: var(--faint); font-size: 10px; }
+  .field label em { color: var(--danger); font-style: normal; }
+  .input, .select, .textarea {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 12px; outline: none;
+  }
+  .input::placeholder, .textarea::placeholder { color: var(--faint); }
+  .input:focus, .select:focus, .textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .input[readonly] { color: var(--muted); }
+  .textarea { min-height: 76px; resize: vertical; line-height: 1.6; }
+
+  /* ---------- 认证页 ---------- */
+  .auth-layout {
+    min-height: calc(100vh - 56px);
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px;
+    align-items: center; padding: 32px 0 56px;
+  }
+  .auth-art {
+    position: relative; height: 520px; border-radius: 20px; overflow: hidden;
+    background:
+      radial-gradient(900px 420px at 18% 8%, rgba(124, 107, 255, .28), transparent 60%),
+      radial-gradient(700px 380px at 92% 88%, rgba(79, 179, 217, .16), transparent 62%),
+      linear-gradient(160deg, #14161C 0%, #0C0E12 100%);
+    border: 1px solid var(--border);
+  }
+  .auth-art::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(124, 107, 255, .22) 1px, transparent 1px);
+    background-size: 24px 24px; opacity: .5;
+    mask-image: linear-gradient(180deg, #000 0%, transparent 85%);
+  }
+  .auth-art-inner { position: relative; z-index: 2; height: 100%; padding: 26px; display: flex; flex-direction: column; }
+  .auth-art h2 { margin: 26px 0 8px; font-size: 26px; line-height: 1.3; font-weight: 700; letter-spacing: .3px; }
+  .auth-art h2 span { color: #B9AEFF; }
+  .auth-art p { margin: 0; max-width: 380px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+  .art-mock {
+    margin-top: auto; display: flex; gap: 12px; align-items: flex-end;
+  }
+  .art-node {
+    width: 148px; border-radius: 11px; border: 1px solid rgba(124, 107, 255, .28);
+    background: rgba(17, 19, 23, .82); overflow: hidden; backdrop-filter: blur(6px);
+  }
+  .art-node .bar { height: 3px; background: linear-gradient(90deg, #7C6BFF, #4FB3D9); }
+  .art-node .thumb {
+    height: 74px;
+    background: radial-gradient(120px 60px at 70% 20%, rgba(240, 180, 41, .28), transparent 70%),
+                linear-gradient(135deg, #2A2140, #101318);
+  }
+  .art-node .meta { padding: 7px 8px; font-size: 9.5px; color: var(--faint); }
+  .art-node .meta b { display: block; color: #C9CDD5; font-size: 10.5px; font-weight: 600; margin-bottom: 2px; }
+  .art-float {
+    margin-left: auto; padding: 10px 12px; border-radius: 10px;
+    background: rgba(17, 19, 23, .9); border: 1px solid var(--border-strong);
+    font-size: 10px; color: var(--muted); box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+  }
+  .art-float b { display: block; color: var(--text); font-size: 12px; margin-bottom: 3px; }
+
+  .auth-card {
+    width: 100%; max-width: 430px; margin-left: auto;
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55); overflow: hidden;
+  }
+  .auth-card-head { padding: 22px 24px 0; }
+  .auth-card-head h1 { margin: 0; font-size: 18px; font-weight: 680; }
+  .auth-card-head .sub { margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+  .auth-tabs {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+    margin: 16px 24px 0; padding: 3px; border-radius: 9px;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .auth-tabs button {
+    height: 27px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); font-size: 11px;
+  }
+  .auth-tabs button.active { background: var(--panel-3); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, .3); }
+  .auth-body { padding: 18px 24px 22px; }
+  .auth-view { display: none; }
+  .auth-view.active { display: block; }
+  .auth-foot { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--faint); margin-top: 14px; }
+  .auth-alt { text-align: center; font-size: 11px; color: var(--faint); margin-top: 14px; }
+
+  .notice {
+    display: flex; gap: 8px; align-items: flex-start;
+    border-radius: 9px; padding: 9px 11px; font-size: 11px; line-height: 1.55;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+    margin-bottom: 13px;
+  }
+  .notice b { color: var(--text); font-weight: 600; }
+  .notice.warn { background: rgba(240, 180, 41, .08); border-color: rgba(240, 180, 41, .26); color: #E8C77C; }
+  .notice.danger { background: rgba(242, 85, 90, .08); border-color: rgba(242, 85, 90, .26); color: #F2A0A3; }
+  .notice.ok { background: rgba(70, 211, 154, .07); border-color: rgba(70, 211, 154, .24); color: #9FE3C4; }
+  .notice .ic { flex: 0 0 auto; margin-top: 1px; }
+
+  .verify-mark {
+    width: 60px; height: 60px; margin: 6px auto 12px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: rgba(70, 211, 154, .1); border: 1px solid rgba(70, 211, 154, .3);
+  }
+  .verify-mark.fail { background: rgba(242, 85, 90, .1); border-color: rgba(242, 85, 90, .3); }
+  .verify-title { text-align: center; font-size: 15px; font-weight: 650; }
+  .verify-desc { text-align: center; font-size: 11px; color: var(--muted); margin: 6px 0 16px; line-height: 1.7; }
+
+  /* ---------- 我的画布 ---------- */
+  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-strip.three { grid-template-columns: repeat(3, 1fr); }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px;
+  }
+  .stat .k { font-size: 10px; color: var(--faint); }
+  .stat .v { font-size: 19px; font-weight: 650; font-family: var(--mono); margin-top: 3px; letter-spacing: -.2px; }
+  .stat .v small { font-size: 10px; color: var(--muted); font-family: inherit; font-weight: 400; }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .search {
+    height: 30px; display: flex; align-items: center; gap: 7px; min-width: 220px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 0 9px;
+  }
+  .search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11.5px; }
+  .search input::placeholder { color: var(--faint); }
+  .chip {
+    height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); font-size: 11px;
+  }
+  .chip:hover { background: var(--panel-2); color: #C9CDD5; }
+  .chip.active { background: rgba(124, 107, 255, .13); border-color: rgba(124, 107, 255, .35); color: #BDB4FF; }
+
+  .ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(286px, 1fr)); gap: 14px; }
+  .ws-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .ws-card:hover { border-color: #3A404B; transform: translateY(-2px); box-shadow: 0 14px 34px rgba(0, 0, 0, .4); }
+  .ws-thumb {
+    position: relative; height: 128px; overflow: hidden; cursor: pointer;
+    background-color: #0E1014;
+    background-image: radial-gradient(circle, #1D2128 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .ws-thumb .mini { position: absolute; border-radius: 4px; border: 1px solid rgba(124, 107, 255, .45); background: rgba(124, 107, 255, .12); }
+  .ws-thumb .mini.v { width: 56px; height: 32px; left: 18px; top: 24px; }
+  .ws-thumb .mini.i { width: 34px; height: 34px; left: 96px; top: 58px; border-color: rgba(79, 179, 217, .45); background: rgba(79, 179, 217, .1); }
+  .ws-thumb .mini.s { width: 64px; height: 30px; right: 18px; top: 22px; border-style: dashed; background: transparent; }
+  .ws-thumb .mini-line { position: absolute; height: 1px; background: rgba(124, 107, 255, .4); transform-origin: left center; }
+  .ws-badge { position: absolute; right: 9px; bottom: 9px; }
+  .ws-body { padding: 11px 13px 12px; }
+  .ws-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 620; }
+  .ws-name .name-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-meta { font-size: 10.5px; color: var(--faint); margin-top: 4px; }
+  .ws-nums { display: flex; gap: 12px; margin-top: 9px; font-size: 10.5px; color: var(--muted); }
+  .ws-nums b { color: #C9CDD5; font-family: var(--mono); font-weight: 600; }
+  .ws-nums .running b { color: var(--warn); }
+  .ws-foot { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border-top: 1px solid var(--border); background: #0F1115; }
+  .ws-foot .btn { flex: 0 0 auto; }
+  .ws-foot .enter { margin-left: auto; }
+
+  .empty-state {
+    grid-column: 1 / -1; border: 1px dashed var(--border-strong); border-radius: 14px;
+    background: var(--panel); padding: 46px 20px; text-align: center;
+  }
+  .empty-art { width: 120px; height: 84px; margin: 0 auto 14px; position: relative; }
+  .empty-art i {
+    position: absolute; border-radius: 7px; border: 1px solid var(--border-strong); background: var(--panel-2);
+  }
+  .empty-art i:nth-child(1) { inset: 8px 46px 34px 4px; }
+  .empty-art i:nth-child(2) { inset: 30px 6px 10px 52px; border-color: rgba(124, 107, 255, .35); background: rgba(124, 107, 255, .08); }
+  .empty-art i:nth-child(3) { width: 22px; height: 22px; left: 45px; top: 2px; border-radius: 50%; border-style: dashed; }
+  .empty-state h3 { margin: 0 0 6px; font-size: 14px; }
+  .empty-state p { margin: 0 0 16px; font-size: 11.5px; color: var(--muted); }
+
+  /* ---------- 画布工作台 ---------- */
+  .page.wide { padding: 0; }
+  .wb { height: calc(100vh - 56px); min-height: 640px; display: flex; flex-direction: column; }
+  .wb, .wb-top, .wb-alert, .wb-body, .wb-left, .wb-right, .canvas-wrap { min-width: 0; max-width: 100%; }
+  .wb-alert .txt { flex: 1 1 220px; min-width: 0; }
+  .wb-top {
+    height: 46px; flex: 0 0 46px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .ws-chip {
+    display: flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 10px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 12px; color: #C9CDD5;
+  }
+  .ws-chip .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .crumb-sep { color: var(--faint); font-size: 11px; }
+  .wb-alert {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 9px;
+    padding: 8px 14px; font-size: 11.5px;
+    background: rgba(240, 180, 41, .09); border-bottom: 1px solid rgba(240, 180, 41, .22);
+    color: #E8C77C;
+  }
+  .wb-alert b { color: #F6D79A; font-weight: 600; }
+  .wb-alert .actions { margin-left: auto; display: flex; gap: 6px; }
+
+  .wb-body { flex: 1; display: grid; grid-template-columns: 252px minmax(0, 1fr) 318px; min-height: 0; }
+
+  .wb-left, .wb-right {
+    background: var(--panel); display: flex; flex-direction: column; min-height: 0;
+  }
+  .wb-left { border-right: 1px solid var(--border); }
+  .wb-right { border-left: 1px solid var(--border); overflow-y: auto; }
+
+  .panel-head { padding: 11px 12px 7px; display: flex; align-items: center; gap: 8px; }
+  .panel-title { font-size: 12.5px; font-weight: 650; }
+  .count { font-size: 10.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
+  .wb-left .search { margin: 0 12px 8px; min-width: 0; }
+  .filters { display: flex; gap: 3px; padding: 0 12px 8px; }
+  .filters .chip { height: 25px; padding: 0 8px; font-size: 10.5px; }
+
+  .shot-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+  .group-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: var(--faint); letter-spacing: .3px;
+    padding: 9px 4px 6px; text-transform: uppercase;
+  }
+  .group-head .gdot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+  .group-head .gdot.g2 { background: #4FB3D9; }
+  .group-head .muted { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .shot-item {
+    width: 100%; display: flex; align-items: flex-start; gap: 8px; text-align: left;
+    padding: 8px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: var(--text); margin-bottom: 2px;
+  }
+  .shot-item:hover { background: var(--panel-2); }
+  .shot-item.active { background: var(--accent-soft); border-color: rgba(124, 107, 255, .38); }
+  .shot-item .dot { margin-top: 5px; }
+  .si-main { flex: 1; min-width: 0; }
+  .si-title { display: block; font-size: 11.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .si-sub { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shot-no {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; white-space: nowrap;
+  }
+
+  .quota-card {
+    margin: 8px 12px 12px; padding: 10px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .quota-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+  .quota-row b { color: #C9CDD5; font-weight: 600; }
+  .quota-bar { height: 4px; background: #1E222A; border-radius: 2px; overflow: hidden; margin: 7px 0 6px; }
+  .quota-bar i { display: block; height: 100%; width: 62%; background: linear-gradient(90deg, var(--accent), #9A8CFF); }
+  .quota-card .btn { width: 100%; justify-content: center; margin-top: 8px; }
+
+  .canvas-wrap { position: relative; overflow: auto; min-width: 0; background: var(--bg); }
+  .stage {
+    position: relative; width: 100%; height: 100%; min-width: 700px; min-height: 560px;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, #1D2128 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: -1px -1px;
+  }
+  .canvas-toolbar {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 8;
+    display: flex; align-items: center; gap: 2px;
+    background: rgba(17, 19, 23, .94); border: 1px solid var(--border);
+    border-radius: 9px; padding: 3px; backdrop-filter: blur(8px);
+  }
+  .tool {
+    height: 26px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .tool:hover { background: var(--panel-3); color: var(--text); }
+  .tool.active { background: var(--panel-3); color: var(--text); }
+  .canvas-hint {
+    position: absolute; right: 14px; top: 12px; z-index: 6;
+    font-size: 10px; color: var(--faint);
+    background: rgba(17, 19, 23, .86); border: 1px solid var(--border);
+    padding: 4px 9px; border-radius: 7px;
+  }
+  .group-label {
+    position: absolute; z-index: 5; display: flex; align-items: center; gap: 7px;
+    font-size: 10.5px; color: var(--muted);
+    background: rgba(17, 19, 23, .88); border: 1px solid var(--border);
+    padding: 4px 9px; border-radius: 7px;
+  }
+  .group-label b { color: #C9CDD5; font-weight: 600; }
+  .group-label .gdot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .group-label .gdot.g2 { background: #4FB3D9; }
+
+  .edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  .edge { fill: none; stroke: rgba(124, 107, 255, .5); stroke-width: 1.4; stroke-dasharray: 4 4; }
+  .edge.alt { stroke: rgba(79, 179, 217, .45); }
+  .edge.hot { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+  .edge-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+
+  .node {
+    position: absolute; z-index: 3; width: 264px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; text-align: left;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .32);
+    transition: border-color .16s, box-shadow .16s, transform .16s;
+  }
+  .node:hover { border-color: #3A404B; }
+  .node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(124, 107, 255, .45), 0 14px 34px rgba(0, 0, 0, .5); }
+  .node-head { display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 9px; }
+  .node-title { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node .pill { font-size: 9.5px; padding: 2px 6px; }
+
+  .media { position: relative; height: 140px; background: #0E1014; overflow: hidden; }
+  .media .scene {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(180px 90px at 20% 15%, rgba(124, 107, 255, .3), transparent 70%),
+      radial-gradient(160px 100px at 82% 78%, rgba(242, 85, 90, .18), transparent 72%),
+      linear-gradient(160deg, #1A1626 0%, #0C0E12 100%);
+  }
+  .media .scene::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46px;
+    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .07) 0 2px, transparent 2px 14px);
+    transform: perspective(60px) rotateX(38deg); transform-origin: bottom; opacity: .5;
+  }
+  .media .veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 9, 11, .04), rgba(8, 9, 11, .5)); }
+  .play {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, .35);
+    background: rgba(12, 14, 17, .55); backdrop-filter: blur(6px);
+    color: #fff; display: grid; place-items: center;
+  }
+  .play:hover { background: var(--accent); border-color: var(--accent); }
+  .dur {
+    position: absolute; right: 7px; bottom: 7px;
+    font-family: var(--mono); font-size: 9.5px; color: #DDE1E8;
+    background: rgba(8, 9, 11, .7); border-radius: 4px; padding: 1px 5px;
+  }
+  .ref-badge {
+    position: absolute; left: 7px; top: 7px; z-index: 2;
+    display: flex; align-items: center; gap: 4px;
+    padding: 2px 6px; border-radius: 5px; font-size: 9px; color: #DDE1E8;
+    background: rgba(8, 9, 11, .72); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(4px);
+  }
+  .node-body { padding: 8px 9px 9px; }
+  .node-prompt {
+    margin: 0; font-family: var(--mono); font-size: 10px; line-height: 1.45; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 29px;
+  }
+  .node-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-size: 9.5px; color: var(--faint); }
+  .progressbar { height: 3px; background: #1E222A; border-radius: 2px; overflow: hidden; margin-top: 7px; }
+  .progressbar i { display: block; height: 100%; width: 64%; background: var(--accent); border-radius: 2px; }
+  .node-blocked {
+    display: flex; align-items: center; gap: 5px; margin-top: 7px;
+    padding: 5px 7px; border-radius: 6px; font-size: 9.5px;
+    color: #E8C77C; background: rgba(240, 180, 41, .09); border: 1px solid rgba(240, 180, 41, .22);
+  }
+
+  .node.script-node { width: 252px; }
+  .script-body { padding: 9px 10px 10px; }
+  .script-line { display: flex; gap: 6px; font-size: 10px; color: var(--muted); padding: 2px 0; }
+  .script-line b { color: #C9CDD5; font-weight: 600; font-family: var(--mono); flex: 0 0 22px; }
+  .script-line span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .node.img-node { width: 150px; overflow: visible; }
+  .img-thumb {
+    position: relative; height: 112px; border-radius: 13px 13px 0 0; overflow: hidden;
+    background:
+      radial-gradient(90px 60px at 62% 30%, rgba(79, 179, 217, .32), transparent 70%),
+      linear-gradient(135deg, #25303A, #0E1014);
+  }
+  .img-thumb::after {
+    content: ""; position: absolute; left: 50%; top: 28px; width: 42px; height: 48px;
+    transform: translateX(-50%); border-radius: 50% 50% 42% 42%;
+    background: linear-gradient(180deg, rgba(233, 235, 239, .2), rgba(233, 235, 239, .04));
+    border: 1px solid rgba(255, 255, 255, .12);
+  }
+  .img-idx {
+    position: absolute; left: 5px; top: 5px; z-index: 2; padding: 1px 5px; border-radius: 4px;
+    background: rgba(8, 9, 11, .82); color: #fff; font-family: var(--mono); font-size: 9px;
+  }
+  .img-foot { padding: 6px 8px 7px; }
+  .img-name { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .img-meta { margin-top: 2px; font-size: 9px; color: var(--faint); }
+  .port {
+    position: absolute; right: -5px; top: 55px; z-index: 4;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px rgba(124, 107, 255, .65);
+    cursor: crosshair;
+  }
+
+  .zoom {
+    position: absolute; left: 14px; bottom: 14px; z-index: 7;
+    display: flex; align-items: center; gap: 2px; padding: 3px;
+    background: rgba(17, 19, 23, .92); border: 1px solid var(--border); border-radius: 9px;
+  }
+  .zoom button {
+    width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); display: grid; place-items: center; font-size: 14px;
+  }
+  .zoom button:hover { background: var(--panel-3); color: var(--text); }
+  .zoom .lvl { font-family: var(--mono); font-size: 10.5px; color: var(--muted); padding: 0 6px; }
+  .minimap {
+    position: absolute; right: 14px; bottom: 14px; z-index: 7;
+    width: 170px; height: 100px; border-radius: 9px;
+    background: rgba(14, 16, 20, .94); border: 1px solid var(--border); padding: 6px; overflow: hidden;
+  }
+  .mm-grid { position: relative; width: 100%; height: 100%; background-image: radial-gradient(circle, #22262D 1px, transparent 1px); background-size: 10px 10px; }
+  .mm-node { position: absolute; border-radius: 2px; background: #2B3038; border: 1px solid #3A404B; }
+  .mm-node.ok { background: rgba(70, 211, 154, .35); border-color: rgba(70, 211, 154, .6); }
+  .mm-node.run { background: rgba(240, 180, 41, .35); border-color: rgba(240, 180, 41, .6); }
+  .mm-node.fail { background: rgba(242, 85, 90, .35); border-color: rgba(242, 85, 90, .6); }
+  .mm-view { position: absolute; inset: 14px 10px; border: 1px solid rgba(124, 107, 255, .55); border-radius: 3px; background: rgba(124, 107, 255, .06); }
+
+  .insp-head { display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+  .insp-title { font-size: 13px; font-weight: 650; margin-top: 3px; }
+  .insp-head .icon-btn { margin-left: auto; }
+  .insp-block { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+  .insp-block:last-of-type { border-bottom: 0; }
+  .insp-status { display: flex; align-items: center; gap: 8px; }
+  .insp-status .time { font-size: 10.5px; color: var(--faint); margin-left: auto; font-family: var(--mono); }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+  .bar { flex: 1; height: 4px; background: #1E222A; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 64%; background: var(--accent); }
+  .bar-row .pct { font-family: var(--mono); font-size: 10.5px; color: var(--muted); width: 30px; text-align: right; }
+  .prompt-box {
+    position: relative; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 9px 10px 26px;
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.6; color: #C4C9D2;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .copy {
+    position: absolute; right: 6px; bottom: 6px; height: 20px; padding: 0 7px;
+    border-radius: 5px; border: 1px solid var(--border); background: var(--panel-3);
+    color: var(--muted); font-size: 9.5px;
+  }
+  .copy:hover { color: var(--text); }
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .param { background: var(--panel-2); padding: 6px 8px; }
+  .param .k { font-size: 9px; color: var(--faint); }
+  .param .v { font-size: 10.5px; color: #C9CDD5; margin-top: 2px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .timeline { list-style: none; margin: 0; padding: 0 0 0 2px; }
+  .timeline li { position: relative; padding: 0 0 10px 18px; font-size: 10.5px; color: var(--muted); }
+  .timeline li::before {
+    content: ""; position: absolute; left: 0; top: 4px; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--panel-3); border: 1px solid var(--border-strong);
+  }
+  .timeline li::after { content: ""; position: absolute; left: 3px; top: 13px; bottom: 0; width: 1px; background: var(--border); }
+  .timeline li:last-child { padding-bottom: 0; }
+  .timeline li:last-child::after { display: none; }
+  .timeline li.done { color: #C9CDD5; }
+  .timeline li.done::before { background: var(--success); border-color: var(--success); }
+  .timeline li.now { color: var(--warn); }
+  .timeline li.now::before { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 0 3px rgba(240, 180, 41, .14); }
+  .timeline .t { float: right; font-family: var(--mono); font-size: 9px; color: var(--faint); }
+  .insp-actions { margin-top: auto; padding: 11px 14px; display: flex; gap: 6px; border-top: 1px solid var(--border); }
+  .insp-actions .btn { flex: 1; justify-content: center; padding: 0 6px; font-size: 10.5px; }
+  .insp-actions .btn.primary { flex: 1.3; }
+
+  .wb-narrow-note { display: none; }
+  .wb-narrow-note .txt { flex: 1 1 200px; min-width: 0; }
+
+  /* ---------- 表格 ---------- */
+  .table-wrap { border: 1px solid var(--border); border-radius: 11px; background: var(--panel); overflow-x: auto; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 11.5px; min-width: 620px; }
+  .tbl th {
+    text-align: left; font-size: 9.5px; letter-spacing: .45px; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; padding: 9px 12px; background: #0F1115;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .tbl td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: #C9CDD5; vertical-align: middle; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .tbl tbody tr:hover { background: rgba(124, 107, 255, .04); }
+  .tbl .num { font-family: var(--mono); font-size: 11px; }
+  .tbl .pos { color: var(--success); }
+  .tbl .neg { color: var(--danger); }
+  .tbl .who { display: flex; align-items: center; gap: 7px; }
+  .tbl .who .avatar { width: 22px; height: 22px; flex-basis: 22px; border-radius: 6px; font-size: 9px; }
+
+  /* ---------- 我的账户 ---------- */
+  .acct-grid { display: grid; grid-template-columns: 356px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .profile-top { display: flex; align-items: center; gap: 12px; }
+  .avatar.lg { width: 48px; height: 48px; flex-basis: 48px; border-radius: 12px; font-size: 16px; }
+  .profile-name { font-size: 15px; font-weight: 650; }
+  .profile-mail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .kv { display: grid; grid-template-columns: 74px 1fr; gap: 9px 10px; font-size: 11.5px; }
+  .kv .k { color: var(--faint); }
+  .kv .v { color: #C9CDD5; }
+  .hr { height: 1px; background: var(--border); margin: 14px 0; }
+
+  .benefit-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .benefit {
+    padding: 9px 11px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .benefit .k { font-size: 9.5px; color: var(--faint); }
+  .benefit .v { font-size: 14px; font-weight: 650; font-family: var(--mono); margin-top: 2px; }
+  .benefit .v small { font-family: inherit; font-size: 9.5px; color: var(--muted); font-weight: 400; }
+
+  .credit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .credit {
+    padding: 12px 13px; border-radius: 11px; background: var(--panel); border: 1px solid var(--border);
+  }
+  .credit .k { font-size: 9.5px; color: var(--faint); }
+  .credit .v { font-size: 22px; font-family: var(--mono); font-weight: 650; margin-top: 3px; letter-spacing: -.4px; }
+  .credit .v small { font-size: 9.5px; color: var(--muted); font-family: inherit; }
+  .credit .n { font-size: 9.5px; color: var(--faint); margin-top: 3px; }
+  .credit.frozen .v { color: var(--warn); }
+
+  .usage-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .usage-row .bar { height: 5px; }
+  .usage-row .bar i { width: 0; }
+  .usage-row .n { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .usage-legend { display: flex; gap: 14px; font-size: 10px; color: var(--faint); margin-top: 8px; }
+  .usage-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-dot { display: inline-block; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); }
+  .legend-dot.alt { background: #4FB3D9; }
+
+  .order-mini { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px dashed var(--border); font-size: 11px; }
+  .order-mini:last-child { border-bottom: 0; }
+  .order-mini .oid { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .order-mini .amt { margin-left: auto; font-family: var(--mono); color: #C9CDD5; }
+
+  /* ---------- 会员与充值 ---------- */
+  .plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: stretch; }
+  .plan {
+    position: relative; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 18px;
+    overflow: hidden;
+  }
+  .plan::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 2px;
+    background: linear-gradient(90deg, transparent, #3A404B, transparent);
+  }
+  .plan.featured { border-color: rgba(124, 107, 255, .55); box-shadow: 0 0 0 1px rgba(124, 107, 255, .18), 0 18px 44px rgba(0, 0, 0, .35); }
+  .plan.featured::before { background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .plan-flag {
+    position: absolute; right: 14px; top: 14px;
+    font-size: 9px; color: #C6BFFF; background: var(--accent-soft);
+    border: 1px solid rgba(124, 107, 255, .36); border-radius: 999px; padding: 2px 8px;
+  }
+  .plan-name { font-size: 13px; font-weight: 650; }
+  .plan-desc { font-size: 10.5px; color: var(--faint); margin-top: 3px; min-height: 30px; }
+  .plan-price { display: flex; align-items: baseline; gap: 5px; margin: 12px 0 4px; }
+  .plan-price .cur { font-size: 14px; color: #C9CDD5; }
+  .plan-price .amt { font-size: 32px; font-weight: 700; font-family: var(--mono); letter-spacing: -1px; line-height: 1; }
+  .plan-price .per { font-size: 10.5px; color: var(--faint); }
+  .plan-feats { list-style: none; margin: 14px 0 16px; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 11px; color: #C9CDD5; }
+  .plan-feats li { display: flex; align-items: center; gap: 7px; }
+  .plan-feats li .ck { color: var(--success); flex: 0 0 auto; }
+  .plan-feats li b { font-family: var(--mono); font-weight: 600; color: #E9EBEF; }
+  .plan-feats li.muted { color: var(--faint); }
+  .plan-feats li.muted .ck { color: var(--faint); }
+  .plan .btn { margin-top: auto; width: 100%; }
+  .plan-note { text-align: center; font-size: 10px; color: var(--faint); margin-top: 7px; }
+
+  .pack-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .pack {
+    display: flex; align-items: center; gap: 12px; padding: 13px 14px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .pack:hover { border-color: var(--border-strong); }
+  .pack .picon {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 10px;
+    display: grid; place-items: center; font-family: var(--mono); font-size: 12px; font-weight: 700;
+    color: #C6BFFF; background: rgba(124, 107, 255, .12); border: 1px solid rgba(124, 107, 255, .3);
+  }
+  .pack .pname { font-size: 12px; font-weight: 600; }
+  .pack .pprice { font-size: 10.5px; color: var(--faint); margin-top: 2px; }
+  .pack .pprice b { color: #C9CDD5; font-family: var(--mono); font-size: 11.5px; }
+  .pack .btn { margin-left: auto; }
+
+  .channel-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .channel {
+    display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 14px;
+    border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2);
+    font-size: 11.5px; color: #C9CDD5;
+  }
+  .channel:hover { border-color: var(--border-strong); }
+  .channel.active { border-color: rgba(124, 107, 255, .55); background: rgba(124, 107, 255, .1); color: #E9EBEF; }
+  .channel .cico { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; background: var(--panel-3); border: 1px solid var(--border); }
+  .channel .badge { font-size: 9px; color: var(--warn); background: rgba(240, 180, 41, .12); padding: 1px 5px; border-radius: 4px; }
+
+  .pay-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+  .pay-card { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 13px; overflow: hidden; }
+  .pay-card .pc-foot { margin-top: auto; }
+  .pay-card .pc-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: #C9CDD5; }
+  .pay-card .pc-body { padding: 13px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+  .pay-card .pc-foot { padding: 0 12px 12px; font-size: 10px; color: var(--faint); line-height: 1.6; }
+  .qr {
+    width: 104px; height: 104px; padding: 7px; border-radius: 8px; background: #fff;
+    background-image:
+      repeating-conic-gradient(#0A0B0D 0 25%, #fff 0 50%),
+      repeating-conic-gradient(#0A0B0D 0 25%, #fff 0 50%);
+    background-size: 12px 12px, 12px 12px;
+    background-position: 0 0, 6px 6px;
+    background-blend-mode: multiply;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12);
+  }
+  .pay-amount { font-family: var(--mono); font-size: 20px; font-weight: 650; }
+  .pay-desc { font-size: 10px; color: var(--muted); }
+  .pay-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--faint); }
+
+  .success-ring {
+    width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+    background: rgba(70, 211, 154, .1); border: 1px solid rgba(70, 211, 154, .32);
+  }
+  .success-ring.fail { background: rgba(242, 85, 90, .1); border-color: rgba(242, 85, 90, .3); }
+  .success-ring.idle { background: var(--panel-2); border-color: var(--border-strong); }
+
+  /* ---------- MCP Token ---------- */
+  .token-box {
+    display: flex; align-items: center; gap: 8px;
+    background: #0C0E12; border: 1px solid rgba(124, 107, 255, .35); border-radius: 9px;
+    padding: 10px 11px; font-family: var(--mono); font-size: 11px; color: #D7D2FF;
+    word-break: break-all;
+  }
+  .token-box .btn { flex: 0 0 auto; }
+  .prefix { font-family: var(--mono); font-size: 10.5px; color: #C6BFFF; background: var(--accent-soft); border-radius: 4px; padding: 1px 5px; }
+
+  /* ---------- 管理后台 ---------- */
+  .admin-tabs {
+    display: flex; gap: 2px; overflow-x: auto; margin-bottom: 14px;
+    padding: 3px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .admin-tabs button {
+    height: 29px; padding: 0 11px; border: 0; border-radius: 7px; background: transparent;
+    color: var(--muted); font-size: 11px; white-space: nowrap;
+  }
+  .admin-tabs button:hover { color: #C9CDD5; background: var(--panel-2); }
+  .admin-tabs button.active { background: var(--panel-3); color: var(--text); }
+  .admin-section { display: none; }
+  .admin-section.active { display: block; }
+  .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+
+  .dlq-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px dashed var(--border); }
+  .dlq-item:last-child { border-bottom: 0; }
+  .dlq-item .di-main { flex: 1; min-width: 0; }
+  .dlq-item .di-title { font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dlq-item .di-err { font-family: var(--mono); font-size: 10px; color: #F2A0A3; margin-top: 3px; word-break: break-all; }
+  .dlq-item .di-meta { font-size: 9.5px; color: var(--faint); margin-top: 3px; }
+
+  /* ---------- 通用状态 ---------- */
+  .state-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .state-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .state-card .sc-head { display: flex; align-items: center; gap: 6px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 10.5px; color: var(--muted); }
+  .state-card .sc-head .spacer { flex: 1; }
+  .state-stage { min-height: 132px; display: grid; place-items: center; padding: 14px; }
+  .state-stack { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .state-stack .t { font-size: 12px; font-weight: 600; }
+  .state-stack .d { font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+  .state-stack .code { font-family: var(--mono); font-size: 9.5px; color: var(--faint); background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; }
+  .sk-line { width: 100%; max-width: 210px; height: 8px; border-radius: 4px; background: #1B1F26; overflow: hidden; position: relative; }
+  .sk-line::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(124, 107, 255, .25), transparent);
+    transform: translateX(-100%); animation: shimmer 1.6s linear infinite;
+  }
+  .sk-line.w70 { max-width: 150px; }
+  .sk-box { width: 100%; max-width: 210px; height: 54px; border-radius: 8px; background: #14171C; border: 1px solid #1E222A; overflow: hidden; position: relative; }
+  .sk-box::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(124, 107, 255, .18), transparent); transform: translateX(-100%); animation: shimmer 1.6s linear infinite; }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  .ring {
+    position: relative; border-radius: 50%; overflow: hidden;
+    background: conic-gradient(var(--warn) calc(var(--p, 0) * 1%), rgba(255, 255, 255, .14) 0);
+    display: grid; place-items: center;
+  }
+  .ring::before { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: #0F1115; }
+  .ring span { position: relative; font-family: var(--mono); font-size: 10.5px; color: #E9EBEF; }
+
+  .ref-mini {
+    display: block; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 7px; border: 1px solid var(--border);
+    background: radial-gradient(38px 26px at 62% 32%, rgba(79, 179, 217, .3), transparent 72%), linear-gradient(135deg, #25303A, #0E1014);
+  }
+
+  /* ---------- 设计说明 ---------- */
+  .notes-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; align-items: start; }
+  .map-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .map-list li { display: flex; gap: 9px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 11px; }
+  .map-list li:last-child { border-bottom: 0; }
+  .map-list .no { font-family: var(--mono); font-size: 9.5px; color: #C6BFFF; background: var(--accent-soft); border-radius: 4px; padding: 1px 5px; height: 18px; flex: 0 0 auto; margin-top: 1px; }
+  .map-list .mt { min-width: 96px; color: #C9CDD5; font-weight: 600; }
+  .map-list .md { color: var(--muted); }
+  .notes-p { font-size: 10.5px; color: var(--muted); line-height: 1.8; margin: 0 0 9px; }
+  .notes-p b { color: #C9CDD5; font-weight: 600; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .swatch { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 9px; color: var(--faint); }
+  .swatch i { display: inline-block; width: 15px; height: 15px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, .12); }
+
+  /* ---------- 弹窗 / Toast ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 80; display: none; place-items: center;
+    background: rgba(4, 5, 7, .68); backdrop-filter: blur(3px); padding: 20px;
+  }
+  .modal.show { display: grid; }
+  .dialog {
+    width: 520px; max-width: 100%; max-height: calc(100vh - 40px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border-strong);
+    border-radius: 16px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+  }
+  .dialog.sm { width: 420px; }
+  .dialog-head { display: flex; align-items: flex-start; padding: 17px 18px 12px; }
+  .dialog-head h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .dialog-head .sub { font-size: 10.5px; color: var(--faint); margin-top: 3px; }
+  .dialog-head .icon-btn { margin-left: auto; }
+  .dialog-body { padding: 0 18px 4px; }
+  .dialog-foot { display: flex; align-items: center; gap: 8px; padding: 14px 18px 16px; }
+  .dialog-foot .tip { font-size: 9.5px; color: var(--faint); margin-right: auto; }
+  .dialog-foot .btn { min-width: 84px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+    background: #1E222A; border: 1px solid var(--border-strong); color: var(--text);
+    padding: 8px 14px; border-radius: 9px; font-size: 11.5px; z-index: 95;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- 窄屏 ---------- */
+  @media (max-width: 768px) {
+    .wrap { width: calc(100% - 28px); }
+    .nav { padding: 0 12px; gap: 8px; flex-wrap: wrap; height: auto; min-height: 56px; }
+    .brand-sub, .nav .divider-v, .nav .account-chip .plan-name { display: none; }
+    .nav-spacer { display: none; }
+    .nav-tabs { order: 3; width: 100%; padding: 0 0 8px; }
+    .nav-tab { height: 27px; font-size: 11px; }
+    .account-chip { margin-left: auto; }
+    .auth-layout { grid-template-columns: 1fr; min-height: 0; padding: 18px 0 40px; }
+    .auth-art { display: none; }
+    .auth-card { max-width: none; margin: 0; }
+    .auth-body, .auth-card-head { padding-left: 18px; padding-right: 18px; }
+    .page { padding: 16px 0 48px; }
+    .page-head h1 { font-size: 17px; }
+    .stat-strip, .credit-grid { grid-template-columns: repeat(2, 1fr); }
+    .ws-grid, .plan-grid, .pack-grid, .pay-grid, .state-grid, .admin-grid, .notes-grid, .acct-grid { grid-template-columns: 1fr; }
+    .benefit-grid { grid-template-columns: 1fr 1fr; }
+    .toolbar .search { min-width: 0; flex: 1; }
+    .wb { width: 100%; height: auto; min-height: 0; overflow-x: hidden; }
+    .wb-top { height: auto; padding: 8px 12px; flex-wrap: wrap; overflow-x: hidden; }
+    .wb-alert { align-items: flex-start; flex-wrap: wrap; }
+    .wb-alert .txt { flex: 1 1 100%; width: 100%; overflow-wrap: anywhere; }
+    .wb-alert .actions { width: 100%; margin-left: 0; }
+    .wb-body { display: flex; flex-direction: column; }
+    .wb-left { border-right: 0; border-bottom: 1px solid var(--border); overflow-x: hidden; }
+    .shot-list { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 10px; min-width: 0; }
+    .shot-list .group-head { display: none; }
+    .shot-item { flex: 0 0 auto; min-width: 156px; margin-bottom: 0; background: var(--panel-2); }
+    .quota-card { display: none; }
+    .canvas-wrap { height: 430px; flex: 0 0 430px; }
+    .stage { min-width: 700px; }
+    .wb-right { border-left: 0; border-top: 1px solid var(--border); max-height: none; }
+    .minimap { display: none; }
+    .canvas-hint { display: none; }
+    .wb-narrow-note { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; font-size: 10px; color: var(--faint); background: #0E1014; border-bottom: 1px solid var(--border); }
+    .tbl { min-width: 560px; }
+    .dialog { width: 100%; }
+  }
+
+  /* 手动切换：窄屏预览 */
+  html[data-device="narrow"] body .wrap { width: min(430px, calc(100% - 24px)); }
+  html[data-device="narrow"] body .nav { padding: 0 12px; gap: 8px; flex-wrap: wrap; height: auto; min-height: 56px; }
+  html[data-device="narrow"] body .brand-sub,
+  html[data-device="narrow"] body .nav .divider-v,
+  html[data-device="narrow"] body .account-chip .plan-name { display: none; }
+  html[data-device="narrow"] body .nav-tabs { order: 3; width: 100%; padding: 0 0 8px; }
+  html[data-device="narrow"] body .nav-spacer { display: none; }
+  html[data-device="narrow"] body .account-chip { margin-left: auto; }
+  html[data-device="narrow"] body .auth-layout { grid-template-columns: 1fr; min-height: 0; padding: 18px 0 40px; }
+  html[data-device="narrow"] body .auth-art { display: none; }
+  html[data-device="narrow"] body .auth-card { max-width: none; margin: 0; }
+  html[data-device="narrow"] body .page { padding: 16px 0 48px; }
+  html[data-device="narrow"] body .stat-strip,
+  html[data-device="narrow"] body .credit-grid { grid-template-columns: repeat(2, 1fr); }
+  html[data-device="narrow"] body .ws-grid,
+  html[data-device="narrow"] body .plan-grid,
+  html[data-device="narrow"] body .pack-grid,
+  html[data-device="narrow"] body .pay-grid,
+  html[data-device="narrow"] body .state-grid,
+  html[data-device="narrow"] body .admin-grid,
+  html[data-device="narrow"] body .notes-grid,
+  html[data-device="narrow"] body .acct-grid { grid-template-columns: 1fr; }
+  html[data-device="narrow"] body .wb { width: 100%; height: auto; min-height: 0; overflow-x: hidden; }
+  html[data-device="narrow"] body .wb-top { height: auto; padding: 8px 12px; flex-wrap: wrap; overflow-x: hidden; }
+  html[data-device="narrow"] body .wb-alert .txt { flex: 1 1 100%; width: 100%; overflow-wrap: anywhere; }
+  html[data-device="narrow"] body .wb-body { display: flex; flex-direction: column; }
+  html[data-device="narrow"] body .wb-left { border-right: 0; border-bottom: 1px solid var(--border); overflow-x: hidden; }
+  html[data-device="narrow"] body .shot-list { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 10px; min-width: 0; }
+  html[data-device="narrow"] body .shot-list .group-head { display: none; }
+  html[data-device="narrow"] body .shot-item { flex: 0 0 auto; min-width: 156px; margin-bottom: 0; background: var(--panel-2); }
+  html[data-device="narrow"] body .quota-card { display: none; }
+  html[data-device="narrow"] body .canvas-wrap { height: 430px; flex: 0 0 430px; }
+  html[data-device="narrow"] body .wb-right { border-left: 0; border-top: 1px solid var(--border); }
+  html[data-device="narrow"] body .minimap,
+  html[data-device="narrow"] body .canvas-hint { display: none; }
+  html[data-device="narrow"] body .wb-narrow-note { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; font-size: 10px; color: var(--faint); background: #0E1014; border-bottom: 1px solid var(--border); }
+  html[data-device="narrow"] body .dialog { width: 100%; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============ 顶部导航 ============ -->
+  <header class="nav">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2.6v10.8l9-5.4-9-5.4Z" fill="#fff"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">AIGC Studio</div>
+        <div class="brand-sub">视频画布 · 多用户会员制</div>
+      </div>
+    </div>
+
+    <div class="divider-v"></div>
+
+    <nav class="nav-tabs" id="navTabs">
+      <button class="nav-tab active" data-page="auth">登录 / 注册</button>
+      <button class="nav-tab" data-page="workspaces">我的画布</button>
+      <button class="nav-tab" data-page="canvas">画布工作台</button>
+      <button class="nav-tab" data-page="account">我的账户</button>
+      <button class="nav-tab" data-page="billing">会员与充值</button>
+      <button class="nav-tab" data-page="tokens">MCP Token</button>
+      <button class="nav-tab" data-page="admin">管理后台</button>
+      <button class="nav-tab" data-page="states">通用状态</button>
+      <button class="nav-tab" data-page="notes">设计说明</button>
+    </nav>
+
+    <div class="nav-spacer"></div>
+
+    <div class="divider-v"></div>
+
+    <div class="device-toggle" id="deviceToggle">
+      <button class="active" data-device="desktop" title="桌面布局">桌面</button>
+      <button data-device="narrow" title="窄屏布局（≤768px）">窄屏</button>
+    </div>
+
+    <div class="account-chip" title="账户菜单">
+      <span class="avatar">林</span>
+      <div>
+        <div class="credit">1,280 <small>积分</small></div>
+        <div class="plan-name">专业版 · 剩余 12 天</div>
+      </div>
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style="color:#5F6672"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ================= 1. 认证 ================= -->
+    <section class="page active" id="page-auth">
+      <div class="wrap">
+        <div class="auth-layout">
+
+          <div class="auth-art">
+            <div class="auth-art-inner">
+              <div class="row">
+                <span class="tag plan">v1.0 · 多用户会员制</span>
+                <span class="tag">设计稿</span>
+              </div>
+              <h2>从一句提示词<br>到一支<span>完整的片子</span></h2>
+              <p>多用户账号体系、积分与会员额度、MCP 开放接入，一套工作台完成分镜、生成与交付。</p>
+              <div class="art-mock">
+                <div class="art-node">
+                  <div class="bar"></div>
+                  <div class="thumb"></div>
+                  <div class="meta"><b>A-02 撑伞回眸</b>Seedance · 16:9 · 5s</div>
+                </div>
+                <div class="art-node" style="width:120px">
+                  <div class="bar" style="background:linear-gradient(90deg,#4FB3D9,#46D39A)"></div>
+                  <div class="thumb" style="background:radial-gradient(90px 60px at 60% 30%, rgba(79,179,217,.3), transparent 70%),linear-gradient(135deg,#22303A,#0E1014)"></div>
+                  <div class="meta"><b>参考图 · 2</b>1024 × 1024</div>
+                </div>
+                <div class="art-float">
+                  <b>今日额度</b>
+                  已用 180 / 500 积分
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-card">
+            <div class="auth-card-head">
+              <h1 id="authTitle">登录 AIGC Studio</h1>
+              <div class="sub" id="authSub">使用邮箱与密码进入你的创作台</div>
+            </div>
+
+            <div class="auth-tabs" id="authTabs">
+              <button class="active" data-auth="login">登录</button>
+              <button data-auth="register">注册</button>
+              <button data-auth="forgot">忘记密码</button>
+            </div>
+
+            <div class="auth-body">
+
+              <!-- 登录 -->
+              <div class="auth-view active" data-auth-view="login">
+                <div class="notice warn">
+                  <span class="ic">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.8v3.8M8 11.2v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                  </span>
+                  <span><b>邮箱尚未验证</b>：可浏览画布，但无法提交生成任务。<button class="link-btn" data-auth-link="verify-fail" style="margin-left:4px">去验证</button></span>
+                </div>
+                <div class="field">
+                  <label>邮箱</label>
+                  <input class="input" type="email" value="lin@studio.com" />
+                </div>
+                <div class="field">
+                  <label>密码 <span class="hint">至少 8 位</span></label>
+                  <input class="input" type="password" value="••••••••" />
+                </div>
+                <div class="row" style="margin:2px 0 14px">
+                  <label class="tiny muted row" style="gap:5px"><input type="checkbox" checked /> 记住我</label>
+                  <button class="link-btn" style="margin-left:auto" data-auth-link="forgot">忘记密码？</button>
+                </div>
+                <button class="btn primary" style="width:100%;height:36px" data-toast="登录成功，正在加载你的画布…">登录</button>
+                <div class="auth-alt">还没有账号？<button class="link-btn" data-auth-link="register">免费注册</button> · 免费版每日 50 积分</div>
+              </div>
+
+              <!-- 注册 -->
+              <div class="auth-view" data-auth-view="register">
+                <div class="field">
+                  <label>邮箱 <em>*</em><span class="hint">将发送验证邮件</span></label>
+                  <input class="input" type="email" placeholder="you@example.com" />
+                </div>
+                <div class="row-2">
+                  <div class="field">
+                    <label>密码</label>
+                    <input class="input" type="password" placeholder="至少 8 位，含字母与数字" />
+                  </div>
+                  <div class="field">
+                    <label>确认密码</label>
+                    <input class="input" type="password" placeholder="再次输入" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>邀请码 <span class="hint">选填，双方各得 100 积分</span></label>
+                  <input class="input" placeholder="例如 AIGC-2026" />
+                </div>
+                <label class="tiny muted row" style="gap:6px;margin-bottom:13px;align-items:flex-start">
+                  <input type="checkbox" style="margin-top:2px" /> <span>我已阅读并同意《服务条款》与《隐私政策》</span>
+                </label>
+                <button class="btn primary" style="width:100%;height:36px" data-auth-link="verify-ok">注册并发送验证邮件</button>
+                <div class="auth-alt">已有账号？<button class="link-btn" data-auth-link="login">直接登录</button></div>
+              </div>
+
+              <!-- 忘记密码 -->
+              <div class="auth-view" data-auth-view="forgot">
+                <p class="notes-p" style="margin-bottom:14px">输入注册邮箱，我们会发送重置链接。链接 30 分钟内有效，仅可使用一次。</p>
+                <div class="field">
+                  <label>注册邮箱</label>
+                  <input class="input" type="email" value="lin@studio.com" />
+                </div>
+                <button class="btn primary" style="width:100%;height:36px" data-toast="重置邮件已发送，请查收（演示）">发送重置链接</button>
+                <div class="auth-alt">已拿到重置链接？<button class="link-btn" data-auth-link="reset">直接重置</button></div>
+              </div>
+
+              <!-- 重置密码 -->
+              <div class="auth-view" data-auth-view="reset">
+                <div class="notice">从邮件链接进入，重置令牌已自动填入。<b>令牌 30 分钟内有效</b>，提交后需重新登录。</div>
+                <div class="field">
+                  <label>重置令牌</label>
+                  <input class="input mono" readonly value="rst_9f2c…6ab1（已校验）" style="font-size:11px" />
+                </div>
+                <div class="field">
+                  <label>新密码</label>
+                  <input class="input" type="password" placeholder="至少 8 位，含字母与数字" />
+                </div>
+                <div class="field">
+                  <label>确认新密码</label>
+                  <input class="input" type="password" placeholder="再次输入新密码" />
+                </div>
+                <button class="btn primary" style="width:100%;height:36px" data-auth-link="login" data-toast="密码已重置，请重新登录">重置密码</button>
+              </div>
+
+              <!-- 邮箱验证成功 -->
+              <div class="auth-view" data-auth-view="verify-ok">
+                <div class="verify-mark">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7.5" stroke="#46D39A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="verify-title">邮箱验证成功</div>
+                <div class="verify-desc">lin@studio.com 已验证，免费版每日 50 积分已到账。<br>现在可以提交生成任务了。</div>
+                <button class="btn primary" style="width:100%;height:36px" data-page-link="canvas">进入画布工作台</button>
+                <div class="auth-alt">前往<button class="link-btn" data-page-link="account">我的账户</button>查看权益</div>
+              </div>
+
+              <!-- 邮箱验证失败 -->
+              <div class="auth-view" data-auth-view="verify-fail">
+                <div class="verify-mark fail">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.2" stroke="#F2555A" stroke-width="1.6"/><path d="M12 7.6v5M12 15.8v.2" stroke="#F2555A" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </div>
+                <div class="verify-title">验证链接已失效</div>
+                <div class="verify-desc">该链接已使用或超过 24 小时有效期。<br>请重新发送验证邮件后再试。</div>
+                <div class="notice danger" style="text-align:left">
+                  <span class="ic">!</span>
+                  <span>错误码 <span class="mono">EMAIL_TOKEN_EXPIRED</span><br>当前账号仍处于未验证状态，生成能力受限。</span>
+                </div>
+                <button class="btn primary" style="width:100%;height:36px" data-toast="验证邮件已重新发送（演示）">重新发送验证邮件</button>
+                <div class="auth-alt">60 秒后可再次发送 · <button class="link-btn" data-auth-link="login">返回登录</button></div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 2. 我的画布 ================= -->
+    <section class="page" id="page-workspaces">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Workspaces</div>
+            <h1>我的画布</h1>
+            <div class="sub">每张画布拥有独立的镜头、图片与任务队列 · 共 3 张 · 最近更新 10 分钟前</div>
+          </div>
+          <div class="actions">
+            <button class="btn ghost" data-toast="回收站为空（演示）">回收站</button>
+            <button class="btn primary" data-toast="已新建画布「未命名画布 4」（演示）">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              新建画布
+            </button>
+          </div>
+        </div>
+
+        <div class="stat-strip">
+          <div class="stat"><div class="k">画布总数</div><div class="v">3 <small>张</small></div></div>
+          <div class="stat"><div class="k">镜头总数</div><div class="v">22 <small>个</small></div></div>
+          <div class="stat"><div class="k">图片 / 素材</div><div class="v">50 <small>个</small></div></div>
+          <div class="stat"><div class="k">进行中任务</div><div class="v" style="color:#F0B429">3 <small>个</small></div></div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.2" stroke="#5F6672" stroke-width="1.3"/><path d="m10.2 10.2 3 3" stroke="#5F6672" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <input placeholder="搜索画布名称" />
+          </div>
+          <button class="chip active" data-ws-filter="all">全部</button>
+          <button class="chip" data-ws-filter="active">进行中</button>
+          <button class="chip" data-ws-filter="archived">已归档</button>
+          <div class="spacer"></div>
+          <span class="tiny faint">按最近更新排序</span>
+        </div>
+
+        <div class="ws-grid" id="wsGrid">
+
+          <article class="ws-card" data-ws-status="active">
+            <div class="ws-thumb" data-page-link="canvas" title="打开画布">
+              <i class="mini v"></i><i class="mini i"></i><i class="mini s"></i>
+              <i class="mini-line" style="width:34px;left:72px;top:40px;transform:rotate(22deg)"></i>
+              <i class="mini-line" style="width:56px;left:128px;top:64px;transform:rotate(-12deg);background:rgba(79,179,217,.4)"></i>
+              <span class="ws-badge pill run"><span class="dot run"></span>3 个任务进行中</span>
+            </div>
+            <div class="ws-body">
+              <div class="ws-name"><span class="name-text">品牌片 · 雨夜霓虹</span><span class="tag plan">专业版</span></div>
+              <div class="ws-meta">最近更新 10 分钟前 · 12 个镜头</div>
+              <div class="ws-nums">
+                <span>镜头 <b>12</b></span>
+                <span>图片 <b>28</b></span>
+                <span class="running">进行中 <b>3</b></span>
+              </div>
+            </div>
+            <div class="ws-foot">
+              <button class="btn xs" data-open-rename>重命名</button>
+              <button class="btn xs" data-toast="已复制画布「品牌片 · 雨夜霓虹」的副本（演示）">复制</button>
+              <button class="btn xs danger" data-open-delete>删除</button>
+              <button class="btn xs primary enter" data-page-link="canvas">打开 →</button>
+            </div>
+          </article>
+
+          <article class="ws-card" data-ws-status="active">
+            <div class="ws-thumb" data-page-link="canvas" title="打开画布">
+              <i class="mini v" style="border-color:rgba(70,211,154,.4);background:rgba(70,211,154,.08)"></i>
+              <i class="mini i" style="left:92px;top:56px"></i>
+              <i class="mini s" style="right:20px;top:26px"></i>
+              <i class="mini-line" style="width:36px;left:70px;top:38px;transform:rotate(20deg);background:rgba(70,211,154,.35)"></i>
+              <span class="ws-badge pill ok"><span class="dot ok"></span>全部完成</span>
+            </div>
+            <div class="ws-body">
+              <div class="ws-name"><span class="name-text">产品宣传 · 极简白</span><span class="tag">免费版</span></div>
+              <div class="ws-meta">最近更新 昨天 18:42 · 8 个镜头</div>
+              <div class="ws-nums">
+                <span>镜头 <b>8</b></span>
+                <span>图片 <b>16</b></span>
+                <span>进行中 <b>0</b></span>
+              </div>
+            </div>
+            <div class="ws-foot">
+              <button class="btn xs" data-open-rename>重命名</button>
+              <button class="btn xs" data-toast="已复制画布「产品宣传 · 极简白」的副本（演示）">复制</button>
+              <button class="btn xs danger" data-open-delete>删除</button>
+              <button class="btn xs primary enter" data-page-link="canvas">打开 →</button>
+            </div>
+          </article>
+
+          <article class="ws-card" data-ws-status="archived">
+            <div class="ws-thumb" data-page-link="canvas" title="打开画布">
+              <i class="mini v" style="border-color:#3A404B;background:rgba(255,255,255,.03)"></i>
+              <i class="mini s" style="right:22px;top:30px"></i>
+              <span class="ws-badge pill idle">已归档</span>
+            </div>
+            <div class="ws-body">
+              <div class="ws-name"><span class="name-text">实验画布 · 未命名</span></div>
+              <div class="ws-meta">最近更新 3 天前 · 2 个镜头</div>
+              <div class="ws-nums">
+                <span>镜头 <b>2</b></span>
+                <span>图片 <b>6</b></span>
+                <span>进行中 <b>0</b></span>
+              </div>
+            </div>
+            <div class="ws-foot">
+              <button class="btn xs" data-open-rename>重命名</button>
+              <button class="btn xs" data-toast="已复制画布「实验画布 · 未命名」的副本（演示）">复制</button>
+              <button class="btn xs danger" data-open-delete>删除</button>
+              <button class="btn xs enter" data-page-link="canvas">打开 →</button>
+            </div>
+          </article>
+
+        </div>
+
+        <div class="section-gap">
+          <div class="card-head" style="border:0;padding:0 0 10px">
+            <h2>空状态示意</h2>
+            <span class="sub">新账号尚无画布，或筛选条件无结果时展示</span>
+          </div>
+          <div class="ws-grid">
+            <div class="empty-state">
+              <div class="empty-art"><i></i><i></i><i></i></div>
+              <h3>还没有画布</h3>
+              <p>新建一张画布，把分镜脚本、参考图与生成任务放进同一个工作台。</p>
+              <div class="row" style="justify-content:center">
+                <button class="btn primary" data-toast="已新建画布（演示）">新建画布</button>
+                <button class="btn" data-page-link="billing">查看会员权益</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 3. 画布工作台 ================= -->
+    <section class="page wide" id="page-canvas">
+      <div class="wb">
+
+        <div class="wb-top">
+          <div class="ws-chip">
+            <span class="ws-dot"></span>
+            品牌片 · 雨夜霓虹
+            <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <span class="crumb-sep">/</span>
+          <span class="tiny muted">分镜组 A · 雨夜霓虹</span>
+          <div class="spacer"></div>
+          <span class="tiny faint">自动保存于 10:24</span>
+          <span class="conn tiny muted row" style="gap:6px"><span class="dot ok"></span>实时通道已连接</span>
+          <span class="tag">供应商 Mock · 演示</span>
+          <button class="btn sm" data-page-link="account">账户</button>
+        </div>
+
+        <div class="wb-alert">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex:0 0 auto;margin-top:1px"><path d="M8 2 14.2 13H1.8L8 2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.2v3.2M8 11.4v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="txt"><b>邮箱未验证，生成能力已暂停。</b>你可以继续编辑画布与脚本；验证邮箱后即可提交生成任务（每日 500 积分额度已预留）。</span>
+          <div class="actions">
+            <button class="btn xs" data-toast="验证邮件已重新发送（演示）">重新发送邮件</button>
+            <button class="btn xs soft" data-open-verify>去验证</button>
+          </div>
+        </div>
+
+        <div class="wb-narrow-note">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="2" width="9" height="8" rx="1.5" stroke="currentColor"/><path d="M4.5 2v8" stroke="currentColor"/></svg>
+          <span class="txt">窄屏布局：镜头列表横向滚动，画布区域限高 430px，属性面板移至下方。切换顶部「桌面 / 窄屏」查看两套布局。</span>
+        </div>
+
+        <div class="wb-body">
+
+          <!-- 左侧镜头列表 -->
+          <aside class="wb-left">
+            <div class="panel-head">
+              <span class="panel-title">镜头 / 节点</span>
+              <span class="count">5</span>
+              <div class="spacer"></div>
+              <button class="icon-btn" title="新建镜头" data-open-verify>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+
+            <div class="search">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.2" stroke="#5F6672" stroke-width="1.3"/><path d="m10.2 10.2 3 3" stroke="#5F6672" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <input placeholder="搜索镜头 / 镜号" />
+            </div>
+
+            <div class="filters">
+              <button class="chip active">全部</button>
+              <button class="chip">生成中</button>
+              <button class="chip">已完成</button>
+              <button class="chip">失败</button>
+            </div>
+
+            <div class="shot-list">
+              <div class="group-head"><span class="gdot"></span>分镜组 A · 雨夜霓虹<span class="muted">4 节点</span></div>
+
+              <button class="shot-item" data-target="s1">
+                <span class="shot-no">S-01</span>
+                <span class="si-main">
+                  <span class="si-title">脚本 · 雨夜相遇</span>
+                  <span class="si-sub">文本模型 · 3 段落</span>
+                </span>
+                <span class="dot ok"></span>
+              </button>
+
+              <button class="shot-item" data-target="p1">
+                <span class="shot-no">P-01</span>
+                <span class="si-main">
+                  <span class="si-title">AI 图片 · 女主定妆照</span>
+                  <span class="si-sub">1024×1024 · 1 个引用</span>
+                </span>
+                <span class="dot ok"></span>
+              </button>
+
+              <button class="shot-item active" data-target="v1">
+                <span class="shot-no">A-01</span>
+                <span class="si-main">
+                  <span class="si-title">雨夜霓虹街道</span>
+                  <span class="si-sub">Seedance · 16:9 · 5s</span>
+                </span>
+                <span class="dot ok"></span>
+              </button>
+
+              <button class="shot-item" data-target="v2">
+                <span class="shot-no">A-02</span>
+                <span class="si-main">
+                  <span class="si-title">撑伞回眸（待生成）</span>
+                  <span class="si-sub">邮箱未验证 · 已拦截</span>
+                </span>
+                <span class="dot fail"></span>
+              </button>
+
+              <div class="group-head"><span class="gdot g2"></span>分镜组 B · 地铁站台<span class="muted">未开始</span></div>
+              <button class="shot-item" data-target="v3">
+                <span class="shot-no">B-01</span>
+                <span class="si-main">
+                  <span class="si-title">空旷站台</span>
+                  <span class="si-sub">等待脚本拆分</span>
+                </span>
+                <span class="dot"></span>
+              </button>
+            </div>
+
+            <div class="quota-card">
+              <div class="quota-row"><span class="dot ok"></span><b>今日额度</b><span style="margin-left:auto" class="mono">180 / 500</span></div>
+              <div class="quota-bar"><i></i></div>
+              <div class="quota-row tiny faint">专业版 · 2 并发 · 1080P · 权重 3</div>
+              <button class="btn sm" data-page-link="billing">升级 / 购买积分</button>
+            </div>
+          </aside>
+
+          <!-- 中间画布 -->
+          <div class="canvas-wrap">
+            <div class="stage" id="stage">
+
+              <div class="canvas-toolbar">
+                <button class="tool active">
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 1.5 9.5 6 6.2 6.8 4.8 10 2 1.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                  选择
+                </button>
+                <button class="tool" data-toast="已自动整理节点布局（演示）">自动布局</button>
+                <button class="tool" data-toast="已适应视图（演示）">适应视图</button>
+                <button class="tool" data-toast="上传后将生成图片节点（演示）">上传图片</button>
+                <button class="tool" data-toast="脚本节点已创建（演示）">＋ 脚本</button>
+              </div>
+
+              <div class="canvas-hint">画布总览 · 86%</div>
+
+              <div class="group-label" style="left:20px;top:16px"><span class="gdot"></span><b>分镜组 A</b> 雨夜霓虹</div>
+
+              <svg class="edges" aria-hidden="true">
+                <defs>
+                  <marker id="arrowPurple" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M0 0 8 4 0 8Z" fill="#7C6BFF"/>
+                  </marker>
+                  <marker id="arrowBlue" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+                    <path d="M0 0 8 4 0 8Z" fill="#4FB3D9"/>
+                  </marker>
+                </defs>
+                <path class="edge" d="M276 168 C314 168 314 168 350 168" marker-end="url(#arrowPurple)"/>
+                <path class="edge alt" d="M176 404 C250 404 300 430 350 430" marker-end="url(#arrowBlue)"/>
+                <circle class="edge-dot" cx="274" cy="168" r="3"/>
+                <circle class="edge-dot" cx="174" cy="404" r="3"/>
+              </svg>
+
+              <!-- 脚本节点 -->
+              <article class="node script-node" data-id="s1" style="left:22px;top:58px" tabindex="0">
+                <div class="node-head">
+                  <span class="shot-no">S-01</span>
+                  <span class="node-title">脚本 · 雨夜相遇</span>
+                  <span class="pill ok">已完成</span>
+                </div>
+                <div class="script-body">
+                  <div class="script-line"><b>场景</b><span>雨夜霓虹街道，湿润地面反光</span></div>
+                  <div class="script-line"><b>镜头</b><span>中景推进 → 回眸特写</span></div>
+                  <div class="script-line"><b>旁白</b><span>“她回头时，整条街都亮了。”</span></div>
+                  <div class="node-meta"><span>GPT 文本模型 · 3 段</span><span>10:18</span></div>
+                </div>
+              </article>
+
+              <!-- AI 图片节点 -->
+              <article class="node img-node" data-id="p1" style="left:24px;top:328px" tabindex="0" title="AI 生成的参考图">
+                <div class="img-thumb">
+                  <span class="img-idx">AI 图片 1</span>
+                </div>
+                <div class="img-foot">
+                  <div class="img-name">女主 · 定妆照</div>
+                  <div class="img-meta">AI 生成 · 1024×1024</div>
+                </div>
+                <span class="port" title="拖拽连线到镜头"></span>
+              </article>
+
+              <!-- 视频节点 已完成 -->
+              <article class="node selected" data-id="v1" style="left:350px;top:58px" tabindex="0">
+                <div class="node-head">
+                  <span class="shot-no">A-01</span>
+                  <span class="node-title">雨夜霓虹街道</span>
+                  <span class="pill ok">已完成</span>
+                </div>
+                <div class="media">
+                  <div class="scene"></div>
+                  <div class="veil"></div>
+                  <span class="ref-badge">
+                    <svg width="9" height="9" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="2.5" width="11" height="9" rx="1.6" stroke="currentColor" stroke-width="1.1"/><path d="m2.5 9.5 3-2.6 2.2 1.9 2-1.6 1.8 1.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    参考图 ×1
+                  </span>
+                  <button class="play" data-toast="播放成片（演示）" aria-label="播放">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff"/></svg>
+                  </button>
+                  <span class="dur">5.0s</span>
+                </div>
+                <div class="node-body">
+                  <p class="node-prompt">雨夜霓虹街道，镜头缓慢推进，赛博朋克色调，湿润地面反光，电影感颗粒</p>
+                  <div class="node-meta"><span>Seedance · 16:9 · 1080P</span><span class="mono">100%</span></div>
+                </div>
+              </article>
+
+              <!-- 视频节点 待生成（被拦截） -->
+              <article class="node" data-id="v2" style="left:350px;top:352px" tabindex="0">
+                <div class="node-head">
+                  <span class="shot-no">A-02</span>
+                  <span class="node-title">撑伞回眸</span>
+                  <span class="pill idle">待生成</span>
+                </div>
+                <div class="media" style="height:112px">
+                  <div class="scene" style="opacity:.4"></div>
+                  <div class="veil"></div>
+                  <div class="play" style="pointer-events:none">
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M5 3.2v9.6L13 8 5 3.2Z" fill="#fff" opacity=".5"/></svg>
+                  </div>
+                  <span class="dur">已拦截</span>
+                </div>
+                <div class="node-body">
+                  <p class="node-prompt">女主撑透明伞回头，浅景深，霓虹灯牌虚化，雨丝可见，缓慢回眸</p>
+                  <div class="node-blocked">
+                    <svg width="10" height="10" viewBox="0 0 14 14" fill="none"><rect x="2.5" y="6" width="9" height="6.2" rx="1.4" stroke="currentColor" stroke-width="1.1"/><path d="M4.6 6V4.6a2.4 2.4 0 0 1 4.8 0V6" stroke="currentColor" stroke-width="1.1"/></svg>
+                    邮箱未验证，生成已拦截
+                    <button class="link-btn" data-open-verify style="margin-left:auto;font-size:9.5px">去验证</button>
+                  </div>
+                </div>
+              </article>
+
+              <div class="zoom">
+                <button title="缩小">−</button>
+                <span class="lvl">86%</span>
+                <button title="放大">+</button>
+                <button title="适应视图" data-toast="已适应视图（演示）">
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 4V1.5H4M8 1.5h2.5V4M10.5 8v2.5H8M4 10.5H1.5V8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+
+              <div class="minimap">
+                <div class="mm-grid">
+                  <div class="mm-node ok" style="left:8px;top:10px;width:38px;height:24px"></div>
+                  <div class="mm-node ok" style="left:8px;top:42px;width:24px;height:24px"></div>
+                  <div class="mm-node ok" style="left:56px;top:10px;width:52px;height:30px"></div>
+                  <div class="mm-node" style="left:56px;top:48px;width:52px;height:28px"></div>
+                  <div class="mm-view"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 右侧属性 -->
+          <aside class="wb-right">
+            <div class="insp-head">
+              <div>
+                <div class="eyebrow">节点详情</div>
+                <div class="insp-title" id="inspTitle">A-01 雨夜霓虹街道</div>
+              </div>
+              <button class="icon-btn" title="关闭">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+
+            <div class="insp-block">
+              <div class="insp-status">
+                <span class="pill ok">已完成</span>
+                <span class="tag">1080P</span>
+                <span class="time">10:21:34</span>
+              </div>
+              <div class="bar-row">
+                <div class="bar"><i style="width:100%"></i></div>
+                <span class="pct">100%</span>
+              </div>
+            </div>
+
+            <div class="insp-block">
+              <div class="label">提示词</div>
+              <div class="prompt-box">雨夜霓虹街道，镜头缓慢推进，赛博朋克色调，湿润地面反光，电影感颗粒
+<button class="copy" data-toast="提示词已复制">复制</button></div>
+            </div>
+
+            <div class="insp-block">
+              <div class="label">参考图 · 1</div>
+              <div class="row" style="gap:6px">
+                <span class="ref-mini"></span>
+                <div class="tiny muted">@图片1 女主 · 定妆照<br><span class="faint">用于人物造型参考</span></div>
+              </div>
+            </div>
+
+            <div class="insp-block">
+              <div class="label">参数</div>
+              <div class="params">
+                <div class="param"><div class="k">模型</div><div class="v">seedance-1.0-pro</div></div>
+                <div class="param"><div class="k">比例 / 时长</div><div class="v">16:9 · 5s</div></div>
+                <div class="param"><div class="k">分辨率</div><div class="v">1080P</div></div>
+                <div class="param"><div class="k">消耗积分</div><div class="v">40</div></div>
+                <div class="param"><div class="k">任务 ID</div><div class="v">#1024</div></div>
+                <div class="param"><div class="k">调度权重</div><div class="v">3（专业版）</div></div>
+              </div>
+            </div>
+
+            <div class="insp-block">
+              <div class="label">状态时间线</div>
+              <ol class="timeline">
+                <li class="done">已入队 <span class="t">10:21:01</span></li>
+                <li class="done">已提交供应商 <span class="t">10:21:02</span></li>
+                <li class="done">生成中 → 完成 <span class="t">10:21:34</span></li>
+                <li class="done">已扣减 40 积分 <span class="t">10:21:35</span></li>
+              </ol>
+            </div>
+
+            <div class="insp-block">
+              <div class="notice warn" style="margin:0">
+                <span class="ic">!</span>
+                <span>邮箱未验证，新的生成请求会被直接拦截，不扣积分。</span>
+              </div>
+            </div>
+
+            <div class="insp-actions">
+              <button class="btn" data-toast="已打开提示词编辑器（演示）">编辑提示词</button>
+              <button class="btn primary" data-open-verify>提交生成</button>
+              <button class="btn danger" data-open-delete>删除</button>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 4. 我的账户 ================= -->
+    <section class="page" id="page-account">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Account</div>
+            <h1>我的账户</h1>
+            <div class="sub">资料、邮箱验证、会员权益与积分流水</div>
+          </div>
+          <div class="actions">
+            <button class="btn" data-page-link="tokens">MCP Token</button>
+            <button class="btn primary" data-page-link="billing">充值 / 升级</button>
+          </div>
+        </div>
+
+        <div class="acct-grid">
+
+          <!-- 资料 -->
+          <div class="card card-pad">
+            <div class="profile-top">
+              <span class="avatar lg">林</span>
+              <div>
+                <div class="profile-name">林知夏</div>
+                <div class="profile-mail">lin@studio.com</div>
+                <div class="row" style="margin-top:5px;gap:5px">
+                  <span class="pill accent">专业版</span>
+                  <span class="pill warn">邮箱未验证</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="kv">
+              <span class="k">用户 ID</span><span class="v mono">u_8F21C4</span>
+              <span class="k">账号角色</span><span class="v">普通用户</span>
+              <span class="k">注册时间</span><span class="v">2026-09-12</span>
+              <span class="k">最近登录</span><span class="v">2026-11-27 10:21 · 上海</span>
+              <span class="k">默认画布</span><span class="v">品牌片 · 雨夜霓虹</span>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="label">邮箱验证</div>
+            <div class="notice warn" style="margin-bottom:10px">
+              <span class="ic">!</span>
+              <span>lin@studio.com 尚未验证，生成任务会被拦截。验证后恢复每日额度。</span>
+            </div>
+            <div class="row">
+              <button class="btn sm primary" data-open-verify>验证邮箱</button>
+              <button class="btn sm" data-toast="验证邮件已重新发送（演示）">重新发送</button>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="row">
+              <button class="btn sm" data-toast="已打开资料编辑（演示）">编辑资料</button>
+              <button class="btn sm" data-toast="已发送修改密码邮件（演示）">修改密码</button>
+              <button class="btn sm" style="margin-left:auto" data-toast="已打开登录设备管理（演示）">登录设备</button>
+            </div>
+          </div>
+
+          <!-- 权益与用量 -->
+          <div>
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2>会员权益</h2>
+                  <div class="sub">专业版 · 2026-12-09 到期</div>
+                </div>
+                <div class="spacer"></div>
+                <span class="tag plan">自动续费已关闭</span>
+                <button class="btn sm" data-page-link="billing">管理</button>
+              </div>
+              <div class="card-pad">
+                <div class="benefit-grid">
+                  <div class="benefit"><div class="k">每日额度</div><div class="v">500 <small>积分 / 日</small></div></div>
+                  <div class="benefit"><div class="k">并发任务</div><div class="v">2 <small>个</small></div></div>
+                  <div class="benefit"><div class="k">最高分辨率</div><div class="v">1080P</div></div>
+                  <div class="benefit"><div class="k">调度权重</div><div class="v">3 <small>（免费版 1）</small></div></div>
+                </div>
+                <div class="usage-legend" style="justify-content:space-between">
+                  <span><i class="legend-dot"></i>每日额度按自然日 00:00 重置，不结转</span>
+                  <button class="link-btn" data-toast="额度规则：视频 40 积分/5s，图片 4 积分/张，脚本 2 积分/次（演示）">计费规则</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card section-gap">
+              <div class="card-head">
+                <h2>今日用量</h2>
+                <span class="sub">2026-11-27</span>
+                <div class="spacer"></div>
+                <span class="pill run">额度剩余 320</span>
+              </div>
+              <div class="card-pad">
+                <div class="usage-row">
+                  <div class="bar"><i style="width:36%;background:linear-gradient(90deg,#7C6BFF,#9A8CFF)"></i></div>
+                  <span class="n">180 / 500 积分</span>
+                </div>
+                <div class="usage-legend">
+                  <span><i class="legend-dot"></i>视频 4 次 · 160 积分</span>
+                  <span><i class="legend-dot alt"></i>图片 5 张 · 20 积分</span>
+                  <span>脚本 0 次</span>
+                </div>
+                <div class="notice" style="margin:12px 0 0">
+                  <span class="ic">i</span>
+                  <span>并发上限 2：当前 1 个任务生成中、0 个排队。超出时任务进入排队并显示「并发排队中」。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 积分 -->
+        <div class="section-gap">
+          <div class="credit-grid">
+            <div class="credit">
+              <div class="k">可用积分</div>
+              <div class="v">1,280</div>
+              <div class="n">可用于生成与放大</div>
+            </div>
+            <div class="credit frozen">
+              <div class="k">冻结积分</div>
+              <div class="v">60</div>
+              <div class="n">生成中的任务预扣，完成后退差</div>
+            </div>
+            <div class="credit">
+              <div class="k">今日已用</div>
+              <div class="v">180 <small>/ 500</small></div>
+              <div class="n">00:00 重置</div>
+            </div>
+            <div class="credit">
+              <div class="k">累计消耗</div>
+              <div class="v">8,420</div>
+              <div class="n">自注册以来</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 积分流水 -->
+        <div class="section-gap">
+          <div class="card-head" style="border:0;padding:0 0 10px">
+            <h2>积分流水</h2>
+            <span class="sub">最近 30 天 · 全部类型</span>
+            <div class="spacer"></div>
+            <button class="chip active" style="height:24px">全部</button>
+            <button class="chip" style="height:24px">消耗</button>
+            <button class="chip" style="height:24px">充值</button>
+            <button class="chip" style="height:24px">退款</button>
+          </div>
+          <div class="table-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>时间</th><th>类型</th><th>说明</th><th>变动</th><th>余额</th><th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="num faint">11-27 10:21</td>
+                  <td>生成消耗</td>
+                  <td>视频 A-01 · 5s · 1080P</td>
+                  <td class="num neg">−40</td>
+                  <td class="num">1,280</td>
+                  <td><span class="pill ok">已结算</span></td>
+                </tr>
+                <tr>
+                  <td class="num faint">11-27 10:18</td>
+                  <td>生成消耗</td>
+                  <td>脚本 S-01 · 3 段落</td>
+                  <td class="num neg">−2</td>
+                  <td class="num">1,320</td>
+                  <td><span class="pill ok">已结算</span></td>
+                </tr>
+                <tr>
+                  <td class="num faint">11-27 10:02</td>
+                  <td>生成冻结</td>
+                  <td>视频 A-02 · 预扣（生成中）</td>
+                  <td class="num" style="color:#F0B429">−60 冻结</td>
+                  <td class="num">1,322</td>
+                  <td><span class="pill run">冻结中</span></td>
+                </tr>
+                <tr>
+                  <td class="num faint">11-26 21:40</td>
+                  <td>充值</td>
+                  <td>积分包 · 500 积分 · 订单 #2917</td>
+                  <td class="num pos">+500</td>
+                  <td class="num">1,382</td>
+                  <td><span class="pill ok">已到账</span></td>
+                </tr>
+                <tr>
+                  <td class="num faint">11-26 21:12</td>
+                  <td>会员赠送</td>
+                  <td>专业版 · 每日额度重置</td>
+                  <td class="num pos">+500</td>
+                  <td class="num">882</td>
+                  <td><span class="pill ok">已到账</span></td>
+                </tr>
+                <tr>
+                  <td class="num faint">11-25 19:03</td>
+                  <td>失败退款</td>
+                  <td>视频 B-02 · 内容审核未通过</td>
+                  <td class="num pos">+40</td>
+                  <td class="num">382</td>
+                  <td><span class="pill idle">已退款</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tiny faint" style="margin-top:7px">冻结积分在任务结束（成功扣减 / 失败退回）后自动解冻；表格仅展示最近 6 条。</div>
+        </div>
+
+        <!-- 订单列表 -->
+        <div class="section-gap">
+          <div class="card-head" style="border:0;padding:0 0 10px">
+            <h2>订单列表</h2>
+            <span class="sub">最近 5 笔</span>
+            <div class="spacer"></div>
+            <button class="btn sm" data-page-link="billing">查看全部订单</button>
+          </div>
+          <div class="table-wrap">
+            <table class="tbl">
+              <thead>
+                <tr><th>订单号</th><th>商品</th><th>金额</th><th>支付渠道</th><th>状态</th><th>创建时间</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="num">#2917</td><td>积分包 · 500 积分</td><td class="num">¥39.9</td>
+                  <td>微信支付</td><td><span class="pill ok">已支付</span></td><td class="num faint">11-26 21:40</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2916</td><td>专业版 · 30 天</td><td class="num">¥29.9</td>
+                  <td>支付宝</td><td><span class="pill ok">已支付</span></td><td class="num faint">11-09 09:12</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2904</td><td>积分包 · 100 积分</td><td class="num">¥9.9</td>
+                  <td>Mock</td><td><span class="pill fail">支付失败</span></td><td class="num faint">11-08 22:31</td>
+                  <td><button class="btn xs" data-toast="已重新发起支付（演示）">重新支付</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2888</td><td>积分包 · 2000 积分</td><td class="num">¥129</td>
+                  <td>微信支付</td><td><span class="pill idle">已关闭</span></td><td class="num faint">11-02 14:05</td>
+                  <td><button class="btn xs" data-toast="订单已关闭，请重新下单（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2871</td><td>工作室版 · 30 天</td><td class="num">¥99.9</td>
+                  <td>支付宝</td><td><span class="pill ok">已支付</span></td><td class="num faint">10-28 11:20</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 5. 会员与充值 ================= -->
+    <section class="page" id="page-billing">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Membership &amp; Credits</div>
+            <h1>会员与充值</h1>
+            <div class="sub">会员决定每日额度、并发、分辨率与调度权重；积分包用于超出额度的额外消耗</div>
+          </div>
+          <div class="actions">
+            <button class="btn" data-toast="已复制当前页面链接（演示）">分享方案</button>
+            <button class="btn primary" data-page-link="account">查看我的订单</button>
+          </div>
+        </div>
+
+        <div class="plan-grid">
+          <article class="plan">
+            <div class="plan-name">免费版</div>
+            <div class="plan-desc">适合体验画布与基础生成，邮箱验证后即可使用。</div>
+            <div class="plan-price"><span class="cur">¥</span><span class="amt">0</span><span class="per">/ 永久</span></div>
+            <ul class="plan-feats">
+              <li><span class="ck">✓</span>每日额度 <b>50</b> 积分</li>
+              <li><span class="ck">✓</span>并发任务 <b>1</b> 个</li>
+              <li><span class="ck">✓</span>最高分辨率 <b>720P</b></li>
+              <li><span class="ck">✓</span>调度权重 <b>1</b></li>
+              <li class="muted"><span class="ck">·</span>不含优先排队</li>
+            </ul>
+            <button class="btn" data-toast="当前账号已升级专业版，免费版不可回退（演示）">降级到免费版</button>
+            <div class="plan-note">额度每日 00:00 重置</div>
+          </article>
+
+          <article class="plan featured current">
+            <span class="plan-flag">当前方案</span>
+            <div class="plan-name">专业版</div>
+            <div class="plan-desc">个人创作者与小型团队的主力档位，支持 1080P 交付。</div>
+            <div class="plan-price"><span class="cur">¥</span><span class="amt">29.9</span><span class="per">/ 30 天</span></div>
+            <ul class="plan-feats">
+              <li><span class="ck">✓</span>每日额度 <b>500</b> 积分</li>
+              <li><span class="ck">✓</span>并发任务 <b>2</b> 个</li>
+              <li><span class="ck">✓</span>最高分辨率 <b>1080P</b></li>
+              <li><span class="ck">✓</span>调度权重 <b>3</b></li>
+              <li><span class="ck">✓</span>优先排队 · 参考图 6 张</li>
+            </ul>
+            <button class="btn primary" data-toast="已打开续费结算（演示）">续费 30 天</button>
+            <div class="plan-note">到期时间 2026-12-09 · 自动续费关闭</div>
+          </article>
+
+          <article class="plan">
+            <div class="plan-name">工作室版</div>
+            <div class="plan-desc">面向工作室的高并发档位，支持 4K 输出与最高调度权重。</div>
+            <div class="plan-price"><span class="cur">¥</span><span class="amt">99.9</span><span class="per">/ 30 天</span></div>
+            <ul class="plan-feats">
+              <li><span class="ck">✓</span>每日额度 <b>3000</b> 积分</li>
+              <li><span class="ck">✓</span>并发任务 <b>5</b> 个</li>
+              <li><span class="ck">✓</span>最高分辨率 <b>4K</b></li>
+              <li><span class="ck">✓</span>调度权重 <b>6</b></li>
+              <li><span class="ck">✓</span>最高优先级 · 批量分镜</li>
+            </ul>
+            <button class="btn" data-toast="已打开升级结算（演示）">升级到工作室版</button>
+            <div class="plan-note">升级按剩余天数折算差价</div>
+          </article>
+        </div>
+
+        <div class="notice" style="margin-top:12px">
+          <span class="ic">i</span>
+          <span>会员额度按自然日重置、不结转；积分包余额长期有效、不清零。<b>调度权重</b>只影响排队优先级，不改变生成速度上限。</span>
+        </div>
+
+        <!-- 积分包 -->
+        <div class="section-gap">
+          <div class="card-head" style="border:0;padding:0 0 10px">
+            <h2>积分包</h2>
+            <span class="sub">充值后立即到账，可用于任意分辨率生成</span>
+            <div class="spacer"></div>
+            <span class="tiny faint">当前可用 1,280 积分</span>
+          </div>
+          <div class="pack-grid">
+            <div class="pack">
+              <div class="picon">100</div>
+              <div>
+                <div class="pname">100 积分</div>
+                <div class="pprice"><b>¥9.9</b> · 约 2 个 1080P 视频</div>
+              </div>
+              <button class="btn sm primary" data-open-pay="100 积分 · ¥9.9">购买</button>
+            </div>
+            <div class="pack">
+              <div class="picon">500</div>
+              <div>
+                <div class="pname">500 积分</div>
+                <div class="pprice"><b>¥39.9</b> · 约 12 个 1080P 视频</div>
+              </div>
+              <button class="btn sm primary" data-open-pay="500 积分 · ¥39.9">购买</button>
+            </div>
+            <div class="pack">
+              <div class="picon">2000</div>
+              <div>
+                <div class="pname">2000 积分</div>
+                <div class="pprice"><b>¥129</b> · 约 50 个 1080P 视频</div>
+              </div>
+              <button class="btn sm primary" data-open-pay="2000 积分 · ¥129">购买</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 支付渠道 -->
+        <div class="section-gap">
+          <div class="card">
+            <div class="card-head">
+              <h2>支付渠道</h2>
+              <span class="sub">演示环境默认使用 Mock，不产生真实扣款</span>
+              <div class="spacer"></div>
+              <span class="tag">沙箱</span>
+            </div>
+            <div class="card-pad">
+              <div class="channel-row">
+                <button class="channel active">
+                  <span class="cico">M</span>Mock 支付
+                  <span class="badge">演示推荐</span>
+                </button>
+                <button class="channel"><span class="cico" style="color:#46D39A">微</span>微信支付</button>
+                <button class="channel"><span class="cico" style="color:#6EA8FE">支</span>支付宝</button>
+              </div>
+              <div class="tiny faint" style="margin-top:9px">支付成功通过异步回调确认；订单 15 分钟未支付自动关单，积分与会员权益在回调成功后发放。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 订单状态 -->
+        <div class="section-gap">
+          <div class="card-head" style="border:0;padding:0 0 10px">
+            <h2>订单状态</h2>
+            <span class="sub">待支付 / 成功 / 失败 / 关单 四种终态与中间态</span>
+          </div>
+          <div class="pay-grid">
+
+            <div class="pay-card">
+              <div class="pc-head"><span class="dot run"></span>订单 #2931 · 待支付</div>
+              <div class="pc-body">
+                <div class="qr" aria-label="支付二维码占位"></div>
+                <div class="pay-amount">¥39.9</div>
+                <div class="pay-desc">积分包 · 500 积分</div>
+                <div class="pay-status"><span class="dot run"></span>剩余 14:32 自动关单</div>
+              </div>
+              <div class="pc-foot" style="text-align:center">请使用手机扫码支付<br>二维码为设计占位，Mock 渠道将直接模拟成功</div>
+            </div>
+
+            <div class="pay-card">
+              <div class="pc-head"><span class="dot ok"></span>订单 #2917 · 支付成功</div>
+              <div class="pc-body">
+                <div class="success-ring">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7.5" stroke="#46D39A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="pay-amount">¥39.9</div>
+                <div class="pay-desc">500 积分已到账 · 余额 1,280</div>
+                <div class="pay-status">微信支付 · 11-26 21:40</div>
+              </div>
+              <div class="pc-foot" style="text-align:center">可在「我的账户 · 积分流水」查看入账记录</div>
+            </div>
+
+            <div class="pay-card">
+              <div class="pc-head"><span class="dot fail"></span>订单 #2904 · 支付失败</div>
+              <div class="pc-body">
+                <div class="success-ring fail">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10M17 7 7 17" stroke="#F2555A" stroke-width="1.9" stroke-linecap="round"/></svg>
+                </div>
+                <div class="pay-amount">¥9.9</div>
+                <div class="pay-desc">100 积分 · 渠道返回失败</div>
+                <div class="pay-status" style="color:#F2A0A3">PAYMENT_FAILED · 未扣款</div>
+              </div>
+              <div class="pc-foot" style="display:flex;gap:6px;justify-content:center">
+                <button class="btn xs" data-toast="已重新发起支付（演示）">重新支付</button>
+                <button class="btn xs" data-toast="已切换支付渠道（演示）">更换渠道</button>
+              </div>
+            </div>
+
+            <div class="pay-card">
+              <div class="pc-head"><span class="dot"></span>订单 #2888 · 已关单</div>
+              <div class="pc-body">
+                <div class="success-ring idle">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.2" stroke="#5F6672" stroke-width="1.5"/><path d="M12 7.8V12l2.8 1.8" stroke="#5F6672" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </div>
+                <div class="pay-amount" style="color:#8D939E">¥129</div>
+                <div class="pay-desc">2000 积分 · 超时未支付</div>
+                <div class="pay-status">ORDER_CLOSED · 11-02 14:20</div>
+              </div>
+              <div class="pc-foot" style="text-align:center">关单后不可恢复，请重新下单<br>已支付但掉单可联系管理员补发</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 6. MCP Token ================= -->
+    <section class="page" id="page-tokens">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Developer</div>
+            <h1>MCP Token</h1>
+            <div class="sub">用于 MCP 客户端接入画布能力 · 令牌仅创建时展示一次明文</div>
+          </div>
+          <div class="actions">
+            <button class="btn" data-toast="已打开接入文档（演示）">接入文档</button>
+            <button class="btn primary" data-open-token-create>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              新建 Token
+            </button>
+          </div>
+        </div>
+
+        <div class="notice warn">
+          <span class="ic">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2.8" y="7" width="10.4" height="6.6" rx="1.6" stroke="currentColor" stroke-width="1.2"/><path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" stroke="currentColor" stroke-width="1.2"/></svg>
+          </span>
+          <span><b>令牌等同账号密码。</b>请勿提交到代码仓库或聊天工具；一旦泄露请立即吊销并重建。服务端仅保存哈希，创建后无法再次查看明文。</span>
+        </div>
+
+        <div class="stat-strip three">
+          <div class="stat"><div class="k">Token 总数</div><div class="v">3 <small>个</small></div></div>
+          <div class="stat"><div class="k">启用中</div><div class="v" style="color:#46D39A">2 <small>个</small></div></div>
+          <div class="stat"><div class="k">今日调用</div><div class="v">1,204 <small>次</small></div></div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="tbl" style="min-width:820px">
+            <thead>
+              <tr><th>名称</th><th>前缀</th><th>创建时间</th><th>到期时间</th><th>最后使用</th><th>状态</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div style="font-weight:600">本地开发 · Claude Code</div>
+                  <div class="tiny faint">读写画布 / 推送镜头</div>
+                </td>
+                <td><span class="prefix">mcp_sk_live_9f2c…</span></td>
+                <td class="num faint">2026-10-02</td>
+                <td class="num faint">永不过期</td>
+                <td class="num faint">今天 10:20</td>
+                <td><span class="pill ok"><span class="dot ok"></span>启用</span></td>
+                <td class="nowrap">
+                  <button class="btn xs" data-toast="已复制 Token 前缀（演示）">复制前缀</button>
+                  <button class="btn xs danger" data-open-revoke="本地开发 · Claude Code">吊销</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div style="font-weight:600">CI 流水线</div>
+                  <div class="tiny faint">只读画布状态</div>
+                </td>
+                <td><span class="prefix">mcp_sk_live_41ab…</span></td>
+                <td class="num faint">2026-09-18</td>
+                <td class="num faint">2026-12-18</td>
+                <td class="num faint">昨天 22:05</td>
+                <td><span class="pill ok"><span class="dot ok"></span>启用</span></td>
+                <td class="nowrap">
+                  <button class="btn xs" data-toast="已复制 Token 前缀（演示）">复制前缀</button>
+                  <button class="btn xs danger" data-open-revoke="CI 流水线">吊销</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div style="font-weight:600;color:#8D939E">旧版脚本（已停用）</div>
+                  <div class="tiny faint">权限：全部工具</div>
+                </td>
+                <td><span class="prefix" style="color:#8D939E;background:#1A1D23">mcp_sk_live_7d10…</span></td>
+                <td class="num faint">2026-07-01</td>
+                <td class="num faint">2026-09-01（已过期）</td>
+                <td class="num faint">09-01 18:22</td>
+                <td><span class="pill idle">已过期</span></td>
+                <td class="nowrap">
+                  <button class="btn xs" disabled>复制前缀</button>
+                  <button class="btn xs" data-toast="该 Token 已过期（演示）">已失效</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section-gap">
+          <div class="card">
+            <div class="card-head">
+              <h2>调用示例</h2>
+              <span class="sub">MCP 客户端配置 · 端点 http://localhost:8080/sse</span>
+              <div class="spacer"></div>
+              <button class="btn sm" data-toast="示例配置已复制（演示）">复制配置</button>
+            </div>
+            <div class="card-pad">
+              <div class="prompt-box" style="padding-bottom:10px">{
+  "mcpServers": {
+    "aigc-canvas": {
+      "type": "sse",
+      "url": "http://localhost:8080/sse",
+      "headers": { "Authorization": "Bearer mcp_sk_live_****" }
+    }
+  }
+}</div>
+              <div class="tiny faint" style="margin-top:9px">Token 权限在创建时选择；吊销后所有进行中的调用立即失效，生成任务不受影响。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 7. 管理后台 ================= -->
+    <section class="page" id="page-admin">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Admin</div>
+            <h1>管理后台</h1>
+            <div class="sub">仅管理员可见 · 用户、档位、商品、订单与异步任务运维</div>
+          </div>
+          <div class="actions">
+            <span class="tag gold">角色：管理员</span>
+            <button class="btn" data-toast="已导出当前列表 CSV（演示）">导出</button>
+          </div>
+        </div>
+
+        <div class="admin-tabs" id="adminTabs">
+          <button class="active" data-admin="users">用户管理</button>
+          <button data-admin="plans">会员档位</button>
+          <button data-admin="goods">积分商品</button>
+          <button data-admin="orders">订单</button>
+          <button data-admin="audit">审计日志</button>
+          <button data-admin="outbox">Outbox / 死信</button>
+        </div>
+
+        <!-- 用户管理 -->
+        <div class="admin-section active" data-admin-section="users">
+          <div class="toolbar">
+            <div class="search">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.2" stroke="#5F6672" stroke-width="1.3"/><path d="m10.2 10.2 3 3" stroke="#5F6672" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <input placeholder="搜索邮箱 / 用户 ID" />
+            </div>
+            <select class="select" style="width:auto;height:30px;padding:0 8px;font-size:11px">
+              <option>全部角色</option><option>普通用户</option><option>管理员</option>
+            </select>
+            <select class="select" style="width:auto;height:30px;padding:0 8px;font-size:11px">
+              <option>全部状态</option><option>正常</option><option>已禁用</option>
+            </select>
+            <div class="spacer"></div>
+            <span class="tiny faint">共 1,248 位用户</span>
+          </div>
+          <div class="table-wrap">
+            <table class="tbl" style="min-width:860px">
+              <thead>
+                <tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>邮箱验证</th><th>注册时间</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="who"><span class="avatar">林</span><div><div>林知夏</div><div class="tiny faint mono">u_8F21C4 · lin@studio.com</div></div></div></td>
+                  <td><span class="tag">普通用户</span></td>
+                  <td><span class="pill ok">正常</span></td>
+                  <td><span class="tag plan">专业版</span></td>
+                  <td><span class="pill fail">未验证</span></td>
+                  <td class="num faint">2026-09-12</td>
+                  <td class="nowrap"><button class="btn xs" data-toast="已打开用户详情（演示）">详情</button> <button class="btn xs danger" data-toast="已禁用该用户（演示）">禁用</button></td>
+                </tr>
+                <tr>
+                  <td><div class="who"><span class="avatar" style="background:linear-gradient(135deg,#46D39A,#4FB3D9)">周</span><div><div>周砚</div><div class="tiny faint mono">u_2A07B1 · zhou@lab.io</div></div></div></td>
+                  <td><span class="tag">普通用户</span></td>
+                  <td><span class="pill ok">正常</span></td>
+                  <td><span class="tag gold">工作室版</span></td>
+                  <td><span class="pill ok">已验证</span></td>
+                  <td class="num faint">2026-08-03</td>
+                  <td class="nowrap"><button class="btn xs" data-toast="已打开用户详情（演示）">详情</button> <button class="btn xs danger" data-toast="已禁用该用户（演示）">禁用</button></td>
+                </tr>
+                <tr>
+                  <td><div class="who"><span class="avatar" style="background:linear-gradient(135deg,#8D939E,#5F6672)">陈</span><div><div>陈默</div><div class="tiny faint mono">u_51C9E3 · chen@mail.com</div></div></div></td>
+                  <td><span class="tag">普通用户</span></td>
+                  <td><span class="pill idle">已禁用</span></td>
+                  <td><span class="tag">免费版</span></td>
+                  <td><span class="pill ok">已验证</span></td>
+                  <td class="num faint">2026-10-21</td>
+                  <td class="nowrap"><button class="btn xs" data-toast="已打开用户详情（演示）">详情</button> <button class="btn xs" data-toast="已恢复该用户（演示）">恢复</button></td>
+                </tr>
+                <tr>
+                  <td><div class="who"><span class="avatar" style="background:linear-gradient(135deg,#F0B429,#F2555A)">管</span><div><div>管理员 · 何川</div><div class="tiny faint mono">u_000001 · ops@studio.com</div></div></div></td>
+                  <td><span class="tag gold">管理员</span></td>
+                  <td><span class="pill ok">正常</span></td>
+                  <td><span class="tag gold">工作室版</span></td>
+                  <td><span class="pill ok">已验证</span></td>
+                  <td class="num faint">2026-06-01</td>
+                  <td class="nowrap"><button class="btn xs" data-toast="已打开用户详情（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td><div class="who"><span class="avatar">苏</span><div><div>苏禾</div><div class="tiny faint mono">u_77D0A9 · su@design.cn</div></div></div></td>
+                  <td><span class="tag">普通用户</span></td>
+                  <td><span class="pill ok">正常</span></td>
+                  <td><span class="tag plan">专业版</span></td>
+                  <td><span class="pill run">待验证</span></td>
+                  <td class="num faint">2026-11-25</td>
+                  <td class="nowrap"><button class="btn xs" data-toast="已打开用户详情（演示）">详情</button> <button class="btn xs danger" data-toast="已禁用该用户（演示）">禁用</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 会员档位 -->
+        <div class="admin-section" data-admin-section="plans">
+          <div class="card">
+            <div class="card-head">
+              <h2>会员档位配置</h2>
+              <span class="sub">修改后对下一次下单/额度重置生效</span>
+              <div class="spacer"></div>
+              <button class="btn sm primary" data-toast="已新建自定义档位草稿（演示）">新建档位</button>
+            </div>
+            <div class="table-wrap" style="border:0;border-radius:0">
+              <table class="tbl" style="min-width:780px">
+                <thead>
+                  <tr><th>档位</th><th>价格</th><th>日额度</th><th>并发</th><th>最高分辨率</th><th>调度权重</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><div style="font-weight:600">免费版</div><div class="tiny faint mono">free</div></td>
+                    <td class="num">¥0 / 永久</td>
+                    <td class="num">50</td><td class="num">1</td><td class="num">720P</td><td class="num">1</td>
+                    <td><span class="pill ok">启用</span></td>
+                    <td><button class="btn xs" data-toast="已打开档位编辑（演示）">编辑</button></td>
+                  </tr>
+                  <tr style="background:rgba(124,107,255,.04)">
+                    <td><div style="font-weight:600">专业版</div><div class="tiny faint mono">pro</div></td>
+                    <td class="num">¥29.9 / 30 天</td>
+                    <td class="num">500</td><td class="num">2</td><td class="num">1080P</td><td class="num">3</td>
+                    <td><span class="pill ok">启用</span></td>
+                    <td><button class="btn xs" data-toast="已打开档位编辑（演示）">编辑</button></td>
+                  </tr>
+                  <tr>
+                    <td><div style="font-weight:600">工作室版</div><div class="tiny faint mono">studio</div></td>
+                    <td class="num">¥99.9 / 30 天</td>
+                    <td class="num">3000</td><td class="num">5</td><td class="num">4K</td><td class="num">6</td>
+                    <td><span class="pill ok">启用</span></td>
+                    <td><button class="btn xs" data-toast="已打开档位编辑（演示）">编辑</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="notice" style="margin-top:12px">
+            <span class="ic">i</span>
+            <span>分辨率与权重为上限值；实际可用分辨率还受模型能力约束（Mock 仅支持 480P / 720P）。</span>
+          </div>
+        </div>
+
+        <!-- 积分商品 -->
+        <div class="admin-section" data-admin-section="goods">
+          <div class="card">
+            <div class="card-head">
+              <h2>积分商品配置</h2>
+              <span class="sub">积分包长期有效 · 支持上下架</span>
+              <div class="spacer"></div>
+              <button class="btn sm primary" data-toast="已新建积分商品（演示）">新建商品</button>
+            </div>
+            <div class="table-wrap" style="border:0;border-radius:0">
+              <table class="tbl" style="min-width:720px">
+                <thead>
+                  <tr><th>商品</th><th>类型</th><th>积分</th><th>价格</th><th>排序</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><div style="font-weight:600">积分包 · 100</div><div class="tiny faint mono">sku_credit_100</div></td>
+                    <td>一次性</td><td class="num">100</td><td class="num">¥9.9</td><td class="num">1</td>
+                    <td><span class="pill ok">已上架</span></td>
+                    <td><button class="btn xs" data-toast="已打开商品编辑（演示）">编辑</button> <button class="btn xs" data-toast="已下架该商品（演示）">下架</button></td>
+                  </tr>
+                  <tr>
+                    <td><div style="font-weight:600">积分包 · 500</div><div class="tiny faint mono">sku_credit_500</div></td>
+                    <td>一次性</td><td class="num">500</td><td class="num">¥39.9</td><td class="num">2</td>
+                    <td><span class="pill ok">已上架</span></td>
+                    <td><button class="btn xs" data-toast="已打开商品编辑（演示）">编辑</button> <button class="btn xs" data-toast="已下架该商品（演示）">下架</button></td>
+                  </tr>
+                  <tr>
+                    <td><div style="font-weight:600">积分包 · 2000</div><div class="tiny faint mono">sku_credit_2000</div></td>
+                    <td>一次性</td><td class="num">2000</td><td class="num">¥129</td><td class="num">3</td>
+                    <td><span class="pill ok">已上架</span></td>
+                    <td><button class="btn xs" data-toast="已打开商品编辑（演示）">编辑</button> <button class="btn xs" data-toast="已下架该商品（演示）">下架</button></td>
+                  </tr>
+                  <tr>
+                    <td><div style="font-weight:600;color:#8D939E">专业版 · 30 天</div><div class="tiny faint mono">sku_plan_pro_30d</div></td>
+                    <td>订阅</td><td class="num">—</td><td class="num">¥29.9</td><td class="num">4</td>
+                    <td><span class="pill idle">已下架</span></td>
+                    <td><button class="btn xs" data-toast="已打开商品编辑（演示）">编辑</button> <button class="btn xs" data-toast="已上架该商品（演示）">上架</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 订单 -->
+        <div class="admin-section" data-admin-section="orders">
+          <div class="toolbar">
+            <button class="chip active">全部</button>
+            <button class="chip">待支付</button>
+            <button class="chip">已支付</button>
+            <button class="chip">失败</button>
+            <button class="chip">已关单</button>
+            <div class="spacer"></div>
+            <span class="tiny faint">今日 GMV ¥1,238.60</span>
+          </div>
+          <div class="table-wrap">
+            <table class="tbl" style="min-width:900px">
+              <thead>
+                <tr><th>订单号</th><th>用户</th><th>商品</th><th>金额</th><th>渠道</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="num">#2931</td><td>lin@studio.com</td><td>积分包 · 500</td><td class="num">¥39.9</td><td>Mock</td>
+                  <td><span class="pill run">待支付</span></td><td class="num faint">11-27 10:12</td>
+                  <td><button class="btn xs" data-toast="已手动关单（演示）">关单</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2917</td><td>lin@studio.com</td><td>积分包 · 500</td><td class="num">¥39.9</td><td>微信</td>
+                  <td><span class="pill ok">已支付</span></td><td class="num faint">11-26 21:40</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2916</td><td>lin@studio.com</td><td>专业版 · 30 天</td><td class="num">¥29.9</td><td>支付宝</td>
+                  <td><span class="pill ok">已支付</span></td><td class="num faint">11-09 09:12</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2904</td><td>su@design.cn</td><td>积分包 · 100</td><td class="num">¥9.9</td><td>Mock</td>
+                  <td><span class="pill fail">支付失败</span></td><td class="num faint">11-08 22:31</td>
+                  <td><button class="btn xs" data-toast="已手动补发积分（演示）">补发</button></td>
+                </tr>
+                <tr>
+                  <td class="num">#2888</td><td>chen@mail.com</td><td>积分包 · 2000</td><td class="num">¥129</td><td>微信</td>
+                  <td><span class="pill idle">已关单</span></td><td class="num faint">11-02 14:05</td>
+                  <td><button class="btn xs" data-toast="已打开订单详情（演示）">详情</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 审计日志 -->
+        <div class="admin-section" data-admin-section="audit">
+          <div class="toolbar">
+            <div class="search"><input placeholder="搜索操作人 / 对象 ID" /></div>
+            <button class="chip active">全部动作</button>
+            <button class="chip">用户</button>
+            <button class="chip">订单</button>
+            <button class="chip">Token</button>
+            <div class="spacer"></div>
+            <span class="tiny faint">保留 180 天</span>
+          </div>
+          <div class="table-wrap">
+            <table class="tbl" style="min-width:860px">
+              <thead>
+                <tr><th>时间</th><th>操作人</th><th>IP</th><th>动作</th><th>对象</th><th>结果</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="num faint">11-27 10:20</td><td>ops@studio.com</td><td class="num faint">10.0.3.18</td><td>user.disable</td><td class="mono">u_51C9E3</td><td><span class="pill ok">成功</span></td></tr>
+                <tr><td class="num faint">11-27 09:58</td><td>ops@studio.com</td><td class="num faint">10.0.3.18</td><td>order.resend_credits</td><td class="mono">#2904</td><td><span class="pill ok">成功</span></td></tr>
+                <tr><td class="num faint">11-26 22:02</td><td>system</td><td class="num faint">—</td><td>plan.quota_reset</td><td class="mono">all</td><td><span class="pill ok">成功</span></td></tr>
+                <tr><td class="num faint">11-26 21:41</td><td>lin@studio.com</td><td class="num faint">116.232.**.**</td><td>token.create</td><td class="mono">tok_41ab…</td><td><span class="pill fail">被拒绝</span></td></tr>
+                <tr><td class="num faint">11-26 20:15</td><td>ops@studio.com</td><td class="num faint">10.0.3.18</td><td>token.revoke</td><td class="mono">tok_7d10…</td><td><span class="pill ok">成功</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Outbox / 死信 -->
+        <div class="admin-section" data-admin-section="outbox">
+          <div class="admin-grid">
+            <div class="card">
+              <div class="card-head">
+                <h2>Outbox 待投递</h2>
+                <span class="sub">异步事件 · 每 30 秒轮询</span>
+                <div class="spacer"></div>
+                <span class="pill run">2 条积压</span>
+              </div>
+              <div class="table-wrap" style="border:0;border-radius:0">
+                <table class="tbl" style="min-width:0">
+                  <thead><tr><th>事件</th><th>重试</th><th>下次投递</th></tr></thead>
+                  <tbody>
+                    <tr><td class="mono">order.paid → credits.grant</td><td class="num">0</td><td class="num faint">10:32:00</td></tr>
+                    <tr><td class="mono">user.verified → quota.init</td><td class="num">1</td><td class="num faint">10:32:30</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>死信队列（DLQ）</h2>
+                <span class="sub">超过 5 次重试后转入</span>
+                <div class="spacer"></div>
+                <button class="btn sm" data-toast="已批量重投 2 条死信（演示）">全部重投</button>
+              </div>
+              <div class="card-pad">
+                <div class="dlq-item">
+                  <span class="dot fail" style="margin-top:5px"></span>
+                  <div class="di-main">
+                    <div class="di-title">order.paid → credits.grant <span class="tag">#2904</span></div>
+                    <div class="di-err">TimeoutError: payment-gateway callback exceeded 3000ms</div>
+                    <div class="di-meta">重试 5 次 · 最后失败 11-27 09:31 · 事件 ID evt_88f1</div>
+                  </div>
+                  <button class="btn xs soft" data-toast="已重投事件 evt_88f1（演示）">重投</button>
+                </div>
+                <div class="dlq-item">
+                  <span class="dot fail" style="margin-top:5px"></span>
+                  <div class="di-main">
+                    <div class="di-title">mcp.token.revoke → cache.purge <span class="tag">tok_7d10…</span></div>
+                    <div class="di-err">CacheClusterUnavailable: redis pool exhausted</div>
+                    <div class="di-meta">重试 5 次 · 最后失败 11-26 20:17 · 事件 ID evt_8712</div>
+                  </div>
+                  <button class="btn xs soft" data-toast="已重投事件 evt_8712（演示）">重投</button>
+                </div>
+                <div class="notice" style="margin:12px 0 0">
+                  <span class="ic">i</span>
+                  <span>重投为幂等操作：按事件 ID 去重，重复消费不会重复发放积分。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= 8. 通用状态 ================= -->
+    <section class="page" id="page-states">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">States</div>
+            <h1>通用状态</h1>
+            <div class="sub">加载 / 空态 / 错误 / 余额不足 / 额度耗尽 / 并发排队，全站复用同一套状态组件</div>
+          </div>
+          <div class="actions">
+            <span class="tag">6 种状态</span>
+          </div>
+        </div>
+
+        <div class="state-grid">
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot run"></span>加载中<span class="spacer"></span><span class="mono tiny">LOADING</span></div>
+            <div class="state-stage">
+              <div style="width:100%;display:flex;flex-direction:column;gap:8px;align-items:center">
+                <div class="sk-box"></div>
+                <div class="sk-line"></div>
+                <div class="sk-line w70"></div>
+                <span class="tiny faint" style="margin-top:4px">正在加载画布与任务状态…</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot"></span>空态<span class="spacer"></span><span class="mono tiny">EMPTY</span></div>
+            <div class="state-stage">
+              <div class="state-stack">
+                <svg width="34" height="34" viewBox="0 0 36 36" fill="none"><rect x="5" y="10" width="26" height="18" rx="3" stroke="#3A404B" stroke-width="1.4" stroke-dasharray="3 3"/><path d="M14 19h8" stroke="#5F6672" stroke-width="1.4" stroke-linecap="round"/></svg>
+                <div class="t">暂无生成记录</div>
+                <div class="d">推送第一条镜头后，生成结果会出现在这里</div>
+                <button class="btn xs" data-page-link="canvas">去画布</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot fail"></span>错误<span class="spacer"></span><span class="mono tiny">ERROR</span></div>
+            <div class="state-stage">
+              <div class="state-stack">
+                <svg width="34" height="34" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="12" stroke="#F2555A" stroke-width="1.4"/><path d="M18 11.5v8M18 23.2v.2" stroke="#F2555A" stroke-width="1.6" stroke-linecap="round"/></svg>
+                <div class="t">加载失败</div>
+                <div class="d">网络请求超时，请检查连接后重试</div>
+                <span class="code">NETWORK_ERROR</span>
+                <button class="btn xs" data-toast="正在重试（演示）">重试</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot fail"></span>余额不足<span class="spacer"></span><span class="mono tiny">402</span></div>
+            <div class="state-stage">
+              <div class="state-stack">
+                <svg width="34" height="34" viewBox="0 0 36 36" fill="none"><rect x="5" y="12" width="26" height="15" rx="3" stroke="#F2555A" stroke-width="1.4"/><path d="M9 12V9.6A2.6 2.6 0 0 1 11.6 7H25" stroke="#F2555A" stroke-width="1.4" stroke-linecap="round"/><path d="M14 19.5h8" stroke="#F2555A" stroke-width="1.4" stroke-linecap="round"/></svg>
+                <div class="t">积分余额不足</div>
+                <div class="d">本任务需 40 积分，当前可用 12 积分</div>
+                <span class="code">402 PAYMENT_REQUIRED</span>
+                <div class="row" style="gap:6px">
+                  <button class="btn xs primary" data-open-pay="100 积分 · ¥9.9">购买积分</button>
+                  <button class="btn xs" data-page-link="billing">查看方案</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot run"></span>额度耗尽<span class="spacer"></span><span class="mono tiny">429 / QUOTA</span></div>
+            <div class="state-stage">
+              <div class="state-stack">
+                <svg width="34" height="34" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="12" stroke="#F0B429" stroke-width="1.4"/><path d="M18 10.5 13 19h5l-1 6.5 6-8.5h-5l0-6.5Z" fill="#F0B429" opacity=".9"/></svg>
+                <div class="t">今日额度已用尽</div>
+                <div class="d">专业版 500 / 日已用完，明日 00:00 重置</div>
+                <span class="code">QUOTA_EXCEEDED</span>
+                <div class="row" style="gap:6px">
+                  <button class="btn xs primary" data-page-link="billing">购买积分包</button>
+                  <button class="btn xs" data-toast="已预约明日额度提醒（演示）">明日提醒我</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="state-card">
+            <div class="sc-head"><span class="dot run"></span>并发排队中<span class="spacer"></span><span class="mono tiny">QUEUED</span></div>
+            <div class="state-stage">
+              <div class="state-stack">
+                <div class="ring" style="width:44px;height:44px;--p:0">
+                  <span style="font-size:10px">#3</span>
+                </div>
+                <div class="t">并发排队中</div>
+                <div class="d">专业版上限 2 并发，前方还有 1 个任务</div>
+                <span class="code">QUEUE_POSITION: 3 · ETA 00:48</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="section-gap">
+          <div class="card">
+            <div class="card-head">
+              <h2>状态触发演示</h2>
+              <span class="sub">点击可在当前页面预览拦截弹窗与提示</span>
+            </div>
+            <div class="card-pad row" style="flex-wrap:wrap;gap:8px">
+              <button class="btn sm" data-toast="402 PAYMENT_REQUIRED · 余额不足，请先充值（演示）">402 余额不足 Toast</button>
+              <button class="btn sm" data-toast="QUOTA_EXCEEDED · 今日额度已用尽（演示）">额度耗尽 Toast</button>
+              <button class="btn sm" data-open-verify>邮箱未验证拦截弹窗</button>
+              <button class="btn sm" data-open-pay="500 积分 · ¥39.9">打开支付二维码弹窗</button>
+              <button class="btn sm" data-toast="并发排队中 · 前方 1 个任务（演示）">并发排队 Toast</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice section-gap" style="margin-top:14px">
+          <span class="ic">i</span>
+          <span>状态优先级：<b>未验证邮箱</b> &gt; <b>账号被禁用</b> &gt; <b>402 余额不足</b> &gt; <b>QUOTA_EXCEEDED</b> &gt; <b>并发排队</b>。同一请求只返回一个主状态，其余作为次要提示。</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 9. 设计说明 ================= -->
+    <section class="page" id="page-notes">
+      <div class="wrap">
+        <div class="page-head">
+          <div>
+            <div class="eyebrow">Design Notes</div>
+            <h1>设计说明</h1>
+            <div class="sub">v1.0 多用户会员制 · 页面地图、状态覆盖与响应式策略</div>
+          </div>
+          <div class="actions"><span class="tag plan">v1.0</span><span class="tag">静态设计稿</span></div>
+        </div>
+
+        <div class="notes-grid">
+          <div class="card">
+            <div class="card-head"><h2>页面地图</h2><span class="sub">共 9 个页面 / 状态域</span></div>
+            <div class="card-pad">
+              <ul class="map-list">
+                <li><span class="no">01</span><span class="mt">认证</span><span class="md">登录 · 注册 · 忘记密码 · 重置密码 · 邮箱验证成功/失败 · 未验证提示</span></li>
+                <li><span class="no">02</span><span class="mt">我的画布</span><span class="md">画布卡片网格 · 新建/复制/重命名/删除 · 筛选 · 空状态</span></li>
+                <li><span class="no">03</span><span class="mt">画布工作台</span><span class="md">顶栏账号区 · 镜头列表 · 节点画布 · 属性面板 · 未验证生成拦截</span></li>
+                <li><span class="no">04</span><span class="mt">我的账户</span><span class="md">资料 · 邮箱状态 · 会员权益 · 积分（可用/冻结）· 今日用量 · 流水 · 订单</span></li>
+                <li><span class="no">05</span><span class="mt">会员与充值</span><span class="md">三档会员 · 积分包 · 支付渠道 · 待支付/成功/失败/关单</span></li>
+                <li><span class="no">06</span><span class="mt">MCP Token</span><span class="md">列表 · 创建弹窗 · 一次性明文 · 吊销确认</span></li>
+                <li><span class="no">07</span><span class="mt">管理后台</span><span class="md">用户 · 档位 · 商品 · 订单 · 审计日志 · Outbox / 死信重投</span></li>
+                <li><span class="no">08</span><span class="mt">通用状态</span><span class="md">加载 · 空态 · 错误 · 402 · QUOTA_EXCEEDED · 并发排队</span></li>
+                <li><span class="no">09</span><span class="mt">设计说明</span><span class="md">本页：地图、状态优先级、令牌与响应式策略</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>状态与交互覆盖</h2><span class="sub">可点击验证</span></div>
+            <div class="card-pad">
+              <p class="notes-p"><b>导航：</b>顶部 9 个页签纯 JS 切换 section；认证页内 3 个页签 + 5 个视图可互相跳转。</p>
+              <p class="notes-p"><b>弹窗：</b>邮箱验证拦截、新建 Token、一次性 Token、吊销确认、重命名、删除确认、支付二维码均可开关，支持 Esc 与遮罩关闭。</p>
+              <p class="notes-p"><b>权限分级：</b>未验证邮箱只能编辑与浏览，所有提交生成入口统一拦截，且不扣积分；管理员入口仅在账号菜单出现。</p>
+              <p class="notes-p"><b>并发与额度：</b>并发超限进入排队（QUEUE_POSITION），额度用完返回 QUOTA_EXCEEDED，积分不足返回 402，三者文案与操作不同。</p>
+              <p class="notes-p"><b>金额格式：</b>统一「¥29.9 / 30 天」「¥99.9 / 30 天」；积分包 ¥9.9 / ¥39.9 / ¥129。</p>
+              <p class="notes-p" style="margin-bottom:0"><b>反馈：</b>操作以 Toast 轻提示为主，不使用弹跳或循环动画；仅骨架屏保留低强度 shimmer，并遵循 prefers-reduced-motion。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="notes-grid section-gap">
+          <div class="card">
+            <div class="card-head"><h2>响应式策略</h2><span class="sub">桌面 / 窄屏两套布局</span></div>
+            <div class="card-pad">
+              <p class="notes-p"><b>断点：</b>768px。顶部「桌面 / 窄屏」按钮通过 <span class="mono">data-device</span> 强制切换，便于在宽屏评审两套布局。</p>
+              <p class="notes-p"><b>桌面：</b>画布工作台为 252 / 1fr / 318 三栏；我的账户为 356 + 1fr 双栏；会员三档并排。</p>
+              <p class="notes-p"><b>窄屏：</b>导航页签换行横向滚动；认证页隐藏品牌插画，仅保留表单；画布改为「横向镜头条 → 画布（限高 430px）→ 属性面板」纵向流；会员、积分包、支付状态、管理后台全部单列。</p>
+              <p class="notes-p" style="margin-bottom:0"><b>数据表：</b>窄屏保留横向滚动，不压缩列宽，避免金额与订单号换行错位。</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>设计令牌</h2><span class="sub">沿用单用户版设计语言</span></div>
+            <div class="card-pad">
+              <div class="swatches">
+                <span class="swatch"><i style="background:#0A0B0D"></i>#0A0B0D</span>
+                <span class="swatch"><i style="background:#111317"></i>#111317</span>
+                <span class="swatch"><i style="background:#171A1F"></i>#171A1F</span>
+                <span class="swatch"><i style="background:#7C6BFF"></i>#7C6BFF</span>
+                <span class="swatch"><i style="background:#46D39A"></i>#46D39A</span>
+                <span class="swatch"><i style="background:#F0B429"></i>#F0B429</span>
+                <span class="swatch"><i style="background:#F2555A"></i>#F2555A</span>
+              </div>
+              <p class="notes-p" style="margin-top:10px"><b>字体：</b>系统无衬线字体栈；数字、ID、Token、金额使用等宽字体，保持纵向对齐。</p>
+              <p class="notes-p"><b>圆角：</b>卡片 14px、按钮 8px、弹窗 16px、胶囊 999px。间距以 4px 为基数，卡片内边距 12–18px。</p>
+              <p class="notes-p" style="margin-bottom:0"><b>状态色：</b>成功绿、进行中黄、失败红、信息蓝、主色紫；同一状态在胶囊、时间线、卡片中保持一致。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice section-gap" style="margin-top:14px">
+          <span class="ic">i</span>
+          <span>本文件为自包含静态设计稿，不引用外部图片、字体或组件库；所有图形由 CSS / SVG 绘制，可离线打开。金额、积分与并发数值与会员档位配置一致。</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 弹窗 ================= -->
+
+    <!-- 邮箱验证拦截 -->
+    <div class="modal" id="modalVerify">
+      <div class="dialog sm">
+        <div class="dialog-head">
+          <div>
+            <h3>验证邮箱以继续生成</h3>
+            <div class="sub">未验证账号无法提交生成任务，也不会扣减积分</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="notice warn" style="margin-bottom:14px">
+            <span class="ic">!</span>
+            <span>当前邮箱 <b>lin@studio.com</b> 尚未验证。验证完成后立即恢复生成能力。</span>
+          </div>
+          <div class="kv" style="grid-template-columns:88px 1fr;margin-bottom:14px">
+            <span class="k">每日额度</span><span class="v">500 积分 / 日（专业版）</span>
+            <span class="k">并发上限</span><span class="v">2 个任务</span>
+            <span class="k">被拦截请求</span><span class="v" style="color:#F0B429">不计费、不扣积分</span>
+          </div>
+          <div class="field" style="margin-bottom:4px">
+            <label>验证邮件接收地址</label>
+            <input class="input" value="lin@studio.com" readonly />
+          </div>
+          <div class="tiny faint">验证链接 24 小时内有效；若未收到请检查垃圾邮件。</div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">EMAIL_NOT_VERIFIED</span>
+          <button class="btn" data-close>稍后</button>
+          <button class="btn primary" data-toast="验证邮件已发送，请查收（演示）" data-close>发送验证邮件</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建 Token -->
+    <div class="modal" id="modalTokenCreate">
+      <div class="dialog">
+        <div class="dialog-head">
+          <div>
+            <h3>新建 MCP Token</h3>
+            <div class="sub">创建后仅展示一次明文，请立即保存</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="field">
+            <label>Token 名称 <em>*</em><span class="hint">用于识别调用来源</span></label>
+            <input class="input" id="tokenName" placeholder="例如：本地开发 · Claude Code" />
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label>权限范围</label>
+              <select class="select">
+                <option>读写画布 / 推送镜头</option>
+                <option>只读画布状态</option>
+                <option>全部工具（不推荐）</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>有效期</label>
+              <select class="select">
+                <option>90 天</option>
+                <option>30 天</option>
+                <option>永不过期（不推荐）</option>
+              </select>
+            </div>
+          </div>
+          <div class="notice">
+            <span class="ic">i</span>
+            <span>Token 与账号权限等价。建议按用途单独创建，并在停用时立即吊销。</span>
+          </div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">最多可同时存在 10 个有效 Token</span>
+          <button class="btn" data-close>取消</button>
+          <button class="btn primary" id="createTokenBtn">创建 Token</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 一次性明文 Token -->
+    <div class="modal" id="modalTokenOnce">
+      <div class="dialog">
+        <div class="dialog-head">
+          <div>
+            <h3>Token 已创建</h3>
+            <div class="sub" id="tokenOnceName">本地开发 · Claude Code</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="notice danger">
+            <span class="ic">!</span>
+            <span><b>这是唯一一次展示明文。</b>关闭后服务端只保留哈希，无法再次查看；丢失需吊销后重建。</span>
+          </div>
+          <div class="label">明文 Token</div>
+          <div class="token-box">
+            <span id="newTokenValue">mcp_sk_live_9f2c4b7e1a8d0c3f6b2e5a9d</span>
+            <button class="btn xs" id="copyNewToken" style="margin-left:auto">复制</button>
+          </div>
+          <label class="tiny muted row" style="gap:6px;margin-top:12px;align-items:flex-start">
+            <input type="checkbox" checked style="margin-top:2px" /> <span>我已将 Token 保存到安全位置，并了解关闭后不可恢复</span>
+          </label>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">Expires in 90 days</span>
+          <button class="btn primary" data-close>我已保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 吊销确认 -->
+    <div class="modal" id="modalRevoke">
+      <div class="dialog sm">
+        <div class="dialog-head">
+          <div>
+            <h3>吊销 Token</h3>
+            <div class="sub" id="revokeTokenName">本地开发 · Claude Code</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="notice danger">
+            <span class="ic">!</span>
+            <span>吊销后使用该 Token 的所有调用将立即失败，且<b>不可恢复</b>。已提交的生成任务不受影响。</span>
+          </div>
+          <div class="tiny faint">建议先替换客户端配置，再吊销旧 Token，避免接入中断。</div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">此操作会写入审计日志</span>
+          <button class="btn" data-close>取消</button>
+          <button class="btn danger" data-toast="Token 已吊销（演示）" data-close>确认吊销</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 重命名画布 -->
+    <div class="modal" id="modalRename">
+      <div class="dialog sm">
+        <div class="dialog-head">
+          <div>
+            <h3>重命名画布</h3>
+            <div class="sub">名称仅自己可见，最多 40 个字符</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="field" style="margin-bottom:4px">
+            <label>画布名称</label>
+            <input class="input" value="品牌片 · 雨夜霓虹" />
+          </div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">10 / 40</span>
+          <button class="btn" data-close>取消</button>
+          <button class="btn primary" data-toast="画布已重命名（演示）" data-close>保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除画布 -->
+    <div class="modal" id="modalDelete">
+      <div class="dialog sm">
+        <div class="dialog-head">
+          <div>
+            <h3>删除画布</h3>
+            <div class="sub">品牌片 · 雨夜霓虹</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div class="notice danger" style="margin-bottom:4px">
+            <span class="ic">!</span>
+            <span>将删除画布内 <b>12 个镜头、28 张图片</b>，进行中的 3 个任务会被取消。删除后 30 天内可在回收站恢复。</span>
+          </div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">此操作会写入审计日志</span>
+          <button class="btn" data-close>取消</button>
+          <button class="btn danger" data-toast="画布已移入回收站（演示）" data-close>确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 支付二维码 -->
+    <div class="modal" id="modalPay">
+      <div class="dialog sm">
+        <div class="dialog-head">
+          <div>
+            <h3>扫码支付</h3>
+            <div class="sub">Mock 渠道将直接模拟支付成功</div>
+          </div>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:4px 0 12px">
+            <div class="qr" style="width:132px;height:132px"></div>
+            <div class="pay-amount" id="payAmount">¥39.9</div>
+            <div class="pay-desc" id="payProduct">积分包 · 500 积分</div>
+            <div class="pay-status"><span class="dot run"></span>剩余 14:58 自动关单</div>
+          </div>
+          <div class="channel-row" style="justify-content:center">
+            <button class="channel active" style="height:38px"><span class="cico">M</span>Mock</button>
+            <button class="channel" style="height:38px"><span class="cico" style="color:#46D39A">微</span>微信</button>
+            <button class="channel" style="height:38px"><span class="cico" style="color:#6EA8FE">支</span>支付宝</button>
+          </div>
+        </div>
+        <div class="dialog-foot">
+          <span class="tip">订单 #2931 · 待支付</span>
+          <button class="btn" data-close>取消</button>
+          <button class="btn primary" data-toast="支付成功，积分已到账（演示）" data-close>我已完成支付</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  (function () {
+    var $ = function (sel, root) { return (root || document).querySelector(sel); };
+    var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+    /* ---------- Toast ---------- */
+    var toastTimer;
+    function toast(msg) {
+      var el = $('#toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+    }
+
+    /* ---------- 页面切换 ---------- */
+    var navTabs = $$('#navTabs .nav-tab');
+    function goPage(name) {
+      $$('.page').forEach(function (p) { p.classList.toggle('active', p.id === 'page-' + name); });
+      navTabs.forEach(function (b) { b.classList.toggle('active', b.dataset.page === name); });
+      window.scrollTo(0, 0);
+    }
+    navTabs.forEach(function (b) {
+      b.addEventListener('click', function () { goPage(b.dataset.page); });
+    });
+
+    /* ---------- 认证视图 ---------- */
+    var AUTH_META = {
+      login: ['登录 AIGC Studio', '使用邮箱与密码进入你的创作台'],
+      register: ['创建账号', '注册即获免费版每日 50 积分'],
+      forgot: ['忘记密码', '输入注册邮箱，接收重置链接'],
+      reset: ['设置新密码', '重置链接 30 分钟内有效'],
+      'verify-ok': ['邮箱验证成功', '账号已激活，生成能力已恢复'],
+      'verify-fail': ['邮箱验证失败', '验证链接已失效，请重新发送']
+    };
+    function setAuth(view) {
+      $$('.auth-view').forEach(function (v) { v.classList.toggle('active', v.dataset.authView === view); });
+      $$('#authTabs button').forEach(function (b) { b.classList.toggle('active', b.dataset.auth === view); });
+      var meta = AUTH_META[view];
+      if (meta) {
+        $('#authTitle').textContent = meta[0];
+        $('#authSub').textContent = meta[1];
+      }
+    }
+    $$('#authTabs button').forEach(function (b) {
+      b.addEventListener('click', function () { setAuth(b.dataset.auth); });
+    });
+    $$('[data-auth-link]').forEach(function (b) {
+      b.addEventListener('click', function () { setAuth(b.dataset.authLink); });
+    });
+
+    /* ---------- 设备切换 ---------- */
+    $$('#deviceToggle button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $$('#deviceToggle button').forEach(function (x) { x.classList.toggle('active', x === b); });
+        document.documentElement.setAttribute('data-device', b.dataset.device);
+        toast(b.dataset.device === 'narrow' ? '已切换为窄屏布局（≤768px）' : '已切换为桌面布局');
+      });
+    });
+
+    /* ---------- 弹窗 ---------- */
+    function openModal(id) {
+      var m = $('#' + id);
+      if (m) { m.classList.add('show'); }
+    }
+    $$('.modal').forEach(function (m) {
+      m.addEventListener('click', function (e) { if (e.target === m) { m.classList.remove('show'); } });
+    });
+    $$('[data-close]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var m = b.closest('.modal');
+        if (m) { m.classList.remove('show'); }
+      });
+    });
+    ddCloseOnEsc();
+    function ddCloseOnEsc() {
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          $$('.modal.show').forEach(function (m) { m.classList.remove('show'); });
+        }
+      });
+    }
+
+    $$('[data-open-verify]').forEach(function (b) {
+      b.addEventListener('click', function () { openModal('modalVerify'); });
+    });
+    $$('[data-open-token-create]').forEach(function (b) {
+      b.addEventListener('click', function () { openModal('modalTokenCreate'); });
+    });
+    $$('[data-open-rename]').forEach(function (b) {
+      b.addEventListener('click', function () { openModal('modalRename'); });
+    });
+    $$('[data-open-delete]').forEach(function (b) {
+      b.addEventListener('click', function () { openModal('modalDelete'); });
+    });
+    $$('[data-open-revoke]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $('#revokeTokenName').textContent = 'Token：' + b.dataset.openRevoke;
+        openModal('modalRevoke');
+      });
+    });
+    $$('[data-open-pay]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var parts = (b.dataset.openPay || '').split(' · ');
+        var name = parts[0] || '积分包';
+        $('#payProduct').textContent = (name.indexOf('积分') > -1 ? '积分包 · ' : '') + name;
+        $('#payAmount').textContent = parts[1] || '¥39.9';
+        openModal('modalPay');
+      });
+    });
+
+    /* ---------- 一次性 Token ---------- */
+    function randomHex(len) {
+      var chars = '0123456789abcdef';
+      var out = '';
+      var arr = new Uint8Array(len);
+      if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(arr);
+        for (var i = 0; i < len; i++) { out += chars[arr[i] % 16]; }
+      } else {
+        for (var j = 0; j < len; j++) { out += chars[Math.floor(Math.random() * 16)]; }
+      }
+      return out;
+    }
+    $('#createTokenBtn').addEventListener('click', function () {
+      var name = $('#tokenName').value.trim() || '未命名 Token';
+      $('#tokenOnceName').textContent = name;
+      $('#newTokenValue').textContent = 'mcp_sk_live_' + randomHex(24);
+      $('#modalTokenCreate').classList.remove('show');
+      openModal('modalTokenOnce');
+    });
+    $('#copyNewToken').addEventListener('click', function () {
+      var text = $('#newTokenValue').textContent;
+      var done = function () { toast('Token 已复制，请妥善保存'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { selectToken(); });
+      } else {
+        selectToken();
+      }
+      function selectToken() {
+        var range = document.createRange();
+        range.selectNodeContents($('#newTokenValue'));
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        toast('已选中 Token，请按 Ctrl / ⌘ + C 复制');
+      }
+    });
+
+    /* ---------- 管理后台页签 ---------- */
+    $$('#adminTabs button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $$('#adminTabs button').forEach(function (x) { x.classList.toggle('active', x === b); });
+        $$('.admin-section').forEach(function (s) {
+          s.classList.toggle('active', s.dataset.adminSection === b.dataset.admin);
+        });
+      });
+    });
+
+    /* ---------- 画布筛选 ---------- */
+    $$('[data-ws-filter]').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        $$('[data-ws-filter]').forEach(function (c) { c.classList.toggle('active', c === chip); });
+        var f = chip.dataset.wsFilter;
+        $$('.ws-card').forEach(function (card) {
+          card.style.display = (f === 'all' || card.dataset.wsStatus === f) ? '' : 'none';
+        });
+      });
+    });
+
+    /* ---------- 画布镜头选择 ---------- */
+    $$('.shot-item').forEach(function (item) {
+      item.addEventListener('click', function () {
+        $$('.shot-item').forEach(function (x) { x.classList.toggle('active', x === item); });
+        var id = item.dataset.target;
+        var node = $('.node[data-id="' + id + '"]');
+        if (node) {
+          $$('.node').forEach(function (n) { n.classList.remove('selected'); });
+          node.classList.add('selected');
+        }
+        var title = item.querySelector('.si-title');
+        var no = item.querySelector('.shot-no');
+        if (title) { $('#inspTitle').textContent = (no ? no.textContent + ' ' : '') + title.textContent; }
+      });
+    });
+
+    /* ---------- 通用 data 行为 ---------- */
+    $$('[data-page-link]').forEach(function (b) {
+      b.addEventListener('click', function () { goPage(b.dataset.pageLink); });
+    });
+    $$('[data-toast]').forEach(function (b) {
+      b.addEventListener('click', function () { toast(b.dataset.toast); });
+    });
+
+    $('.account-chip').addEventListener('click', function () {
+      goPage('account');
+      toast('已进入我的账户');
+    });
+  })();
+</script>
+</body>
+</html>

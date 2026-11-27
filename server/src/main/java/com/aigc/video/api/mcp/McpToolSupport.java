@@ -1,18 +1,22 @@
 package com.aigc.video.api.mcp;
 
 import com.aigc.video.common.BadRequestException;
+import com.aigc.video.workspace.WorkspaceAccess;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 
 /** MCP 工具共用的入参校验与序列化辅助 */
-final class McpToolSupport {
+@Service
+@RequiredArgsConstructor
+class McpToolSupport {
 
-    private McpToolSupport() {
-    }
+    private final WorkspaceAccess workspaceAccess;
 
-    /** 未指定画布时使用默认画布 1，与前端和 CLI 保持一致 */
-    static long workspace(Long workspaceId) {
-        return workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
+    /** 未指定画布时使用当前用户的第一个画布。 */
+    long workspace(Long workspaceId) {
+        return workspaceAccess.resolveOrDefault(workspaceId);
     }
 
     static String requireText(String value, String message) {

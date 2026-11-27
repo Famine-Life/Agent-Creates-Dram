@@ -65,6 +65,25 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- 邮箱验证与找回密码；未配置 SMTP 时使用 log 模式 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <!-- 可选 RabbitMQ：aigc.mq.type=rabbitmq 时启用 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <!-- 数据库版本迁移：H2 / MySQL 分开维护脚本 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
 
         <!-- MCP Server：给 WorkBuddy / Trae 这类支持 MCP 的客户端直接调用 -->
         <dependency>

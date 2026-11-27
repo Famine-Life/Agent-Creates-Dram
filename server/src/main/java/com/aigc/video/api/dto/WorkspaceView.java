@@ -13,6 +13,8 @@ public record WorkspaceView(
         /** 快照版本号，用于保存时的乐观锁校验 */
         Integer version,
         /** 快照最后更新时间 */
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        /** 所属项目 ID */
+        Long projectId
 ) {
 }

@@ -14,7 +14,11 @@ public enum TaskStatus {
     SUCCEEDED,
     FAILED,
     TIMEOUT,
-    CANCELED;
+    CANCELED,
+    /** 积分不足，未提交供应商 */
+    INSUFFICIENT_BALANCE,
+    /** 当日额度耗尽，未提交供应商 */
+    QUOTA_EXCEEDED;
 
     /** 未结束，可取消 */
     public boolean isActive() {

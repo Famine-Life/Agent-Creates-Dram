@@ -62,6 +62,8 @@ public class CanvasNodeService {
     private final ObjectMapper objectMapper;
     private final ProviderErrorHintResolver providerErrorHintResolver;
     private final AssetService assetService;
+    private final com.aigc.video.workspace.WorkspaceAccess workspaceAccess;
+    private final com.aigc.video.billing.BillingService billingService;
 
     private final ExecutorService executor;
 
@@ -71,6 +73,8 @@ public class CanvasNodeService {
                              ModelCatalog modelCatalog, ObjectMapper objectMapper,
                              ProviderErrorHintResolver providerErrorHintResolver,
                              AssetService assetService,
+                             com.aigc.video.workspace.WorkspaceAccess workspaceAccess,
+                             com.aigc.video.billing.BillingService billingService,
                              @Value("${aigc.dispatch.image-worker-threads:2}") int workerThreads,
                              @Value("${aigc.dispatch.image-queue-capacity:100}") int queueCapacity) {
         this.nodeMapper = nodeMapper;
@@ -83,6 +87,8 @@ public class CanvasNodeService {
         this.objectMapper = objectMapper;
         this.providerErrorHintResolver = providerErrorHintResolver;
         this.assetService = assetService;
+        this.workspaceAccess = workspaceAccess;
+        this.billingService = billingService;
         int threads = Math.max(1, workerThreads);
         this.executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(Math.max(1, queueCapacity)), runnable -> {
@@ -115,6 +121,7 @@ public class CanvasNodeService {
         requireCanvasId(workspaceId);
         LocalDateTime now = LocalDateTime.now();
         CanvasNode node = new CanvasNode();
+        node.setUserId(com.aigc.video.user.UserContext.currentUserId());
         node.setWorkspaceId(workspaceId);
         node.setNodeType(type);
         node.setTitle(defaultTitle(type, request.title()));
@@ -137,6 +144,7 @@ public class CanvasNodeService {
     @Transactional
     public CanvasNodeView updateNode(Long workspaceId, Long nodeId, CanvasNodeRequest request) {
         CanvasNode node = requireNode(workspaceId, nodeId);
+        workspaceAccess.requireOwned(workspaceId);
         LambdaUpdateWrapper<CanvasNode> update = Wrappers.<CanvasNode>lambdaUpdate()
                 .eq(CanvasNode::getId, node.getId());
         if (request.title() != null) {
@@ -170,6 +178,7 @@ public class CanvasNodeService {
 
     @Transactional
     public void deleteNode(Long workspaceId, Long nodeId) {
+        workspaceAccess.requireOwned(workspaceId);
         CanvasNode node = requireNode(workspaceId, nodeId);
         nodeMapper.deleteById(node.getId());
         socketRegistry.broadcast(workspaceId,
@@ -178,6 +187,7 @@ public class CanvasNodeService {
 
     /** 让 AI 根据剧情描述生成分镜脚本，结果以 JSON 数组写入 content */
     public CanvasNodeView generateScript(Long workspaceId, Long nodeId, String prompt, String model) {
+        workspaceAccess.requireOwned(workspaceId);
         CanvasNode node = requireNode(workspaceId, nodeId);
         String text = prompt == null || prompt.isBlank() ? node.getPrompt() : prompt.trim();
         if (text == null || text.isBlank()) {
@@ -185,6 +195,11 @@ public class CanvasNodeService {
         }
         // 先解析模型，非法模型直接返回 400，不进入异步线程
         ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.TEXT, model);
+        Long userId = node.getUserId() == null
+                ? com.aigc.video.user.UserContext.requireUserId() : node.getUserId();
+        String operationId = billingService.newOperationId(nodeId);
+        int cost = billingService.textCost();
+        billingService.reserve(userId, resolved.key(), cost, operationId);
         updateGenerationState(nodeId, STATUS_RUNNING, text, null, null);
         broadcastNode(workspaceId, nodeId);
 
@@ -197,9 +212,11 @@ public class CanvasNodeService {
                         .eq(CanvasNode::getId, nodeId)
                         .set(CanvasNode::getTitle, result.title())
                         .set(CanvasNode::getUpdatedAt, LocalDateTime.now()));
+                billingService.settleSuccess(userId, operationId, cost);
                 log.info("[AI] 分镜脚本生成完成 nodeId={} shots={}", nodeId, result.shots().size());
             } catch (Exception e) {
                 log.warn("[AI] 分镜脚本生成失败 nodeId={}：{}", nodeId, e.getMessage());
+                billingService.settleFailure(userId, operationId, "脚本生成失败，退回预留积分");
                 updateGenerationState(nodeId, STATUS_FAILED, text, null,
                         shorten(providerErrorHintResolver.resolve(resolved.providerKey(), rootMessage(e))));
             }
@@ -217,6 +234,7 @@ public class CanvasNodeService {
         long count = imageMapper.selectCount(Wrappers.<CanvasImage>lambdaQuery()
                 .eq(CanvasImage::getWorkspaceId, workspaceId));
         CanvasImage image = new CanvasImage();
+        image.setUserId(com.aigc.video.user.UserContext.currentUserId());
         image.setWorkspaceId(workspaceId);
         image.setCanvasId(canvasId);
         image.setName("AI 图片 " + (count + 1));
@@ -240,6 +258,7 @@ public class CanvasNodeService {
     /** 触发 AI 图片生成，立即返回 RUNNING 状态，完成后通过 WebSocket 推送结果 */
     public ImageNode generateImage(Long workspaceId, Long imageId, String prompt, String model,
                                    List<String> referenceUrls, String ratio, String resolution, Integer count) {
+        workspaceAccess.requireOwned(workspaceId);
         CanvasImage image = requireImage(workspaceId, imageId);
         String text = prompt == null || prompt.isBlank() ? image.getPrompt() : prompt.trim();
         if (text == null || text.isBlank()) {
@@ -255,6 +274,12 @@ public class CanvasNodeService {
         ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
         int quantity = count == null ? 1 : Math.max(1, Math.min(9, count));
         String size = imageSize(ratio, resolution);
+        Long userId = image.getUserId() == null
+                ? com.aigc.video.user.UserContext.requireUserId() : image.getUserId();
+        String operationId = billingService.newOperationId(imageId);
+        int cost = billingService.imageCost(resolved.key(), quantity);
+        billingService.reserve(userId, resolved.key(), cost, operationId);
+        int[] succeeded = {0};
         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                 .eq(CanvasImage::getId, imageId)
                 .set(CanvasImage::getPrompt, text)
@@ -272,7 +297,7 @@ public class CanvasNodeService {
             broadcastImage(workspaceId, imageId);
             for (int index = 0; index < quantity; index++) {
                 try {
-                    String url = aiService.generateImage(aiPrompt, resolved.key(), references, size);
+                    String url = aiService.generateImage(userId, aiPrompt, resolved.key(), references, size);
                     if (index == 0) {
                         imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                                 .eq(CanvasImage::getId, imageId)
@@ -283,6 +308,7 @@ public class CanvasNodeService {
                     } else {
                         createExtraImage(workspaceId, image, text, url, resolved.providerKey(), index);
                     }
+                    succeeded[0]++;
                     log.info("[AI] 图片生成完成 imageId={} index={} url={}", imageId, index + 1, url);
                 } catch (Exception e) {
                     log.warn("[AI] 图片生成失败 imageId={} index={}：{}", imageId, index + 1, e.getMessage());
@@ -293,12 +319,19 @@ public class CanvasNodeService {
                                 .set(CanvasImage::getErrorMsg,
                                         shorten(providerErrorHintResolver.resolve(resolved.providerKey(), rootMessage(e)))));
                         broadcastImage(workspaceId, imageId);
+                        billingService.settleFailure(userId, operationId, "图片生成失败，退回预留积分");
                         return;
                     }
                 }
             }
+            if (succeeded[0] > 0) {
+                billingService.settleSuccess(userId, operationId, cost);
+            } else {
+                billingService.settleFailure(userId, operationId, "图片生成失败，退回预留积分");
+            }
             }, executor);
         } catch (RejectedExecutionException e) {
+            billingService.settleFailure(userId, operationId, "图片生成队列已满，退回预留积分");
             imageMapper.update(null, Wrappers.<CanvasImage>lambdaUpdate()
                     .eq(CanvasImage::getId, imageId)
                     .set(CanvasImage::getStatus, STATUS_FAILED)
@@ -314,6 +347,7 @@ public class CanvasNodeService {
     private void createExtraImage(Long workspaceId, CanvasImage origin, String prompt, String url,
                                   String provider, int index) {
         CanvasImage extra = new CanvasImage();
+        extra.setUserId(origin.getUserId());
         extra.setWorkspaceId(workspaceId);
         extra.setCanvasId(origin.getCanvasId());
         extra.setName((origin.getName() == null ? "AI 图片" : origin.getName()) + " " + (index + 1));
@@ -422,6 +456,10 @@ public class CanvasNodeService {
         if (node == null || !Objects.equals(node.getWorkspaceId(), workspaceId)) {
             throw new NotFoundException("节点不存在：" + nodeId);
         }
+        Long current = com.aigc.video.user.UserContext.currentUserId();
+        if (current != null && !Objects.equals(current, node.getUserId())) {
+            throw new NotFoundException("节点不存在：" + nodeId);
+        }
         return node;
     }
 
@@ -430,20 +468,23 @@ public class CanvasNodeService {
         if (image == null || !Objects.equals(image.getWorkspaceId(), workspaceId)) {
             throw new NotFoundException("图片不存在：" + imageId);
         }
+        Long current = com.aigc.video.user.UserContext.currentUserId();
+        if (current != null && !Objects.equals(current, image.getUserId())) {
+            throw new NotFoundException("图片不存在：" + imageId);
+        }
         return image;
     }
 
     private Long requireCanvasId(Long workspaceId) {
+        com.aigc.video.domain.Workspace workspace = workspaceAccess.requireOwned(workspaceId);
         Canvas canvas = canvasMapper.selectOne(Wrappers.<Canvas>lambdaQuery()
                 .eq(Canvas::getWorkspaceId, workspaceId)
                 .last("LIMIT 1"));
         if (canvas != null) {
             return canvas.getId();
         }
-        if (workspaceMapper.selectById(workspaceId) == null) {
-            throw new NotFoundException("画布不存在：" + workspaceId);
-        }
         Canvas created = new Canvas();
+        created.setUserId(workspace.getUserId());
         created.setWorkspaceId(workspaceId);
         created.setVersion(0);
         created.setUpdatedAt(LocalDateTime.now());

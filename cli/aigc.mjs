@@ -3,7 +3,7 @@
  * AIGC 画布工作台命令行客户端。
  *
  * 通过现有的 REST 接口工作：首次 `login` 后把 Cookie 与 CSRF Token 保存在
- * ~/.aigc-cli/session.json，后续命令直接复用登录态。
+ * ~/.aigc-cli/session.json（按服务地址 + 用户名保存多个账号），后续命令直接复用登录态。
  *
  * 依赖 Node.js 16+，无需安装任何 npm 包。
  */
@@ -26,6 +26,8 @@ const HELP = `AIGC 画布工作台 CLI
   logout      退出登录并清除本地会话
   canvas      查看画布统计与镜头列表    [--workspace 1] [--json]
   workspaces  列出画布                 [--json]
+  account     查看当前账号、会员与积分 [--json]
+              （任意命令可加 --username <用户名> 切换已登录账号）
   new-workspace 新建空白画布           [--json]
   rename-workspace 重命名画布           --id <画布ID> --name <名称> [--json]
   copy-workspace 复制画布               --id <画布ID> [--json]
@@ -82,15 +84,48 @@ const session = loadSession()
 
 // ---------------------------------------------------------------- 会话与 HTTP
 
+function accountKey(base, username) {
+  return `${String(base || DEFAULT_BASE).replace(/\/+$/, '')}|${String(username || '').toLowerCase()}`
+}
+
 function loadSession() {
+  let raw = null
   try {
-    return JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'))
+    raw = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'))
   } catch {
-    return { cookie: {} }
+    raw = null
   }
+  if (!raw) return { cookie: {}, accounts: {} }
+  if (raw.accounts) return raw
+  // 兼容旧的单账号 session.json
+  const migrated = {
+    cookie: raw.cookie || {},
+    baseUrl: raw.baseUrl,
+    username: raw.username,
+    csrf: raw.csrf,
+    accounts: {}
+  }
+  if (raw.username && raw.baseUrl) {
+    migrated.accounts[accountKey(raw.baseUrl, raw.username)] = {
+      baseUrl: raw.baseUrl,
+      username: raw.username,
+      cookie: raw.cookie || {},
+      csrf: raw.csrf
+    }
+  }
+  return migrated
 }
 
 function saveSession() {
+  if (session.username && session.baseUrl) {
+    session.accounts = session.accounts || {}
+    session.accounts[accountKey(session.baseUrl, session.username)] = {
+      baseUrl: session.baseUrl,
+      username: session.username,
+      cookie: session.cookie || {},
+      csrf: session.csrf
+    }
+  }
   fs.mkdirSync(path.dirname(SESSION_FILE), { recursive: true })
   fs.writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2))
   try {
@@ -98,6 +133,41 @@ function saveSession() {
   } catch {
     /* Windows 上忽略 */
   }
+}
+
+/** 通过 --username 切换已保存的账号会话 */
+function activateAccount(username) {
+  const target = String(username).toLowerCase()
+  const entries = Object.values(session.accounts || {})
+  const currentBase = session.baseUrl ? String(session.baseUrl).replace(/\/+$/, '') : ''
+  const match =
+    entries.find(
+      (item) =>
+        String(item.username || '').toLowerCase() === target &&
+        (!currentBase || String(item.baseUrl || '').replace(/\/+$/, '') === currentBase)
+    ) || entries.find((item) => String(item.username || '').toLowerCase() === target)
+  if (!match) {
+    fail(`未找到账号 ${username} 的本地会话，请先执行 login --username ${username}`)
+  }
+  session.baseUrl = match.baseUrl
+  session.username = match.username
+  session.cookie = match.cookie || {}
+  session.csrf = match.csrf
+  saveSession()
+}
+
+/** 未指定 --workspace 时使用当前账号的第一个画布 */
+async function workspaceIdOf(opts) {
+  if (opts.workspace !== undefined && opts.workspace !== true) {
+    const id = Number(opts.workspace)
+    if (!Number.isSafeInteger(id) || id <= 0) fail('--workspace 必须是正整数画布ID')
+    return id
+  }
+  const list = await api('GET', '/api/workspaces')
+  if (!Array.isArray(list) || !list.length) {
+    fail('当前账号还没有画布，请先执行 new-workspace')
+  }
+  return Number(list[0].id)
 }
 
 function baseUrl() {
@@ -205,6 +275,10 @@ async function api(method, pathname, options = {}) {
   }
   const res = await request(method, pathname, { body, headers })
   if (res.status === 401) fail('登录已失效，请重新执行：node cli/aigc.mjs login')
+  if (res.status === 402) {
+    const data = parseJson(res.text) || {}
+    fail(`${data.errorCode || 'PAYMENT_REQUIRED'}：${data.message || trim(res.text)}`)
+  }
   if (res.status === 403) fail(`请求被拒绝（HTTP 403），可能是 CSRF 校验失败：${trim(res.text)}`)
   if (res.status >= 400) fail(`请求失败（HTTP ${res.status}）：${trim(res.text)}`)
   return parseJson(res.text)
@@ -251,6 +325,9 @@ async function logout() {
     }
   }
   const base = session.baseUrl
+  if (session.accounts && session.username) {
+    delete session.accounts[accountKey(base, session.username)]
+  }
   session.cookie = {}
   session.username = null
   session.csrf = null
@@ -260,7 +337,7 @@ async function logout() {
 }
 
 async function canvas(opts) {
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const data = await api('GET', `/api/canvas/${workspaceId}`)
   if (opts.json) return printJson(data)
 
@@ -284,7 +361,7 @@ async function canvas(opts) {
 }
 
 async function assets(opts) {
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const data = await api('GET', `/api/canvas/${workspaceId}`)
   const tasks = data.tasks || []
   const images = data.images || []
@@ -453,7 +530,7 @@ async function setImageModel(opts) {
   if (!opts.id) fail('请提供 --id 图片ID')
   if (!opts.model) fail('请提供 --model 平台/模型ID')
   const imageId = Number(opts.id)
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   if (!Number.isInteger(imageId) || imageId <= 0) fail('--id 必须是正整数图片ID')
   if (!Number.isInteger(workspaceId) || workspaceId <= 0) fail('--workspace 必须是正整数画布ID')
 
@@ -489,7 +566,7 @@ async function setImageModel(opts) {
 }
 
 async function promptRecords(opts) {
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const list = await api('GET', `/api/canvas/${workspaceId}/prompt-records`)
   if (opts.json) return printJson(list)
   for (const item of list || []) console.log(JSON.stringify(item))
@@ -497,7 +574,7 @@ async function promptRecords(opts) {
 
 async function optimizePrompt(opts) {
   if (!opts.prompt) fail('请提供 --prompt 提示词')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const result = await api('POST', `/api/canvas/${workspaceId}/ai/prompt/optimize`, {
     body: { prompt: String(opts.prompt), model: opts.model ? String(opts.model) : undefined }
   })
@@ -516,7 +593,7 @@ async function readJsonFile(file, label) {
 
 async function saveSnapshot(opts) {
   const snapshot = await readJsonFile(opts.file, 'snapshot.json')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const body = { snapshot, baseVersion: optionalNumber(opts, 'version') }
   const result = await api('PUT', `/api/canvas/${workspaceId}/snapshot`, { body })
   if (opts.json) return printJson(result)
@@ -526,14 +603,14 @@ async function saveSnapshot(opts) {
 async function saveOrder(opts) {
   const items = await readJsonFile(opts.file, 'items.json')
   if (!Array.isArray(items)) fail('顺序文件必须是数组，字段为 taskId、groupId、shotIndex')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const result = await api('PUT', `/api/canvas/${workspaceId}/order`, { body: { items } })
   if (opts.json) return printJson(result)
   console.log(`已保存 ${items.length} 个镜头的顺序`)
 }
 
 async function createImage(opts) {
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const body = {
     name: opts.name ? String(opts.name) : undefined,
     url: opts.url ? String(opts.url) : undefined,
@@ -547,7 +624,7 @@ async function createImage(opts) {
 }
 
 async function createAiImage(opts) {
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const image = await api('POST', `/api/canvas/${workspaceId}/images/ai`, {
     body: { prompt: opts.prompt ? String(opts.prompt) : undefined, x: optionalNumber(opts, 'x'), y: optionalNumber(opts, 'y') }
   })
@@ -557,7 +634,7 @@ async function createAiImage(opts) {
 
 async function generateImage(opts) {
   if (!opts.id) fail('请提供 --id 图片ID')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const body = {
     prompt: opts.prompt ? String(opts.prompt) : undefined,
     model: opts.model ? String(opts.model) : undefined,
@@ -577,7 +654,7 @@ async function editImage(opts) {
   for (const key of ['name', 'url', 'prompt']) if (opts[key] != null) body[key] = String(opts[key])
   for (const key of ['x', 'y', 'width', 'height']) if (opts[key] != null) body[key] = optionalNumber(opts, key)
   if (!Object.keys(body).length) fail('请至少提供要更新的图片字段')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const image = await api('PUT', `/api/canvas/${workspaceId}/images/${Number(opts.id)}`, { body })
   if (opts.json) return printJson(image)
   console.log(`已更新图片节点 #${image.id}`)
@@ -585,7 +662,7 @@ async function editImage(opts) {
 
 async function createNode(opts) {
   if (!['text', 'script'].includes(opts.type)) fail('--type 仅支持 text / script')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const body = {
     type: String(opts.type), title: opts.title ? String(opts.title) : undefined,
     prompt: opts.prompt ? String(opts.prompt) : undefined, content: opts.content ? String(opts.content) : undefined,
@@ -603,7 +680,7 @@ async function editNode(opts) {
   for (const key of ['type', 'title', 'prompt', 'content']) if (opts[key] != null) body[key] = String(opts[key])
   for (const key of ['x', 'y', 'width', 'height']) if (opts[key] != null) body[key] = optionalNumber(opts, key)
   if (!Object.keys(body).length) fail('请至少提供要更新的节点字段')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const node = await api('PUT', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}`, { body })
   if (opts.json) return printJson(node)
   console.log(`已更新节点 #${node.id}`)
@@ -611,7 +688,7 @@ async function editNode(opts) {
 
 async function removeNode(opts) {
   if (!opts.id) fail('请提供 --id 节点ID')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const result = await api('DELETE', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}`)
   if (opts.json) return printJson(result)
   console.log(`已删除节点 #${opts.id}`)
@@ -619,7 +696,7 @@ async function removeNode(opts) {
 
 async function generateScript(opts) {
   if (!opts.id) fail('请提供 --id 节点ID')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const body = { prompt: opts.prompt ? String(opts.prompt) : undefined, model: opts.model ? String(opts.model) : undefined }
   const node = await api('POST', `/api/canvas/${workspaceId}/nodes/${Number(opts.id)}/script`, { body })
   if (opts.json) return printJson(node)
@@ -629,15 +706,12 @@ async function generateScript(opts) {
 async function linkImage(opts) {
   const taskId = Number(opts['task-id'])
   const imageId = Number(opts['image-id'])
-  const workspaceId = Number(opts.workspace ?? 1)
+  const workspaceId = await workspaceIdOf(opts)
   if (opts['task-id'] === true || !Number.isSafeInteger(taskId) || taskId <= 0) {
     fail('请提供正整数 --task-id 镜头任务ID')
   }
   if (opts['image-id'] === true || !Number.isSafeInteger(imageId) || imageId <= 0) {
     fail('请提供正整数 --image-id 图片节点ID')
-  }
-  if (opts.workspace === true || !Number.isSafeInteger(workspaceId) || workspaceId <= 0) {
-    fail('--workspace 必须是正整数画布ID')
   }
   const description = typeof opts.description === 'string' ? opts.description.trim() : undefined
   if (opts.description !== undefined && !description) fail('请在 --description 后填写图片内容或用途')
@@ -651,7 +725,7 @@ async function linkImage(opts) {
 
 async function unlinkImage(opts) {
   if (!opts.id) fail('请提供 --id 连线ID')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const result = await api('DELETE', `/api/canvas/${workspaceId}/edges/${Number(opts.id)}`)
   if (opts.json) return printJson(result)
   console.log(`已删除连线 #${opts.id}`)
@@ -674,7 +748,7 @@ async function push(opts) {
       .filter((value) => Number.isFinite(value))
   }
 
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const node = await api('POST', `/api/canvas/${workspaceId}/shots`, { body })
   if (opts.json) return printJson(node)
   console.log(`已创建镜头 #${node.id}（${node.status}）：${node.title || ''}`)
@@ -854,7 +928,7 @@ async function storyboard(opts) {
     resolution: shot.resolution
   }))
 
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const columns = opts.columns != null ? Number(opts.columns) : 4
   if (!Number.isInteger(columns) || columns < 1 || columns > 12) fail('--columns 必须是 1-12 的整数（每行镜头数）')
   const body = { groupId: opts.group ? String(opts.group) : undefined, shots: normalized }
@@ -966,7 +1040,7 @@ async function upload(opts) {
   const filePath = path.resolve(String(opts.file))
   if (!fs.existsSync(filePath)) fail(`文件不存在：${filePath}`)
 
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const multipart = buildMultipart(filePath, {})
   let query = `?workspaceId=${workspaceId}`
   if (opts.x != null) query += `&x=${Number(opts.x)}`
@@ -979,8 +1053,7 @@ async function upload(opts) {
 
 async function uploadUrl(opts) {
   if (!opts['image-url']) fail('请提供 --image-url 图片URL')
-  const workspaceId = Number(opts.workspace || 1)
-  if (!Number.isInteger(workspaceId) || workspaceId <= 0) fail('--workspace 必须是正整数画布ID')
+  const workspaceId = await workspaceIdOf(opts)
   const downloaded = await downloadImage(String(opts['image-url']))
   if (!downloaded.buffer.length) fail('下载的图片内容为空')
   if (downloaded.contentType && !downloaded.contentType.startsWith('image/')) {
@@ -1009,9 +1082,20 @@ async function removeTask(opts) {
   console.log(`已删除镜头 #${opts.id}`)
 }
 
+async function account(opts) {
+  const data = await api('GET', '/api/account')
+  if (opts.json) return printJson(data)
+  console.log(`账号：${data.username}（${data.role}）`)
+  console.log(`会员：${data.memberName || data.memberCode}${data.memberExpiresAt ? `，到期 ${data.memberExpiresAt}` : ''}`)
+  console.log(`邮箱：${data.email}${data.emailVerified ? '（已验证）' : '（未验证，生成与充值前请先验证）'}`)
+  console.log(
+    `积分：可用 ${data.availableCredits} / 冻结 ${data.frozenCredits} · 今日 ${data.todayCredits}/${data.dailyCredits} · 并发 ${data.maxConcurrent} · 最高 ${data.maxResolution}`
+  )
+}
+
 async function removeImage(opts) {
   if (!opts.id) fail('请提供 --id 图片ID')
-  const workspaceId = Number(opts.workspace || 1)
+  const workspaceId = (await workspaceIdOf(opts))
   const result = await api('DELETE', `/api/canvas/${workspaceId}/images/${Number(opts.id)}`)
   if (opts.json) return printJson(result)
   console.log(`已删除图片 #${opts.id}`)
@@ -1055,6 +1139,11 @@ async function main() {
   const command = argv[0]
   const opts = parseArgs(argv.slice(1))
 
+  // 非 login 命令可通过 --username 切换已保存的账号会话
+  if (opts.username && command !== 'login') {
+    activateAccount(opts.username)
+  }
+
   switch (command) {
     case undefined:
     case 'help':
@@ -1071,6 +1160,8 @@ async function main() {
       return canvas(opts)
     case 'workspaces':
       return workspaces(opts)
+    case 'account':
+      return account(opts)
     case 'new-workspace':
       return createWorkspace(opts)
     case 'rename-workspace':

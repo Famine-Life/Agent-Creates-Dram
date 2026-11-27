@@ -11,12 +11,31 @@
    node cli/aigc.mjs login --username "你的账号" --password "你的密码" --url http://localhost:8080
    ```
 
-3. 开始新一轮任务时先检查画布和模型：
+3. 开始新一轮任务时先检查账号、画布和模型：
 
    ```sh
+   node cli/aigc.mjs account --json
    node cli/aigc.mjs canvas --json
    node cli/aigc.mjs models --json
    ```
+
+   `account` 会返回当前账号的角色、邮箱验证状态、会员档位、可用/冻结积分、今日额度与个人并发。未验证邮箱或积分不足时，生成接口会返回 402 与明确错误码。
+
+## 多账号会话
+
+CLI 把登录态按“服务地址 + 用户名”保存在 `~/.aigc-cli/session.json`，可同时保留多个账号：
+
+```sh
+# 登录两个账号（各自执行一次）
+node cli/aigc.mjs login --username alice --password "***"
+node cli/aigc.mjs login --username bob --password "***"
+
+# 之后任意命令用 --username 切换当前账号
+node cli/aigc.mjs account --username alice --json
+node cli/aigc.mjs canvas --username bob --json
+```
+
+未指定 `--workspace` 时，命令使用当前账号的第一个画布；显式传入 `--workspace` 时由服务端校验画布归属，跨账号访问返回 404。登录失效或错误码会直接输出在 stderr，Agent 应把 402（`INSUFFICIENT_BALANCE` / `QUOTA_EXCEEDED` / `EMAIL_NOT_VERIFIED`）作为需要用户处理的状态，而不是无限重试。
 
 ## 漫剧到分镜视频的工作流
 
@@ -62,9 +81,11 @@ Agent 可按以下步骤自动完成单集或短片的制作：
 批量提交并查询状态：
 
 ```sh
-node cli/aigc.mjs storyboard --file shots.json --workspace 1 --json
-node cli/aigc.mjs canvas --workspace 1 --json
+node cli/aigc.mjs storyboard --file shots.json --json
+node cli/aigc.mjs canvas --json
 ```
+
+如需指定画布，追加 `--workspace <画布ID>`；省略时使用当前账号第一个画布。
 
 任务可能需要排队。Agent 应保留提交结果里的任务 ID，每隔 5–10 秒查询画布状态；确认每个目标任务进入终态后再汇报，并为失败任务说明失败原因。完整 CLI 命令和字段请运行 `node cli/aigc.mjs help` 查看。
 

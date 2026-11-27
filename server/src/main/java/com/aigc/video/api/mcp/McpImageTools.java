@@ -35,6 +35,7 @@ public class McpImageTools {
     private final AssetService assetService;
     private final ModelCatalog modelCatalog;
     private final ObjectMapper objectMapper;
+    private final McpToolSupport support;
 
     @Tool(name = "upload_image",
             description = "上传参考图并在画布创建图片节点。传 url 时由服务端下载转存；传 base64Data 时直接保存内容（二选一）。")
@@ -53,8 +54,9 @@ public class McpImageTools {
         String name = fileName == null || fileName.isBlank() ? "参考图" : fileName.trim();
         String storedUrl;
         String objectKey = null;
+        Long userId = com.aigc.video.user.UserContext.requireUserId();
         if (hasUrl) {
-            storedUrl = assetService.transfer(url.trim(), "images", ".jpg");
+            storedUrl = assetService.transfer(userId, url.trim(), "images", ".jpg");
         } else {
             String contentType = mimeOf(base64Data, name);
             byte[] bytes;
@@ -63,11 +65,11 @@ public class McpImageTools {
             } catch (IllegalArgumentException e) {
                 throw new BadRequestException("base64Data 不是合法的 Base64 内容");
             }
-            StoredAsset stored = assetService.storeImage(name, contentType, bytes);
+            StoredAsset stored = assetService.storeImage(userId, name, contentType, bytes);
             storedUrl = stored.url();
             objectKey = stored.objectKey();
         }
-        ImageNode node = taskService.createImage(McpToolSupport.workspace(workspaceId),
+        ImageNode node = taskService.createImage(support.workspace(workspaceId),
                 new ImageRequest(name, storedUrl, objectKey, x, y, null, null, null, null,
                         ImageNode.SOURCE_UPLOAD, null));
         return McpToolSupport.toJson(objectMapper, node);
@@ -82,7 +84,7 @@ public class McpImageTools {
             @ToolParam(required = false, description = "节点横坐标") Double x,
             @ToolParam(required = false, description = "节点纵坐标") Double y,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
-        ImageNode node = taskService.createImage(McpToolSupport.workspace(workspaceId),
+        ImageNode node = taskService.createImage(support.workspace(workspaceId),
                 new ImageRequest(name, McpToolSupport.requireText(url, "图片地址不能为空"), null,
                         x, y, null, null, prompt, null, ImageNode.SOURCE_UPLOAD, null));
         return McpToolSupport.toJson(objectMapper, node);
@@ -96,7 +98,7 @@ public class McpImageTools {
             @ToolParam(required = false, description = "节点纵坐标") Double y,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         return McpToolSupport.toJson(objectMapper,
-                canvasNodeService.createAiImage(McpToolSupport.workspace(workspaceId), x, y, prompt));
+                canvasNodeService.createAiImage(support.workspace(workspaceId), x, y, prompt));
     }
 
     @Tool(name = "generate_image",
@@ -114,7 +116,7 @@ public class McpImageTools {
         List<String> references = referenceUrl == null || referenceUrl.isBlank()
                 ? List.of() : List.of(referenceUrl);
         return McpToolSupport.toJson(objectMapper, canvasNodeService.generateImage(
-                McpToolSupport.workspace(workspaceId), id, prompt, model, references, ratio, resolution, count));
+                support.workspace(workspaceId), id, prompt, model, references, ratio, resolution, count));
     }
 
     @Tool(name = "update_image_node",
@@ -131,7 +133,7 @@ public class McpImageTools {
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(imageId, "图片ID");
         return McpToolSupport.toJson(objectMapper, taskService.updateImage(
-                McpToolSupport.workspace(workspaceId), id,
+                support.workspace(workspaceId), id,
                 new ImageRequest(name, url, null, x, y, width, height, prompt, null, null, null)));
     }
 
@@ -143,7 +145,7 @@ public class McpImageTools {
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(imageId, "图片ID");
         String target = McpToolSupport.requireText(model, "请提供图片模型");
-        Long workspace = McpToolSupport.workspace(workspaceId);
+        Long workspace = support.workspace(workspaceId);
 
         CanvasState data = taskService.getCanvas(workspace);
         ImageNode image = data.images().stream()
@@ -188,7 +190,7 @@ public class McpImageTools {
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long shotId = McpToolSupport.requireId(taskId, "镜头ID");
         Long imgId = McpToolSupport.requireId(imageId, "图片ID");
-        EdgeView edge = taskService.createEdgeWithPrompt(McpToolSupport.workspace(workspaceId),
+        EdgeView edge = taskService.createEdgeWithPrompt(support.workspace(workspaceId),
                 new EdgeRequest(shotId, imgId, description));
         return McpToolSupport.toJson(objectMapper, edge);
     }
@@ -199,7 +201,7 @@ public class McpImageTools {
             @ToolParam(description = "连线 ID") Long edgeId,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(edgeId, "连线ID");
-        taskService.deleteEdge(McpToolSupport.workspace(workspaceId), id);
+        taskService.deleteEdge(support.workspace(workspaceId), id);
         return McpToolSupport.toJson(objectMapper, Map.of("ok", true, "edgeId", id));
     }
 
@@ -209,7 +211,7 @@ public class McpImageTools {
             @ToolParam(description = "图片节点 ID") Long imageId,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(imageId, "图片ID");
-        Long workspace = McpToolSupport.workspace(workspaceId);
+        Long workspace = support.workspace(workspaceId);
         taskService.deleteImage(workspace, id);
         return McpToolSupport.toJson(objectMapper, Map.of("ok", true, "imageId", id, "workspaceId", workspace));
     }

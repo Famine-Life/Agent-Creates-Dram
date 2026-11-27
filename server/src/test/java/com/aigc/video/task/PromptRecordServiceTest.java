@@ -4,7 +4,11 @@ import com.aigc.video.api.dto.PromptUpdateRequest;
 import com.aigc.video.api.dto.ShotRequest;
 import com.aigc.video.api.dto.TaskNode;
 import com.aigc.video.domain.PromptRecord;
+import com.aigc.video.mapper.AppUserMapper;
 import com.aigc.video.mapper.PromptRecordMapper;
+import com.aigc.video.support.TestSecurity;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +28,18 @@ class PromptRecordServiceTest {
 
     @Autowired
     private PromptRecordMapper promptRecordMapper;
+    @Autowired
+    private AppUserMapper userMapper;
+
+    @BeforeEach
+    void login() {
+        TestSecurity.loginAdmin(userMapper);
+    }
+
+    @AfterEach
+    void logout() {
+        TestSecurity.clear();
+    }
 
     @Test
     void recordsCreateIdempotentRetryAndPromptUpdate() {

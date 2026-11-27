@@ -50,6 +50,9 @@ public class TaskDispatcher {
     private final TaskService taskService;
     private final DispatchLock dispatchLock;
     private final ProviderErrorHintResolver providerErrorHintResolver;
+    private final com.aigc.video.billing.BillingService billingService;
+    private final com.aigc.video.member.MembershipService membershipService;
+    private final com.aigc.video.mq.TaskWakeupQueue wakeupQueue;
 
     @Value("${aigc.poll-timeout-seconds:900}")
     private long pollTimeoutSeconds;
@@ -100,10 +103,35 @@ public class TaskDispatcher {
                 .and(w -> w.isNull(GenerationTask::getNextPollAt).or().le(GenerationTask::getNextPollAt, now))
                 .orderByAsc(GenerationTask::getId)
                 .last("LIMIT " + CANDIDATE_BATCH));
+        // Outbox / RabbitMQ 唤醒的任务优先，其余仍按 DB 扫描兜底
+        java.util.Set<Long> hinted = wakeupQueue.drain();
+        if (!hinted.isEmpty()) {
+            java.util.Map<Long, GenerationTask> byId = new java.util.HashMap<>();
+            for (GenerationTask task : queued) {
+                byId.put(task.getId(), task);
+            }
+            queued.sort(java.util.Comparator
+                    .comparingInt((GenerationTask task) -> hinted.contains(task.getId()) ? 0 : 1)
+                    .thenComparing(GenerationTask::getId));
+        }
         Map<String, Integer> inFlight = currentInFlight();
+        Map<Long, Integer> userInFlight = currentUserInFlight();
+        Map<Long, Integer> userLimit = new HashMap<>();
+        // 高权重会员优先获得提交机会，避免低并发用户长期排队
+        queued.sort(java.util.Comparator
+                .comparingInt((GenerationTask task) -> planWeight(task.getUserId()))
+                .reversed()
+                .thenComparing(GenerationTask::getId));
         int submitted = 0;
         for (GenerationTask task : queued) {
             if (submitted >= SUBMIT_BATCH) break;
+            Long userId = task.getUserId();
+            int active = userInFlight.getOrDefault(userId, 0);
+            int personalLimit = userId == null ? 1
+                    : userLimit.computeIfAbsent(userId, this::personalLimit);
+            if (active >= personalLimit) {
+                continue;
+            }
             ModelCatalog.ResolvedModel model;
             try {
                 model = modelCatalog.resolveVideoTask(task.getProvider(), task.getModel());
@@ -118,6 +146,7 @@ public class TaskDispatcher {
             SubmitDisposition disposition = submit(task, model);
             if (disposition == SubmitDisposition.RESERVED) {
                 inFlight.put(key, used + 1);
+                userInFlight.put(userId, active + 1);
                 submitted++;
             } else if (disposition == SubmitDisposition.STOP_MODEL) {
                 // 遇到模型级 429 后本轮停止向该模型继续发请求，避免连续触发限流。
@@ -323,9 +352,9 @@ public class TaskDispatcher {
         int pollCount = (task.getPollCount() == null ? 0 : task.getPollCount()) + 1;
         switch (result.status()) {
             case "SUCCEEDED" -> {
-                String videoUrl = assetService.transfer(result.videoUrl(), "videos", ".mp4");
+                String videoUrl = assetService.transfer(task.getUserId(), result.videoUrl(), "videos", ".mp4");
                 String coverUrl = result.coverUrl() == null ? null
-                        : assetService.transfer(result.coverUrl(), "covers", ".jpg");
+                        : assetService.transfer(task.getUserId(), result.coverUrl(), "covers", ".jpg");
                 taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                         .eq(GenerationTask::getId, task.getId())
                         .set(GenerationTask::getStatus, TaskStatus.SUCCEEDED.name())
@@ -336,6 +365,8 @@ public class TaskDispatcher {
                         .set(GenerationTask::getPollCount, pollCount)
                         .set(GenerationTask::getNextPollAt, null)
                         .set(GenerationTask::getUpdatedAt, now));
+                billingService.settleSuccess(task.getUserId(), task.getBillingOpId(),
+                        task.getCreditCost() == null ? 0 : task.getCreditCost());
                 log.info("任务完成 id={} videoUrl={}", task.getId(), videoUrl);
                 taskService.broadcastTask("node.completed", task.getId());
             }
@@ -376,6 +407,9 @@ public class TaskDispatcher {
                 .set(GenerationTask::getErrorMsg, shorten(userMessage))
                 .set(GenerationTask::getNextPollAt, null)
                 .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
+        if (task != null) {
+            billingService.settleFailure(task.getUserId(), task.getBillingOpId(), "生成失败，退回预留积分");
+        }
         taskService.broadcastTask("node.failed", taskId);
     }
 
@@ -386,7 +420,45 @@ public class TaskDispatcher {
                 .set(GenerationTask::getErrorMsg, "生成超时（超过 " + pollTimeoutSeconds + " 秒）")
                 .set(GenerationTask::getNextPollAt, null)
                 .set(GenerationTask::getUpdatedAt, LocalDateTime.now()));
+        GenerationTask task = taskMapper.selectById(taskId);
+        if (task != null) {
+            billingService.settleFailure(task.getUserId(), task.getBillingOpId(), "生成超时，退回预留积分");
+        }
         taskService.broadcastTask("node.failed", taskId);
+    }
+
+    private Map<Long, Integer> currentUserInFlight() {
+        Map<Long, Integer> result = new HashMap<>();
+        List<GenerationTask> active = taskMapper.selectList(Wrappers.<GenerationTask>lambdaQuery()
+                .in(GenerationTask::getStatus, CAPACITY_STATUSES)
+                .select(GenerationTask::getUserId));
+        for (GenerationTask task : active) {
+            if (task.getUserId() != null) {
+                result.merge(task.getUserId(), 1, Integer::sum);
+            }
+        }
+        return result;
+    }
+
+    private int personalLimit(Long userId) {
+        try {
+            Integer limit = membershipService.resolveByUserId(userId).getMaxConcurrent();
+            return limit == null || limit < 1 ? 1 : limit;
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
+    private int planWeight(Long userId) {
+        if (userId == null) {
+            return 1;
+        }
+        try {
+            Integer weight = membershipService.resolveByUserId(userId).getDispatchWeight();
+            return weight == null || weight < 1 ? 1 : weight;
+        } catch (Exception e) {
+            return 1;
+        }
     }
 
     private int backoff(int attempt) {

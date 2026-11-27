@@ -20,6 +20,7 @@ import com.aigc.video.mapper.WorkspaceMapper;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
 import com.aigc.video.task.TaskStatus;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,15 +54,25 @@ public class WorkspaceService {
     private final TaskImageRefMapper refMapper;
     private final CanvasSocketRegistry socketRegistry;
     private final ObjectMapper objectMapper;
+    private final WorkspaceAccess workspaceAccess;
+    private final ProjectService projectService;
 
-    /** 画布列表：按 ID 升序，附带各自 canvas 的版本与更新时间 */
-    public List<WorkspaceView> list() {
-        List<Workspace> workspaces = workspaceMapper.selectList(
-                Wrappers.<Workspace>lambdaQuery().orderByAsc(Workspace::getId));
+    /** 画布列表：只返回当前用户的画布；传入项目时只返回该项目下的画布 */
+    public List<WorkspaceView> list(Long projectId) {
+        Long userId = com.aigc.video.user.UserContext.requireUserId();
+        LambdaQueryWrapper<Workspace> query = Wrappers.<Workspace>lambdaQuery()
+                .eq(Workspace::getUserId, userId)
+                .orderByAsc(Workspace::getId);        if (projectId != null) {
+            projectService.requireOwned(projectId);
+            query.eq(Workspace::getProjectId, projectId);
+        }
+        List<Workspace> workspaces = workspaceMapper.selectList(query);
         // 显式 select 字段，避免把 snapshot 大字段一起查出来
-        Map<Long, Canvas> canvases = canvasMapper.selectList(
+        Map<Long, Canvas> canvases = workspaces.isEmpty() ? Map.of() : canvasMapper.selectList(
                         Wrappers.<Canvas>lambdaQuery()
-                                .select(Canvas::getId, Canvas::getWorkspaceId, Canvas::getVersion, Canvas::getUpdatedAt))
+                                .select(Canvas::getId, Canvas::getWorkspaceId, Canvas::getVersion, Canvas::getUpdatedAt)
+                                .in(Canvas::getWorkspaceId,
+                                        workspaces.stream().map(Workspace::getId).toList()))
                 .stream()
                 .collect(Collectors.toMap(Canvas::getWorkspaceId, Function.identity(), (a, b) -> a));
         return workspaces.stream()
@@ -69,17 +80,25 @@ public class WorkspaceService {
                 .toList();
     }
 
-    /** 新建空白画布：同时创建 workspace 与 canvas，名称按序号自动生成 */
+    /** 新建空白画布：同时创建 workspace 与 canvas，名称在所属项目内按序号生成 */
     @Transactional
-    public WorkspaceView createWorkspace() {
-        long count = workspaceMapper.selectCount(null);
+    public WorkspaceView createWorkspace(Long projectId) {
+        Long userId = com.aigc.video.user.UserContext.requireUserId();
+        Long targetProject = projectId == null
+                ? projectService.defaultProjectId(userId)
+                : projectService.requireOwned(projectId).getId();
+        long count = workspaceMapper.selectCount(Wrappers.<Workspace>lambdaQuery()
+                .eq(Workspace::getProjectId, targetProject));
         Workspace workspace = new Workspace();
+        workspace.setUserId(userId);
+        workspace.setProjectId(targetProject);
         workspace.setName("画布 " + (count + 1));
         workspace.setCreatedAt(LocalDateTime.now());
         workspaceMapper.insert(workspace);
 
         Canvas canvas = new Canvas();
         canvas.setWorkspaceId(workspace.getId());
+        canvas.setUserId(userId);
         canvas.setVersion(0);
         canvas.setUpdatedAt(LocalDateTime.now());
         canvasMapper.insert(canvas);
@@ -88,7 +107,7 @@ public class WorkspaceService {
 
     /** 按 ID 组装画布视图 */
     public WorkspaceView viewOf(Long workspaceId) {
-        Workspace workspace = requireWorkspace(workspaceId);
+        Workspace workspace = workspaceAccess.requireOwned(workspaceId);
         Canvas canvas = canvasMapper.selectOne(Wrappers.<Canvas>lambdaQuery()
                 .eq(Canvas::getWorkspaceId, workspaceId));
         return toView(workspace, canvas);
@@ -97,7 +116,7 @@ public class WorkspaceService {
     /** 重命名画布 */
     @Transactional
     public void renameWorkspace(Long workspaceId, String name) {
-        Workspace workspace = requireWorkspace(workspaceId);
+        Workspace workspace = workspaceAccess.requireOwned(workspaceId);
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) {
             throw new BadRequestException("画布名称不能为空");
@@ -117,10 +136,15 @@ public class WorkspaceService {
      */
     @Transactional
     public Workspace copyWorkspace(Long workspaceId) {
-        Workspace source = requireWorkspace(workspaceId);
+        Workspace source = workspaceAccess.requireOwned(workspaceId);
+        Long userId = source.getUserId() != null
+                ? source.getUserId() : com.aigc.video.user.UserContext.requireUserId();
         LocalDateTime now = LocalDateTime.now();
 
         Workspace copy = new Workspace();
+        copy.setUserId(userId);
+        copy.setProjectId(source.getProjectId() != null
+                ? source.getProjectId() : projectService.defaultProjectId(userId));
         copy.setName(source.getName() + " 副本");
         copy.setCreatedAt(now);
         workspaceMapper.insert(copy);
@@ -128,6 +152,7 @@ public class WorkspaceService {
 
         Canvas canvas = new Canvas();
         canvas.setWorkspaceId(copyId);
+        canvas.setUserId(userId);
         canvas.setVersion(0);
         canvas.setUpdatedAt(now);
         canvasMapper.insert(canvas);
@@ -137,6 +162,7 @@ public class WorkspaceService {
         for (CanvasImage original : imageMapper.selectList(Wrappers.<CanvasImage>lambdaQuery()
                 .eq(CanvasImage::getWorkspaceId, workspaceId))) {
             CanvasImage image = new CanvasImage();
+            image.setUserId(userId);
             image.setWorkspaceId(copyId);
             image.setCanvasId(canvas.getId());
             image.setName(original.getName());
@@ -162,6 +188,7 @@ public class WorkspaceService {
         Map<Long, Long> taskIds = new HashMap<>();
         for (GenerationTask original : tasks) {
             GenerationTask task = new GenerationTask();
+            task.setUserId(userId);
             task.setWorkspaceId(copyId);
             task.setCanvasId(canvas.getId());
             task.setGroupId(original.getGroupId());
@@ -193,6 +220,7 @@ public class WorkspaceService {
                     continue;
                 }
                 TaskImageRef ref = new TaskImageRef();
+                ref.setUserId(userId);
                 ref.setTaskId(task.getId());
                 ref.setImageId(imageId);
                 ref.setSortIndex(originalRef.getSortIndex());
@@ -203,6 +231,7 @@ public class WorkspaceService {
             for (PromptRecord originalRecord : promptRecordMapper.selectList(Wrappers.<PromptRecord>lambdaQuery()
                     .eq(PromptRecord::getTaskId, original.getId()))) {
                 PromptRecord record = new PromptRecord();
+                record.setUserId(userId);
                 record.setWorkspaceId(copyId);
                 record.setTaskId(task.getId());
                 record.setPrompt(originalRecord.getPrompt());
@@ -215,6 +244,7 @@ public class WorkspaceService {
         for (CanvasNode original : nodeMapper.selectList(Wrappers.<CanvasNode>lambdaQuery()
                 .eq(CanvasNode::getWorkspaceId, workspaceId))) {
             CanvasNode node = new CanvasNode();
+            node.setUserId(userId);
             node.setWorkspaceId(copyId);
             node.setNodeType(original.getNodeType());
             node.setTitle(original.getTitle());
@@ -287,8 +317,10 @@ public class WorkspaceService {
     /** 删除画布及其全部关联数据；系统始终至少保留一个画布。 */
     @Transactional
     public void deleteWorkspace(Long workspaceId) {
-        requireWorkspace(workspaceId);
-        if (workspaceMapper.selectCount(null) <= 1) {
+        workspaceAccess.requireOwned(workspaceId);
+        Long userId = com.aigc.video.user.UserContext.requireUserId();
+        if (workspaceMapper.selectCount(Wrappers.<Workspace>lambdaQuery()
+                .and(w -> w.eq(Workspace::getUserId, userId).or().isNull(Workspace::getUserId))) <= 1) {
             throw new BadRequestException("至少保留一个画布，无法删除");
         }
 
@@ -318,15 +350,8 @@ public class WorkspaceService {
                 workspace.getName(),
                 canvas == null ? null : canvas.getId(),
                 canvas == null ? 0 : canvas.getVersion(),
-                canvas == null ? null : canvas.getUpdatedAt());
-    }
-
-    private Workspace requireWorkspace(Long workspaceId) {
-        Workspace workspace = workspaceId == null ? null : workspaceMapper.selectById(workspaceId);
-        if (workspace == null) {
-            throw new NotFoundException("画布不存在：" + workspaceId);
-        }
-        return workspace;
+                canvas == null ? null : canvas.getUpdatedAt(),
+                workspace.getProjectId());
     }
 
     /** 画布名称或数量变化，通知其他标签页刷新切换列表 */

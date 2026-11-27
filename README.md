@@ -74,28 +74,27 @@ CLI 当前负责分镜级素材生成和任务编排；视频剪辑、配音、�
 - 前端：Vue 3、Vite、Vue Flow、Node.js
 - 数据库：H2（默认）或 MySQL
 
-## 功能对比：单用户 vs 多用户会员制
+## 多用户会员制
 
-> ⚠️ **当前版本为单用户模式**。多用户 + 会员积分制正在开发中，下表展示了两种模式在各模块上的差异，便于评估升级范围。
+当前分支已实现多用户 + 会员积分制。首次启动会自动创建管理员、播种三档会员与积分商品，并把单用户时期的画布、素材、任务全部归属到当前管理员，`workspace.id=1` 继续保留。
 
-| 模块 | 单用户（当前，已实现 ✅） | 多用户会员制（开发中 🚧） |
-| --- | --- | --- |
-| **用户体系** | 单管理员账号，凭据通过环境变量注入 | 多用户注册/邮箱验证/找回密码；管理员从用户中提升 |
-| **数据隔离** | 所有业务表无 `user_id`，共享同一套数据 | 每张业务表加 `user_id`；Mapper 自动按登录用户过滤；唯一索引改为 `(user_id, 原字段)` 组合 |
-| **画布 / 工作空间** | 默认 `workspace.id=1`，CLI/MCP 硬编码 id=1 | 每用户可创建多个 workspace；列表接口只返回当前用户的；CLI/MCP 传入 `--workspace` 时校验归属 |
-| **积分 / 会员系统** | 无 | 积分账户 + 消费流水 + 会员等级；不同等级对应不同每日额度、并发上限、分辨率权益 |
-| **任务调度与并发** | 并发闸门按 `provider/model` 全局分组（企业 10 / 个人 3），队列容量 1000 | 双重配额：用户级并发（按会员等级） + 平台级总并发；扣费不足标记 `INSUFFICIENT_BALANCE`；高并发用户可加权调度 |
-| **API 并发请求与 MQ** | API 同步写库后直接由进程内 `@Scheduled` 调度轮询；无独立消息队列，单机串行消费 | 引入 MQ（RabbitMQ / RocketMQ / Kafka）解耦 API 与调度：API 写入后投递消息，调度消费端独立扩缩容；削峰填谷，支持突发高并发提交；失败消息走死信队列人工介入 |
-| **REST API 归属校验** | 登录即全量访问，无资源归属检查 | 每个接口验证 `user_id == 当前登录用户`；越权返回 404；计划抽取 `OwnershipAspect` AOP 切面 |
-| **WebSocket 鉴权** | Session 鉴权后允许连接任意 `workspaceId`，广播不校验归属 | 握手验证 `workspaceId` 属于当前用户；`CanvasSocketRegistry` 按 `(userId, workspaceId)` 分组 |
-| **幂等键** | `sha256(workspaceId\|groupId\|shotIndex\|prompt)`，唯一索引 `uk_task_idem` | 加入 `userId`；唯一索引改为 `(user_id, idem_key)` |
-| **MCP Token 体系** | 全局单一 `MCP_API_TOKEN` | 每用户可生成/吊销独立 Token，可设置过期时间；`McpAuthenticationFilter` 改为查库 |
-| **对象存储路径** | 扁平目录 `files/images/<uuid>.xxx`、`files/videos/<uuid>.mp4` | 按用户隔离为 `{userId}/images/...`、`{userId}/videos/...` |
-| **CLI 登录态** | 单一 Session Cookie，与网页共用同一账号 | 支持 `--username` 切换账号；所有命令自动携带当前用户上下文 |
-| **前端用户界面** | 登录后直接进入默认画布，无用户/积分 UI | 登录首页展示「我的画布」列表、积分余额、会员等级；新增「我的账户」页面 |
-| **任务状态** | `RECEIVED → QUEUED → ... → SUCCEEDED / FAILED` | 新增 `INSUFFICIENT_BALANCE`、`QUOTA_EXCEEDED`；扣费时失败插入流水记录 |
-| **审计与风控** | 仅记录 `prompt_record` | 每日/每小时调用计数；异常调用触发限流；管理员后台查看用户行为日志 |
-| **支付接入** | 无 | 积分充值对接微信支付 / 支付宝（IJPay）；订单表 + 回调验签 + 异步到账 |
+| 模块 | 已实现 |
+| --- | --- |
+| **用户体系** | 开放注册、邮箱验证、找回密码；`USER` / `ADMIN` 角色；管理员可从已有用户提升 |
+| **数据隔离** | 业务表新增 `user_id`；`WorkspaceAccess` 统一校验画布归属，跨用户访问统一 404；任务幂等唯一键改为 `(user_id, idem_key)` |
+| **画布 / 工作空间** | 每个用户可创建多个 workspace；列表只返回本人画布；CLI/MCP 未指定 `--workspace` 时使用当前用户第一个画布 |
+| **积分 / 会员系统** | 免费版 / 专业版 / 工作室版，分别对应每日额度、并发、分辨率与调度权重；积分钱包 + 不可变流水 |
+| **计费一致性** | 生成前冻结积分，成功实扣，失败/取消退回；`(user_id, type, biz_id)` 唯一键保证只结算一次；成功生成才计入当日额度 |
+| **任务调度与并发** | 个人并发（按会员档位）+ provider/model 平台并发双重闸门；按会员权重优先调度；额度耗尽标记 `QUOTA_EXCEEDED`，余额不足标记 `INSUFFICIENT_BALANCE` |
+| **MQ 解耦** | 默认数据库事务 Outbox + 进程内唤醒队列，重启可恢复；`AIGC_MQ_TYPE=rabbitmq` 时转发 RabbitMQ；失败重试超限进入死信，管理后台可重投 |
+| **REST API 归属校验** | 所有画布、镜头、图片、节点、提示词、文件接口校验当前用户归属；越权返回 404 |
+| **WebSocket 鉴权** | 握手阶段绑定登录用户并校验 workspace 归属，未登录或越权直接拒绝；事件仍按 workspace 广播 |
+| **MCP Token 体系** | 每个用户可创建/吊销独立 Token，可设置过期时间，明文仅创建时返回一次；旧的全局 `MCP_API_TOKEN` 仅兼容映射到管理员 |
+| **对象存储路径** | 新素材按 `{userId}/images/...`、`{userId}/videos/...` 保存；本地文件访问需登录并校验归属 |
+| **CLI 登录态** | 本地按“服务地址 + 用户名”保存多个会话；任意命令可加 `--username` 切换；401/402 输出结构化提示 |
+| **前端用户界面** | 我的画布、画布工作台、我的账户、会员与充值、MCP Token、管理后台，画布功能保持不变 |
+| **支付接入** | 订单状态机 + 回调验签 + 异步到账；默认 Mock 支付，微信支付 V3 Native 与支付宝电脑网站支付可通过环境变量启用 |
+| **审计** | 登录、注册、生成、订单、Token、管理员操作写入 `audit_log`；不记录密码、完整 Token 或支付密钥 |
 
 ## 本地开发
 
@@ -118,13 +117,43 @@ npm run dev
 
 打开 <http://127.0.0.1:5173>。前端开发服务器会把 `/api`、`/files`、`/mcp` 和 `/ws` 请求代理到本机 8080 端口。
 
-默认配置使用本地 H2 数据库与 Mock 模型。接入实际模型前，请通过环境变量配置管理员凭据、MCP Token 和对应平台的 API Key。不要将个人凭据或 API Key 提交到仓库；公网部署时请使用 HTTPS，并设置独立的高强度 MCP Token。
+默认配置使用本地 H2、Mock 模型、`AIGC_MAIL_TYPE=log`（验证链接打印到日志）、`AIGC_PAYMENT_CHANNEL=mock`（仅本机可模拟支付）与 `AIGC_MQ_TYPE=db`（数据库 Outbox）。首次启动由 Flyway 执行 `db/migration/h2` 下的 V1/V2 迁移并初始化管理员。
 
-更多系统设计与部署说明见[架构文档](docs/architecture.md)和[产品设计](docs/product-design.md)。
+本地默认管理员为 `admin / admin@888`，可通过 `AIGC_ADMIN_USERNAME`、`AIGC_ADMIN_PASSWORD`、`AIGC_ADMIN_EMAIL` 覆盖；已存在的用户不会被重启覆盖密码。注册时接口会返回 `devVerifyLink`，打开即可完成邮箱验证。
+
+生产环境需要按需配置：
+
+```sh
+# 邮件
+AIGC_MAIL_TYPE=smtp
+AIGC_SMTP_HOST=smtp.example.com
+AIGC_SMTP_PORT=465
+AIGC_SMTP_USERNAME=no-reply@example.com
+AIGC_SMTP_PASSWORD=***
+
+# 微信支付 V3 Native / 支付宝电脑网站支付
+AIGC_PAYMENT_CHANNEL=wechat          # 或 alipay / mock
+WECHAT_PAY_APP_ID=*** WECHAT_PAY_MCH_ID=*** WECHAT_PAY_SERIAL_NO=***
+WECHAT_PAY_PRIVATE_KEY_PATH=/etc/aigc/apiclient_key.pem
+WECHAT_PAY_API_V3_KEY=*** WECHAT_PAY_PLATFORM_CERT_PATH=/etc/aigc/wechatpay_cert.pem
+WECHAT_PAY_NOTIFY_URL=https://example.com/api/payments/notify/wechat
+ALIPAY_APP_ID=*** ALIPAY_PRIVATE_KEY=*** ALIPAY_PUBLIC_KEY=***
+ALIPAY_NOTIFY_URL=https://example.com/api/payments/notify/alipay
+ALIPAY_RETURN_URL=https://example.com/account/billing
+
+# 可选 RabbitMQ
+AIGC_MQ_TYPE=rabbitmq
+AIGC_RABBIT_HOST=127.0.0.1 AIGC_RABBIT_PORT=5672
+AIGC_RABBIT_USERNAME=*** AIGC_RABBIT_PASSWORD=***
+```
+
+支付回调端点必须使用公网 HTTPS；密钥、证书只通过环境变量或受限权限文件注入。不要将个人凭据或 API Key 提交到仓库。
+
+更多设计说明：[会员制产品设计](docs/product-design-membership.md)、[会员制架构设计](docs/architecture-membership.md)、[会员制 UI 设计稿](docs/ui-mockup-membership.html)；单用户版设计保留在 [产品设计](docs/product-design.md)、[架构文档](docs/architecture.md) 与 [UI 设计稿](docs/ui-mockup.html)。
 
 ## MCP
 
-后端 MCP 使用 SSE 传输，默认端点为 `/sse` 和 `/mcp/message`。请求需要通过 `Authorization: Bearer <MCP_API_TOKEN>` 认证。开发环境默认 Token 为 `12345678`，仅供本地使用；部署到可访问的网络前，请设置自己的随机 Token。
+后端 MCP 使用 SSE 传输，默认端点为 `/sse` 和 `/mcp/message`。请求需要通过 `Authorization: Bearer <用户 Token>` 认证：登录网页后在「我的账户 → MCP Token」创建，明文仅在创建时展示一次，可设置过期时间并随时吊销。旧的全局 `MCP_API_TOKEN` 仅作为兼容入口映射到管理员账号，生产环境建议关闭并改用个人 Token。
 
 当前提供 32 个工具，覆盖画布管理、模型与素材查询、分镜推送与自动排版、生成/重试/取消、参考图上传与连线、AI 图片生成、文本与脚本节点。与 CLI 相比，MCP 不需要登录，也不支持读取客户端本地文件路径；本地图片可改用 `upload_image` 的 base64 内容或可访问的图片 URL。
 

@@ -19,6 +19,8 @@ public class Canvas {
 
     private Long workspaceId;
 
+    private Long userId;
+
     private Integer version;
 
     /** 前端画布快照（节点坐标、视口），原样存储的 JSON 字符串 */

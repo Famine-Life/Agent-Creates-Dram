@@ -30,7 +30,11 @@ import com.aigc.video.provider.ProviderRegistry;
 import com.aigc.video.provider.VideoContext;
 import com.aigc.video.realtime.CanvasEvent;
 import com.aigc.video.realtime.CanvasSocketRegistry;
+import com.aigc.video.billing.BillingService;
+import com.aigc.video.member.MembershipService;
 import com.aigc.video.storage.AssetService;
+import com.aigc.video.user.UserContext;
+import com.aigc.video.workspace.WorkspaceAccess;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -86,6 +90,10 @@ public class TaskService {
     private final ObjectMapper objectMapper;
     private final CanvasNodeService canvasNodeService;
     private final AssetService assetService;
+    private final WorkspaceAccess workspaceAccess;
+    private final BillingService billingService;
+    private final MembershipService membershipService;
+    private final com.aigc.video.mq.OutboxService outboxService;
 
     // ---------------------------------------------------------------- 画布读取
 
@@ -129,6 +137,7 @@ public class TaskService {
             throw new BadRequestException("提示词不能超过 2000 字");
         }
         Canvas canvas = requireCanvas(workspaceId);
+        Long userId = canvas.getUserId();
         String groupId = normalizeGroup(request.groupId());
         int shotIndex = request.shotIndex() != null && request.shotIndex() > 0
                 ? request.shotIndex()
@@ -148,6 +157,7 @@ public class TaskService {
         if (!draft) ensureQueueCapacity();
 
         GenerationTask task = new GenerationTask();
+        task.setUserId(userId);
         task.setWorkspaceId(workspaceId);
         task.setCanvasId(canvas.getId());
         task.setGroupId(groupId);
@@ -159,7 +169,9 @@ public class TaskService {
         task.setProvider(video.providerKey());
         task.setRatio(normalizeRatio(request.ratio(), video));
         task.setDuration(normalizeDuration(request.duration(), video));
-        task.setResolution(normalizeResolution(request.resolution(), video));
+        // 清晰度受会员档位限制
+        task.setResolution(membershipService.clampResolution(
+                userId, normalizeResolution(request.resolution(), video)));
         // 草稿节点不进入调度队列，等用户填写提示词后由 updatePrompt 触发 resetForRegenerate
         task.setStatus(draft ? TaskStatus.IDLE.name() : TaskStatus.QUEUED.name());
         task.setProgress(0);
@@ -171,6 +183,10 @@ public class TaskService {
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.insert(task);
 
+        if (!draft) {
+            chargeForAttempt(task, video.key());
+            outboxService.append("TASK_QUEUED", "generation_task", task.getId(), task.getUserId(), "{}");
+        }
         attachImages(task, resolveImages(workspaceId, canvas.getId(), request));
         if (!draft) {
             recordPrompt(workspaceId, task.getId(), request.prompt());
@@ -236,9 +252,9 @@ public class TaskService {
             update.set(GenerationTask::getDuration, normalizeDuration(request.duration(), video));
         }
         // 清晰度与模型能力绑定：显式传值时按新模型校验，未传时沿用旧值并按新模型兜底
-        update.set(GenerationTask::getResolution,
+        update.set(GenerationTask::getResolution, membershipService.clampResolution(task.getUserId(),
                 normalizeResolution(request.resolution() == null || request.resolution().isBlank()
-                        ? task.getResolution() : request.resolution(), video));
+                        ? task.getResolution() : request.resolution(), video)));
         taskMapper.update(null, update);
         recordPrompt(task.getWorkspaceId(), taskId, request.prompt());
         if (request.regenerate() == null || request.regenerate()) {
@@ -250,11 +266,25 @@ public class TaskService {
 
     private void recordPrompt(Long workspaceId, Long taskId, String prompt) {
         PromptRecord record = new PromptRecord();
+        record.setUserId(UserContext.currentUserId());
         record.setWorkspaceId(workspaceId);
         record.setTaskId(taskId);
         record.setPrompt(prompt.trim());
         record.setCreatedAt(LocalDateTime.now());
         promptRecordMapper.insert(record);
+    }
+
+    /** 为一次生成尝试冻结积分，并把计费快照写回任务。 */
+    private void chargeForAttempt(GenerationTask task, String modelKey) {
+        int cost = billingService.videoCost(modelKey, task.getDuration());
+        String operationId = billingService.newOperationId(task.getId());
+        billingService.reserve(task.getUserId(), modelKey, cost, operationId);
+        task.setBillingOpId(operationId);
+        task.setCreditCost(cost);
+        taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
+                .eq(GenerationTask::getId, task.getId())
+                .set(GenerationTask::getBillingOpId, operationId)
+                .set(GenerationTask::getCreditCost, cost));
     }
 
     @Transactional
@@ -272,6 +302,7 @@ public class TaskService {
             throw new BadRequestException("当前状态不可取消：" + task.getStatus());
         }
         cancelProviderTask(task);
+        billingService.settleFailure(task.getUserId(), task.getBillingOpId(), "任务取消，退回预留积分");
         taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
                 .set(GenerationTask::getStatus, TaskStatus.CANCELED.name())
@@ -300,6 +331,9 @@ public class TaskService {
     @Transactional
     public void deleteTask(Long taskId) {
         GenerationTask task = requireTask(taskId);
+        if (!TaskStatus.SUCCEEDED.name().equals(task.getStatus())) {
+            billingService.settleFailure(task.getUserId(), task.getBillingOpId(), "删除镜头，退回预留积分");
+        }
         refMapper.delete(Wrappers.<TaskImageRef>lambdaQuery().eq(TaskImageRef::getTaskId, taskId));
         taskMapper.deleteById(taskId);
         socketRegistry.broadcast(task.getWorkspaceId(),
@@ -381,6 +415,7 @@ public class TaskService {
                 .eq(CanvasImage::getWorkspaceId, workspaceId));
 
         CanvasImage image = new CanvasImage();
+        image.setUserId(canvas.getUserId());
         image.setWorkspaceId(workspaceId);
         image.setCanvasId(canvas.getId());
         image.setName(defaultImageName(request.name(), count + 1));
@@ -620,9 +655,18 @@ public class TaskService {
 
     private void resetForRegenerate(Long taskId) {
         GenerationTask current = requireTask(taskId);
-        if (!TaskStatus.QUEUED.name().equals(current.getStatus())
-                && !TaskStatus.RECEIVED.name().equals(current.getStatus())) {
+        if (TaskStatus.SUBMIT_UNKNOWN.name().equals(current.getStatus())) {
+            throw new BadRequestException("上次提交结果未知，暂不能重新生成，请联系管理员核对");
+        }
+        boolean active = TaskStatus.isActive(current.getStatus());
+        if (!active) {
             ensureQueueCapacity();
+            // 上次成功已实扣不退回；失败/取消/草稿则退回旧的冻结
+            if (!TaskStatus.SUCCEEDED.name().equals(current.getStatus())) {
+                billingService.settleFailure(current.getUserId(), current.getBillingOpId(),
+                        "重新生成，退回上次预留积分");
+            }
+            chargeForAttempt(current, modelCatalog.taskKey(current.getProvider(), current.getModel()));
         }
         taskMapper.update(null, Wrappers.<GenerationTask>lambdaUpdate()
                 .eq(GenerationTask::getId, taskId)
@@ -639,7 +683,9 @@ public class TaskService {
     }
 
     private void ensureQueueCapacity() {
+        Long userId = UserContext.currentUserId();
         long queuedCount = taskMapper.selectCount(Wrappers.<GenerationTask>lambdaQuery()
+                .eq(userId != null, GenerationTask::getUserId, userId)
                 .in(GenerationTask::getStatus, TaskStatus.RECEIVED.name(), TaskStatus.QUEUED.name()));
         if (queuedCount >= maxQueuedTasks) {
             throw new TooManyRequestsException("生成队列已满，请稍后再提交（上限 " + maxQueuedTasks + " 个待提交任务）");
@@ -664,6 +710,7 @@ public class TaskService {
                 continue;
             }
             TaskImageRef ref = new TaskImageRef();
+            ref.setUserId(task.getUserId());
             ref.setTaskId(task.getId());
             ref.setImageId(imageId);
             ref.setSortIndex(next++);
@@ -804,6 +851,11 @@ public class TaskService {
         if (task == null) {
             throw new NotFoundException("镜头不存在：" + taskId);
         }
+        // 请求线程必须属于该任务；调度线程没有登录上下文，放行
+        Long current = UserContext.currentUserId();
+        if (current != null && !Objects.equals(current, task.getUserId())) {
+            throw new NotFoundException("镜头不存在：" + taskId);
+        }
         return task;
     }
 
@@ -816,16 +868,15 @@ public class TaskService {
     }
 
     private Canvas requireCanvas(Long workspaceId) {
+        com.aigc.video.domain.Workspace workspace = workspaceAccess.requireOwned(workspaceId);
         Canvas canvas = canvasMapper.selectOne(Wrappers.<Canvas>lambdaQuery()
                 .eq(Canvas::getWorkspaceId, workspaceId)
                 .last("LIMIT 1"));
         if (canvas != null) {
             return canvas;
         }
-        if (workspaceMapper.selectById(workspaceId) == null) {
-            throw new NotFoundException("画布不存在：" + workspaceId);
-        }
         Canvas created = new Canvas();
+        created.setUserId(workspace.getUserId());
         created.setWorkspaceId(workspaceId);
         created.setVersion(0);
         created.setUpdatedAt(LocalDateTime.now());
@@ -846,8 +897,10 @@ public class TaskService {
     }
 
     private GenerationTask findByIdem(String idem) {
+        Long userId = UserContext.currentUserId();
         return taskMapper.selectOne(Wrappers.<GenerationTask>lambdaQuery()
                 .eq(GenerationTask::getIdemKey, idem)
+                .eq(userId != null, GenerationTask::getUserId, userId)
                 .last("LIMIT 1"));
     }
 

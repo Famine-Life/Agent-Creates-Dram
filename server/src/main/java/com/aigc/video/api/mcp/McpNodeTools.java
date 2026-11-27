@@ -20,6 +20,7 @@ public class McpNodeTools {
 
     private final CanvasNodeService canvasNodeService;
     private final ObjectMapper objectMapper;
+    private final McpToolSupport support;
 
     @Tool(name = "create_canvas_node",
             description = "在画布创建文本或脚本节点。type=script 时可用 generate_script 生成分镜脚本。")
@@ -38,7 +39,7 @@ public class McpNodeTools {
             throw new BadRequestException("不支持的节点类型：" + nodeType);
         }
         return McpToolSupport.toJson(objectMapper, canvasNodeService.createNode(
-                McpToolSupport.workspace(workspaceId),
+                support.workspace(workspaceId),
                 new CanvasNodeRequest(nodeType, title, prompt, content, x, y, width, height)));
     }
 
@@ -56,7 +57,7 @@ public class McpNodeTools {
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(nodeId, "节点ID");
         return McpToolSupport.toJson(objectMapper, canvasNodeService.updateNode(
-                McpToolSupport.workspace(workspaceId), id,
+                support.workspace(workspaceId), id,
                 new CanvasNodeRequest(null, title, prompt, content, x, y, width, height)));
     }
 
@@ -66,7 +67,7 @@ public class McpNodeTools {
             @ToolParam(description = "节点 ID") Long nodeId,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(nodeId, "节点ID");
-        Long workspace = McpToolSupport.workspace(workspaceId);
+        Long workspace = support.workspace(workspaceId);
         canvasNodeService.deleteNode(workspace, id);
         return McpToolSupport.toJson(objectMapper, Map.of("ok", true, "nodeId", id, "workspaceId", workspace));
     }
@@ -80,6 +81,6 @@ public class McpNodeTools {
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         Long id = McpToolSupport.requireId(nodeId, "节点ID");
         return McpToolSupport.toJson(objectMapper,
-                canvasNodeService.generateScript(McpToolSupport.workspace(workspaceId), id, prompt, model));
+                canvasNodeService.generateScript(support.workspace(workspaceId), id, prompt, model));
     }
 }

@@ -102,9 +102,14 @@ public class AiService {
 
     /** 生成图片，返回可直接展示的地址；referenceUrls 非空时按顺序作为参考图做图生图 */
     public String generateImage(String prompt, String model, List<String> referenceUrls, String size) {
+        return generateImage(null, prompt, model, referenceUrls, size);
+    }
+
+    /** 带用户维度存储的图片生成，产物落在用户自己的目录。 */
+    public String generateImage(Long userId, String prompt, String model, List<String> referenceUrls, String size) {
         ModelCatalog.ResolvedModel resolved = modelCatalog.resolve(ModelCatalog.Capability.IMAGE, model);
         if (resolved.mock()) {
-            return storeMockImage(prompt);
+            return storeMockImage(userId, prompt);
         }
         String targetSize = size == null || size.isBlank() ? "1280x720" : size;
         Map<String, Object> body = new LinkedHashMap<>();
@@ -144,13 +149,13 @@ public class AiService {
         JsonNode first = response.path("data").path(0);
         String url = first.path("url").asText("");
         if (!url.isBlank()) {
-            return assetService.transfer(url, "images", ".png");
+            return assetService.transfer(userId, url, "images", ".png");
         }
         String base64 = first.path("b64_json").asText("");
         if (base64.isBlank()) {
             throw new IllegalStateException("AI 图片生成失败：" + response.path("error").path("message").asText("未返回图片"));
         }
-        StoredAsset stored = assetService.storeImage("ai-image.png", "image/png",
+        StoredAsset stored = assetService.storeImage(userId, "ai-image.png", "image/png",
                 java.util.Base64.getDecoder().decode(base64));
         return stored.url();
     }
@@ -237,7 +242,7 @@ public class AiService {
                 + "浅景深突出主体，镜头缓慢向前推进，冷暖色调对比，高动态范围，实拍质感。";
     }
 
-    private String storeMockImage(String prompt) {
+    private String storeMockImage(Long userId, String prompt) {
         String text = prompt == null || prompt.isBlank() ? "未填写提示词" : prompt.trim();
         StringBuilder svg = new StringBuilder();
         svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"576\" viewBox=\"0 0 1024 576\">");
@@ -257,7 +262,7 @@ public class AiService {
         }
         svg.append("<text x=\"60\" y=\"520\" fill=\"#8d939e\" font-size=\"20\" font-family=\"sans-serif\">配置平台 API Key 后将调用真实图片模型</text>");
         svg.append("</svg>");
-        StoredAsset stored = assetService.storeImage("ai-image.svg", "image/svg+xml",
+        StoredAsset stored = assetService.storeImage(userId, "ai-image.svg", "image/svg+xml",
                 svg.toString().getBytes(StandardCharsets.UTF_8));
         return stored.url();
     }

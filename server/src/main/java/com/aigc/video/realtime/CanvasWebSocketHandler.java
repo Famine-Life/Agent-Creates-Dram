@@ -1,5 +1,8 @@
 package com.aigc.video.realtime;
 
+import com.aigc.video.domain.Workspace;
+import com.aigc.video.mapper.WorkspaceMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,12 +23,21 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class CanvasWebSocketHandler extends TextWebSocketHandler {
 
     private final CanvasSocketRegistry registry;
+    private final WorkspaceMapper workspaceMapper;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         Long workspaceId = resolveWorkspaceId(session);
-        if (workspaceId == null) {
+        Object userIdAttr = session.getAttributes().get("userId");
+        if (workspaceId == null || !(userIdAttr instanceof Long userId)) {
             session.close(CloseStatus.BAD_DATA.withReason("workspaceId 缺失"));
+            return;
+        }
+        Long owned = workspaceMapper.selectCount(Wrappers.<Workspace>lambdaQuery()
+                .eq(Workspace::getId, workspaceId)
+                .eq(Workspace::getUserId, userId));
+        if (owned == null || owned == 0) {
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("无权访问该画布"));
             return;
         }
         session.getAttributes().put("workspaceId", workspaceId);

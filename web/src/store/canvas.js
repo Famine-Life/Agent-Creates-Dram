@@ -123,6 +123,37 @@ export async function loadAll() {
   state.loading = false
 }
 
+/**
+ * 退出登录或切换账号时清空画布状态：
+ * 断开实时连接、清空撤销栈、画布数据与本地记住的画布 ID，避免串号。
+ */
+export function resetCanvas() {
+  disconnectRealtime()
+  clearHistory()
+  state.workspaceId = DEFAULT_WORKSPACE_ID
+  state.workspaces = []
+  state.meta = {}
+  state.tasks = []
+  state.images = []
+  state.canvasNodes = []
+  state.edges = []
+  state.links = []
+  state.imageSettings = {}
+  state.snapshot = null
+  state.version = 0
+  state.selectedTaskId = null
+  state.selectedImageId = null
+  state.selectedNodeId = null
+  state.selectionBoxActive = false
+  state.inspectorEdit = false
+  state.previewTask = null
+  state.keyword = ''
+  state.connection = 'connecting'
+  state.loading = true
+  state.toast = ''
+  localStorage.removeItem('aigc.workspace.id')
+}
+
 /** 拉取画布列表，用于侧栏的画布切换下拉 */
 export async function loadWorkspaces() {
   const list = await api.workspaces()
@@ -130,9 +161,9 @@ export async function loadWorkspaces() {
   return state.workspaces
 }
 
-/** 新建空白画布，返回创建后的工作空间 */
-export async function createWorkspace() {
-  const created = await api.createWorkspace()
+/** 新建空白画布，传入 projectId 时归入该项目，返回创建后的工作空间 */
+export async function createWorkspace(projectId) {
+  const created = await api.createWorkspace(projectId)
   state.workspaces = [...state.workspaces, created].sort((a, b) => a.id - b.id)
   return created
 }

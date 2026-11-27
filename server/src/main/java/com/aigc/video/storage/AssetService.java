@@ -41,8 +41,8 @@ public class AssetService {
         return storage.providerImageUrl(url);
     }
 
-    /** 保存前端上传的图片 */
-    public StoredAsset storeImage(String originalName, String contentType, byte[] bytes) {
+    /** 保存前端上传的图片；新对象统一落在用户目录下。 */
+    public StoredAsset storeImage(Long userId, String originalName, String contentType, byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("上传内容为空");
         }
@@ -54,17 +54,21 @@ public class AssetService {
             throw new IllegalArgumentException("仅支持 jpg / png / webp 图片");
         }
         String ext = extension(resolveName(originalName, mime));
-        return storage.store(bytes, "images/" + UUID.randomUUID() + ext, contentType);
+        return storage.store(bytes, userPrefix(userId) + "images/" + UUID.randomUUID() + ext, contentType);
+    }
+
+    public StoredAsset storeImage(String originalName, String contentType, byte[] bytes) {
+        return storeImage(null, originalName, contentType, bytes);
     }
 
     /**
-     * 把供应商返回的地址转存到自己的存储；失败时保留原始地址，保证演示链路不中断。
+     * 把供应商返回的地址转存到自己的存储；转存失败必须抛出异常，禁止保存第三方 URL。
      *
      * @param sourceUrl 远端地址
      * @param folder    videos / images
      * @param fallbackExt 无法推断后缀时使用的后缀，如 .mp4
      */
-    public String transfer(String sourceUrl, String folder, String fallbackExt) {
+    public String transfer(Long userId, String sourceUrl, String folder, String fallbackExt) {
         if (sourceUrl == null || sourceUrl.isBlank()) {
             return null;
         }
@@ -82,14 +86,22 @@ public class AssetService {
             if (ext.isBlank()) {
                 ext = fallbackExt;
             }
-            StoredAsset stored = storage.store(bytes, folder + "/" + UUID.randomUUID() + ext, null);
+            StoredAsset stored = storage.store(bytes, userPrefix(userId) + folder + "/" + UUID.randomUUID() + ext, null);
             transferred.put(sourceUrl, stored.url());
             log.info("产物已转存 {} -> {}", sourceUrl, stored.url());
             return stored.url();
         } catch (Exception e) {
-            log.warn("产物转存失败，直接使用原始地址 {}（{}）", sourceUrl, e.getMessage());
-            return sourceUrl;
+            log.error("产物转存失败 {}：{}", sourceUrl, e.getMessage());
+            throw new IllegalStateException("生成产物转存失败：" + e.getMessage(), e);
         }
+    }
+
+    public String transfer(String sourceUrl, String folder, String fallbackExt) {
+        return transfer(null, sourceUrl, folder, fallbackExt);
+    }
+
+    private String userPrefix(Long userId) {
+        return userId == null ? "" : userId + "/";
     }
 
     private byte[] download(String url) throws Exception {

@@ -1,5 +1,6 @@
 package com.aigc.video.api;
 
+import com.aigc.video.api.dto.WorkspaceCreateRequest;
 import com.aigc.video.api.dto.WorkspaceNameRequest;
 import com.aigc.video.api.dto.WorkspaceView;
 import com.aigc.video.domain.Workspace;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -31,16 +33,16 @@ public class WorkspaceController {
 
     private final WorkspaceService workspaceService;
 
-    /** 画布列表：按 ID 升序返回，附带各自 canvas 的版本与更新时间 */
+    /** 画布列表：按 ID 升序返回；传 projectId 时只返回该项目下的画布 */
     @GetMapping
-    public List<WorkspaceView> list() {
-        return workspaceService.list();
+    public List<WorkspaceView> list(@RequestParam(required = false) Long projectId) {
+        return workspaceService.list(projectId);
     }
 
-    /** 新建空白画布：同时创建 workspace 与 canvas，名称按序号自动生成 */
+    /** 新建空白画布：不传 projectId 时归入当前用户的默认项目 */
     @PostMapping
-    public WorkspaceView create() {
-        return workspaceService.createWorkspace();
+    public WorkspaceView create(@RequestBody(required = false) WorkspaceCreateRequest request) {
+        return workspaceService.createWorkspace(request == null ? null : request.projectId());
     }
 
     /** 重命名画布 */

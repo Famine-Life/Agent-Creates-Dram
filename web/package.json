@@ -14,7 +14,8 @@
     "@vue-flow/core": "^1.41.5",
     "@vue-flow/minimap": "^1.5.3",
     "axios": "^1.7.7",
-    "vue": "^3.4.38"
+    "vue": "^3.4.38",
+    "vue-router": "^4.6.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.6.2",

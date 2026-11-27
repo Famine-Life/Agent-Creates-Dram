@@ -28,10 +28,29 @@ spring:
     password: ""
   sql:
     init:
-      mode: always
-      # 建表脚本含中文注释与默认数据，显式指定 UTF-8，避免按平台编码读取导致乱码
-      encoding: UTF-8
-      schema-locations: classpath:db/schema-h2.sql
+      # 建表与升级统一交给 Flyway
+      mode: never
+  flyway:
+    enabled: true
+    # H2 / MySQL 使用各自的迁移目录，避免方言差异
+    locations: classpath:db/migration/h2
+    # 已有单用户库没有 flyway 历史表：以 V1 为基线，只执行 V2
+    baseline-on-migrate: true
+    baseline-version: 1
+    validate-on-migrate: false
+  mail:
+    host: ${AIGC_SMTP_HOST:}
+    port: ${AIGC_SMTP_PORT:465}
+    username: ${AIGC_SMTP_USERNAME:}
+    password: ${AIGC_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+  rabbitmq:
+    host: ${AIGC_RABBIT_HOST:127.0.0.1}
+    port: ${AIGC_RABBIT_PORT:5672}
+    username: ${AIGC_RABBIT_USERNAME:guest}
+    password: ${AIGC_RABBIT_PASSWORD:guest}
   h2:
     console:
       # 公网部署不开放数据库控制台；本地排障时再通过环境变量显式开启
@@ -74,9 +93,10 @@ mybatis-plus:
 
 aigc:
   security:
-    # 单租户管理员；公网部署必须显式配置，不提供默认密码
+    # 首次启动用于初始化管理员；之后不再覆盖数据库中的密码
     admin-username: ${AIGC_ADMIN_USERNAME:admin}
     admin-password: ${AIGC_ADMIN_PASSWORD:admin@888}
+    admin-email: ${AIGC_ADMIN_EMAIL:admin@local}
     # 本地开发默认值；公网部署必须通过 MCP_API_TOKEN 设置独立的高强度随机 Token
     mcp-token: ${MCP_API_TOKEN:12345678}
     cookie-secure: ${AIGC_COOKIE_SECURE:false}
@@ -138,6 +158,54 @@ aigc:
       # 可选：CDN / 自定义域名，配置后优先用于拼接访问地址
       public-url: ${OSS_PUBLIC_URL:}
   poll-timeout-seconds: 900
+  # 对外访问地址，用于拼接邮箱验证与支付回调链接
+  public-base-url: ${AIGC_PUBLIC_URL:http://localhost:8080}
+  mail:
+    # log：验证/重置链接只写日志并返回开发链接；smtp：真实发送
+    type: ${AIGC_MAIL_TYPE:log}
+    from: ${AIGC_MAIL_FROM:no-reply@local}
+  mq:
+    # db：事务 Outbox + 进程内调度；rabbitmq：Outbox 转发 RabbitMQ
+    type: ${AIGC_MQ_TYPE:db}
+    queue: aigc.task.dispatch
+    dead-letter-queue: aigc.task.dispatch.dlq
+  billing:
+    # 会员到期或未配置时的兜底档位
+    default-plan: FREE
+    # 按模型计费；未列出的模型使用 fallback
+    video-costs:
+      mock/mock-video: 5
+      ark/doubao-seedance-2-0-260128: 60
+      ark/doubao-seedance-2-0-fast-260128: 40
+      ark/doubao-seedance-2-5-260628: 80
+    image-costs:
+      mock/mock-image: 2
+      ark/doubao-seedream-4-0-20260415: 8
+      ark/doubao-seedream-5-5-261028: 10
+      openai/gpt-image-1: 12
+    text-cost: 1
+    fallback-video-cost: 50
+    fallback-image-cost: 8
+  payment:
+    # 默认 mock；生产改为 wechat / alipay 并配置对应凭据
+    channel: ${AIGC_PAYMENT_CHANNEL:mock}
+    mock-enabled: ${AIGC_PAYMENT_MOCK_ENABLED:true}
+    order-timeout-minutes: 30
+    wechat:
+      app-id: ${WECHAT_PAY_APP_ID:}
+      mch-id: ${WECHAT_PAY_MCH_ID:}
+      serial-no: ${WECHAT_PAY_SERIAL_NO:}
+      private-key-path: ${WECHAT_PAY_PRIVATE_KEY_PATH:}
+      api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+      platform-cert-path: ${WECHAT_PAY_PLATFORM_CERT_PATH:}
+      notify-url: ${WECHAT_PAY_NOTIFY_URL:}
+    alipay:
+      app-id: ${ALIPAY_APP_ID:}
+      private-key: ${ALIPAY_PRIVATE_KEY:}
+      alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+      gateway: ${ALIPAY_GATEWAY:https://openapi.alipay.com/gateway.do}
+      notify-url: ${ALIPAY_NOTIFY_URL:}
+      return-url: ${ALIPAY_RETURN_URL:}
   # 多平台 AI：平台管地址与密钥，模型声明能力与协议；引用格式 provider/model
   # 未配置 api-key 的平台不会出现在 /api/meta 与前端下拉中
   ai:

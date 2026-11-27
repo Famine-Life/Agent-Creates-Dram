@@ -17,9 +17,17 @@ public class GenerationTask {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private Long userId;
+
     private Long workspaceId;
 
     private Long canvasId;
+
+    /** 本次生成尝试的计费操作 ID，用于冻结/实扣/退回幂等 */
+    private String billingOpId;
+
+    /** 本次生成消耗的积分快照 */
+    private Integer creditCost;
 
     private String groupId;
 

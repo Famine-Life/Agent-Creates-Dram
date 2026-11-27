@@ -32,24 +32,25 @@ public class McpWorkspaceTools {
     private final ModelCatalog modelCatalog;
     private final AiService aiService;
     private final ObjectMapper objectMapper;
+    private final McpToolSupport support;
 
     @Tool(name = "get_canvas_state",
             description = "读取画布全部镜头、图片、文本节点、连线与生成状态，AI 续写或确认结果前先调用。")
     public JsonNode getCanvasState(
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
-        return McpToolSupport.toJson(objectMapper, taskService.getCanvas(McpToolSupport.workspace(workspaceId)));
+        return McpToolSupport.toJson(objectMapper, taskService.getCanvas(support.workspace(workspaceId)));
     }
 
     @Tool(name = "list_workspaces",
             description = "列出所有画布（工作空间）及其 ID、名称与快照版本。操作其他工具前可先用它确认 workspaceId。")
     public JsonNode listWorkspaces() {
-        return McpToolSupport.toJson(objectMapper, workspaceService.list());
+        return McpToolSupport.toJson(objectMapper, workspaceService.list(null));
     }
 
     @Tool(name = "create_workspace",
             description = "新建一张空白画布，名称按序号自动生成，返回新画布 ID。")
     public JsonNode createWorkspace() {
-        return McpToolSupport.toJson(objectMapper, workspaceService.createWorkspace());
+        return McpToolSupport.toJson(objectMapper, workspaceService.createWorkspace(null));
     }
 
     @Tool(name = "rename_workspace",
@@ -103,7 +104,7 @@ public class McpWorkspaceTools {
     public JsonNode listAssets(
             @ToolParam(required = false, description = "可选，video / ai / upload；不传则返回全部") String type,
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
-        CanvasState canvas = taskService.getCanvas(McpToolSupport.workspace(workspaceId));
+        CanvasState canvas = taskService.getCanvas(support.workspace(workspaceId));
         List<Map<String, Object>> videos = new ArrayList<>();
         List<Map<String, Object>> ai = new ArrayList<>();
         List<Map<String, Object>> uploads = new ArrayList<>();
@@ -142,7 +143,7 @@ public class McpWorkspaceTools {
     public JsonNode listPromptRecords(
             @ToolParam(required = false, description = "画布 ID，默认 1") Long workspaceId) {
         return McpToolSupport.toJson(objectMapper,
-                taskService.listPromptRecords(McpToolSupport.workspace(workspaceId)));
+                taskService.listPromptRecords(support.workspace(workspaceId)));
     }
 
     @Tool(name = "optimize_prompt",

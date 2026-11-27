@@ -1,17 +1,17 @@
 package com.aigc.video.config;
 
+import com.aigc.video.mapper.AppUserMapper;
+import com.aigc.video.user.McpTokenService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -20,28 +20,20 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-/**
- * 配置应用组件与运行参数。
- */
+/** 多用户 Session + CSRF + 用户级 MCP Token。 */
 @Configuration
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final SecurityProperties properties;
     private final ObjectMapper objectMapper;
+    private final McpTokenService mcpTokenService;
+    private final AppUserMapper appUserMapper;
 
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
-        var admin = User.withUsername(properties.getAdminUsername())
-                .password(passwordEncoder.encode(properties.getAdminPassword()))
-                .roles("ADMIN")
-                .build();
-        return new InMemoryUserDetailsManager(admin);
     }
 
     @Bean
@@ -50,18 +42,17 @@ public class SecurityConfig {
         csrfRepository.setCookieCustomizer(cookie -> cookie
                 .path("/")
                 .secure(properties.isCookieSecure())
-                .sameSite("Lax"));  // WebSocket 跨请求握手时 Strict 可能丢 Cookie
+                .sameSite("Lax"));
 
-        // 故意不声明为 Filter Bean，避免 Spring Boot 在安全链之外再注册一次。
-        McpAuthenticationFilter mcpFilter = new McpAuthenticationFilter(properties, objectMapper);
+        McpAuthenticationFilter mcpFilter =
+                new McpAuthenticationFilter(properties, objectMapper, mcpTokenService, appUserMapper);
         LoginRateLimitFilter loginRateLimitFilter = new LoginRateLimitFilter(properties, objectMapper);
 
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
-                        // Axios 直接读取 XSRF-TOKEN Cookie 并回传 X-XSRF-TOKEN，使用对应的原始值校验。
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
-                        .ignoringRequestMatchers("/sse", "/mcp/message", "/ws/**"))
+                        .ignoringRequestMatchers("/sse", "/mcp/message", "/ws/**", "/api/payments/notify/**"))
                 .formLogin(form -> form
                         .loginProcessingUrl("/api/auth/login")
                         .successHandler((request, response, authentication) ->
@@ -87,6 +78,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/", "/index.html", "/assets/**", "/favicon.ico",
                                 "/api/auth/login", "/api/auth/csrf", "/api/auth/session",
+                                "/api/auth/register", "/api/auth/verify-email",
+                                "/api/auth/resend-verification", "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
+                                "/api/payments/notify/**",
                                 "/ws/**")
                         .permitAll()
                         .requestMatchers("/sse", "/mcp/message").permitAll()
@@ -96,7 +91,8 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private void writeJson(HttpServletResponse response, int status, Map<String, Object> body) throws java.io.IOException {
+    private void writeJson(HttpServletResponse response, int status, Map<String, Object> body)
+            throws java.io.IOException {
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

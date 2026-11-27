@@ -18,6 +18,8 @@ public class CanvasImage {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private Long userId;
+
     private Long workspaceId;
 
     private Long canvasId;

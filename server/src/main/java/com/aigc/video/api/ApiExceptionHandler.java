@@ -3,7 +3,9 @@ package com.aigc.video.api;
 import com.aigc.video.common.BadRequestException;
 import com.aigc.video.common.ConflictException;
 import com.aigc.video.common.NotFoundException;
+import com.aigc.video.common.PaymentRequiredException;
 import com.aigc.video.common.TooManyRequestsException;
+import com.aigc.video.common.UnauthorizedException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.HttpStatus;
@@ -40,6 +42,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<Map<String, Object>> tooManyRequests(TooManyRequestsException e) {
         return body(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<Map<String, Object>> unauthorized(UnauthorizedException e) {
+        return body(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
+    @ExceptionHandler(PaymentRequiredException.class)
+    public ResponseEntity<Map<String, Object>> paymentRequired(PaymentRequiredException e) {
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(Map.of("message", e.getMessage(), "errorCode", e.getErrorCode()));
     }
 
     @ExceptionHandler({IllegalArgumentException.class, MaxUploadSizeExceededException.class})
